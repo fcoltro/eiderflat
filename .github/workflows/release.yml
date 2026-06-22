@@ -1,0 +1,87 @@
+name: Release
+
+# Build native binaries for Windows, Linux and macOS. Pushing a version tag
+# (e.g. `v0.1.0`) publishes them to a GitHub Release; manual runs just build.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-x86_64
+            os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - name: windows-x86_64
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+          - name: macos-x86_64
+            os: macos-13
+            target: x86_64-apple-darwin
+          - name: macos-aarch64
+            os: macos-14
+            target: aarch64-apple-darwin
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libgtk-3-dev
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Build release binary
+        run: cargo build --release -p eiderflat_app --target ${{ matrix.target }}
+
+      - name: Package (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          ver="${GITHUB_REF_NAME:-dev}"
+          dist="eiderflat-${ver}-${{ matrix.name }}"
+          mkdir -p "$dist"
+          cp "target/${{ matrix.target }}/release/eiderflat" "$dist/"
+          cp README.md LICENSE "$dist/"
+          tar -czf "${dist}.tar.gz" "$dist"
+          echo "ASSET=${dist}.tar.gz" >> "$GITHUB_ENV"
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ver = if ($env:GITHUB_REF_NAME) { $env:GITHUB_REF_NAME } else { "dev" }
+          $dist = "eiderflat-$ver-${{ matrix.name }}"
+          New-Item -ItemType Directory -Force -Path $dist | Out-Null
+          Copy-Item "target/${{ matrix.target }}/release/eiderflat.exe" $dist/
+          Copy-Item README.md, LICENSE $dist/
+          Compress-Archive -Path $dist -DestinationPath "$dist.zip"
+          "ASSET=$dist.zip" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: ${{ env.ASSET }}
+
+      - name: Attach to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.ASSET }}
+          generate_release_notes: true
