@@ -4,7 +4,12 @@ const TESS_TOL_PX: f32 = 0.3;
 const TESS_MAX_DEPTH: u32 = 18;
 const TESS_MAX_POINTS: usize = 20_000;
 
-pub(super) fn draw_curve(painter: &egui::Painter, c: &Curve, to_screen: &impl Fn(f64, f64) -> egui::Pos2, stroke: Stroke) {
+pub(super) fn draw_curve(
+    painter: &egui::Painter,
+    c: &Curve,
+    to_screen: &impl Fn(f64, f64) -> egui::Pos2,
+    stroke: Stroke,
+) {
     match c {
         Curve::Line(l) => {
             let (x0, y0) = l.p0.to_f64();
@@ -17,9 +22,15 @@ pub(super) fn draw_curve(painter: &egui::Painter, c: &Curve, to_screen: &impl Fn
     }
 }
 
-pub(super) fn flatten_curve(c: &Curve, to_screen: &impl Fn(f64, f64) -> egui::Pos2) -> Vec<egui::Pos2> {
+pub(super) fn flatten_curve(
+    c: &Curve,
+    to_screen: &impl Fn(f64, f64) -> egui::Pos2,
+) -> Vec<egui::Pos2> {
     let (t0, t1) = c.domain();
-    let eval = |t: f64| { let (x, y) = c.evaluate_f64(t); to_screen(x, y) };
+    let eval = |t: f64| {
+        let (x, y) = c.evaluate_f64(t);
+        to_screen(x, y)
+    };
     let mut pts: Vec<egui::Pos2> = Vec::with_capacity(64);
     const SPANS: usize = 4;
     pts.push(eval(t0));
@@ -31,8 +42,16 @@ pub(super) fn flatten_curve(c: &Curve, to_screen: &impl Fn(f64, f64) -> egui::Po
     pts
 }
 
-fn tessellate(eval: &impl Fn(f64) -> egui::Pos2, t0: f64, t1: f64, depth: u32, out: &mut Vec<egui::Pos2>) {
-    if out.len() >= TESS_MAX_POINTS { return; }
+fn tessellate(
+    eval: &impl Fn(f64) -> egui::Pos2,
+    t0: f64,
+    t1: f64,
+    depth: u32,
+    out: &mut Vec<egui::Pos2>,
+) {
+    if out.len() >= TESS_MAX_POINTS {
+        return;
+    }
     let p0 = *out.last().unwrap();
     let p1 = eval(t1);
     let tm = 0.5 * (t0 + t1);
@@ -57,4 +76,3 @@ pub(super) fn point_seg_dist(p: egui::Pos2, a: egui::Pos2, b: egui::Pos2) -> f32
     let cy = a.y + t * aby;
     ((p.x - cx).powi(2) + (p.y - cy).powi(2)).sqrt()
 }
-

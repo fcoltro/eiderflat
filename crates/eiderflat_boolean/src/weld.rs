@@ -110,9 +110,7 @@ fn snap_endpoints(c: &Curve, s: (f64, f64), e: (f64, f64)) -> Curve {
             set_arc_angles(&mut a.start_angle, &mut a.end_angle, new_start, new_end);
             Curve::Arc(a)
         }
-        Curve::Ellipse(el) => {
-            Curve::Ellipse(*el)
-        }
+        Curve::Ellipse(el) => Curve::Ellipse(*el),
         Curve::Poly(pc) => {
             let mut segs = pc.segments.clone();
             if let Some(first) = segs.first().cloned() {

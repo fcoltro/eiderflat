@@ -1,5 +1,5 @@
-use crate::point::BoundingBox;
 use crate::curve::{Curve, CurveSegment};
+use crate::point::BoundingBox;
 
 #[derive(Clone, Debug)]
 pub struct PolyCurve {
@@ -18,7 +18,9 @@ impl PolyCurve {
             let (ex, ey) = self.segments[i].evaluate_f64(t1);
             let (sx, sy) = self.segments[i + 1].evaluate_f64(t0);
             let d = ((ex - sx).powi(2) + (ey - sy).powi(2)).sqrt();
-            if d > tol { return false; }
+            if d > tol {
+                return false;
+            }
         }
         true
     }
@@ -37,7 +39,9 @@ impl PolyCurve {
                         let (tx0, ty0) = (l0.p1.x - l0.p0.x, l0.p1.y - l0.p0.y);
                         let (tx1, ty1) = (l1.p1.x - l1.p0.x, l1.p1.y - l1.p0.y);
                         let cross = tx0 * ty1 - ty0 * tx1;
-                        let len = ((tx0 * tx0 + ty0 * ty0) * (tx1 * tx1 + ty1 * ty1)).sqrt().max(1e-15);
+                        let len = ((tx0 * tx0 + ty0 * ty0) * (tx1 * tx1 + ty1 * ty1))
+                            .sqrt()
+                            .max(1e-15);
                         if cross.abs() / len < tol {
                             end = l1.p1;
                             j += 1;
@@ -59,14 +63,20 @@ impl PolyCurve {
 
 impl CurveSegment for PolyCurve {
     fn domain(&self) -> (f64, f64) {
-        if self.segments.is_empty() { return (0.0, 1.0); }
-        (self.segments[0].domain().0,
-         self.segments.last().unwrap().domain().1)
+        if self.segments.is_empty() {
+            return (0.0, 1.0);
+        }
+        (
+            self.segments[0].domain().0,
+            self.segments.last().unwrap().domain().1,
+        )
     }
 
     fn evaluate_f64(&self, t: f64) -> (f64, f64) {
         let n = self.segments.len();
-        if n == 0 { return (0.0, 0.0); }
+        if n == 0 {
+            return (0.0, 0.0);
+        }
         let seg_idx = ((t * n as f64) as usize).min(n - 1);
         let t_local = t * n as f64 - seg_idx as f64;
         let (t0, t1) = self.segments[seg_idx].domain();
@@ -78,15 +88,19 @@ impl CurveSegment for PolyCurve {
         if self.segments.is_empty() {
             return BoundingBox::from_corners(0.0, 0.0, 0.0, 0.0);
         }
-        self.segments.iter().skip(1).fold(
-            self.segments[0].bounding_box(),
-            |acc, seg| acc.union(&seg.bounding_box()),
-        )
+        self.segments
+            .iter()
+            .skip(1)
+            .fold(self.segments[0].bounding_box(), |acc, seg| {
+                acc.union(&seg.bounding_box())
+            })
     }
 
     fn tangent_f64(&self, t: f64) -> (f64, f64) {
         let n = self.segments.len();
-        if n == 0 { return (1.0, 0.0); }
+        if n == 0 {
+            return (1.0, 0.0);
+        }
         let seg_idx = ((t * n as f64) as usize).min(n - 1);
         let t_local = t * n as f64 - seg_idx as f64;
         let (t0, t1) = self.segments[seg_idx].domain();
@@ -102,39 +116,31 @@ impl CurveSegment for PolyCurve {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::primitives::LineSeg;
     use crate::point::Point2d;
+    use crate::primitives::LineSeg;
 
-    fn pt(x: i64, y: i64) -> Point2d { Point2d::from_i64(x, y) }
+    fn pt(x: i64, y: i64) -> Point2d {
+        Point2d::from_i64(x, y)
+    }
     fn seg(x0: i64, y0: i64, x1: i64, y1: i64) -> Curve {
         Curve::Line(LineSeg::from_endpoints(pt(x0, y0), pt(x1, y1)))
     }
 
     #[test]
     fn g0_continuity_connected() {
-        let pc = PolyCurve::new(vec![
-            seg(0, 0, 1, 1),
-            seg(1, 1, 2, 0),
-        ]);
+        let pc = PolyCurve::new(vec![seg(0, 0, 1, 1), seg(1, 1, 2, 0)]);
         assert!(pc.check_g0(1e-9));
     }
 
     #[test]
     fn g0_continuity_disconnected() {
-        let pc = PolyCurve::new(vec![
-            seg(0, 0, 1, 1),
-            seg(2, 0, 3, 1),
-        ]);
+        let pc = PolyCurve::new(vec![seg(0, 0, 1, 1), seg(2, 0, 3, 1)]);
         assert!(!pc.check_g0(1e-9));
     }
 
     #[test]
     fn merge_collinear_lines() {
-        let pc = PolyCurve::new(vec![
-            seg(0, 0, 1, 0),
-            seg(1, 0, 2, 0),
-            seg(2, 0, 5, 0),
-        ]);
+        let pc = PolyCurve::new(vec![seg(0, 0, 1, 0), seg(1, 0, 2, 0), seg(2, 0, 5, 0)]);
         let merged = pc.merge_collinear(1e-9);
         assert_eq!(merged.segments.len(), 1);
         if let Some(l) = merged.segments[0].as_line() {
@@ -147,10 +153,7 @@ mod tests {
 
     #[test]
     fn total_arc_length() {
-        let pc = PolyCurve::new(vec![
-            seg(0, 0, 3, 4),
-            seg(3, 4, 6, 0),
-        ]);
+        let pc = PolyCurve::new(vec![seg(0, 0, 3, 4), seg(3, 4, 6, 0)]);
         assert!((pc.arc_length() - 10.0).abs() < 1e-8);
     }
 }

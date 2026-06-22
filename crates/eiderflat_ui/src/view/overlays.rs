@@ -1,10 +1,15 @@
-use egui::{Color32, pos2};
-use eiderflat_geometry::Point2d;
-use crate::state::AppState;
-use crate::tools::Tool;
 use super::UiState;
 use super::render::corner_glass_frame;
-pub(super) fn dyn_line_hud(ctx: &egui::Context, app: &mut AppState, ui_state: &mut UiState, origin: egui::Pos2) {
+use crate::state::AppState;
+use crate::tools::Tool;
+use egui::{Color32, pos2};
+use eiderflat_geometry::Point2d;
+pub(super) fn dyn_line_hud(
+    ctx: &egui::Context,
+    app: &mut AppState,
+    ui_state: &mut UiState,
+    origin: egui::Pos2,
+) {
     let line_ref = if let Tool::Line { last: Some(p0) } = &app.tool {
         Some(p0.to_f64())
     } else {
@@ -14,15 +19,24 @@ pub(super) fn dyn_line_hud(ctx: &egui::Context, app: &mut AppState, ui_state: &m
         let (cx, cy) = app.cursor_world;
         let live_len = ((cx - rx).powi(2) + (cy - ry).powi(2)).sqrt();
         let mut live_ang = (cy - ry).atan2(cx - rx).to_degrees();
-        if live_ang < 0.0 { live_ang += 360.0; }
+        if live_ang < 0.0 {
+            live_ang += 360.0;
+        }
 
         let len_id = egui::Id::new("dyn_len");
         let ang_id = egui::Id::new("dyn_ang");
-        if !ctx.memory(|m| m.has_focus(len_id)) { ui_state.dyn_length = format!("{:.2}", live_len); }
-        if !ctx.memory(|m| m.has_focus(ang_id)) { ui_state.dyn_angle = format!("{:.1}", live_ang); }
+        if !ctx.memory(|m| m.has_focus(len_id)) {
+            ui_state.dyn_length = format!("{:.2}", live_len);
+        }
+        if !ctx.memory(|m| m.has_focus(ang_id)) {
+            ui_state.dyn_angle = format!("{:.1}", live_ang);
+        }
 
         let cur = app.view.world_to_screen(cx, cy);
-        let hud_pos = pos2(origin.x + cur.0 as f32 + 18.0, origin.y + cur.1 as f32 - 38.0);
+        let hud_pos = pos2(
+            origin.x + cur.0 as f32 + 18.0,
+            origin.y + cur.1 as f32 - 38.0,
+        );
         let first_show = !ui_state.dyn_active;
         let mut commit = false;
         egui::Area::new(egui::Id::new("dyn_input_hud"))
@@ -31,14 +45,32 @@ pub(super) fn dyn_line_hud(ctx: &egui::Context, app: &mut AppState, ui_state: &m
             .show(ctx, |ui| {
                 corner_glass_frame().show(ui, |ui| {
                     ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("L").size(12.0).color(Color32::from_gray(170)));
-                        let lr = ui.add(egui::TextEdit::singleline(&mut ui_state.dyn_length)
-                            .id(len_id).desired_width(58.0));
-                        ui.label(egui::RichText::new("∠").size(12.0).color(Color32::from_gray(170)));
-                        let ar = ui.add(egui::TextEdit::singleline(&mut ui_state.dyn_angle)
-                            .id(ang_id).desired_width(48.0));
-                        if first_show { lr.request_focus(); }
-                        if ui.input(|i| i.key_pressed(egui::Key::Enter)) && (lr.lost_focus() || ar.lost_focus()) {
+                        ui.label(
+                            egui::RichText::new("L")
+                                .size(12.0)
+                                .color(Color32::from_gray(170)),
+                        );
+                        let lr = ui.add(
+                            egui::TextEdit::singleline(&mut ui_state.dyn_length)
+                                .id(len_id)
+                                .desired_width(58.0),
+                        );
+                        ui.label(
+                            egui::RichText::new("∠")
+                                .size(12.0)
+                                .color(Color32::from_gray(170)),
+                        );
+                        let ar = ui.add(
+                            egui::TextEdit::singleline(&mut ui_state.dyn_angle)
+                                .id(ang_id)
+                                .desired_width(48.0),
+                        );
+                        if first_show {
+                            lr.request_focus();
+                        }
+                        if ui.input(|i| i.key_pressed(egui::Key::Enter))
+                            && (lr.lost_focus() || ar.lost_focus())
+                        {
                             commit = true;
                         }
                     });
@@ -46,7 +78,11 @@ pub(super) fn dyn_line_hud(ctx: &egui::Context, app: &mut AppState, ui_state: &m
             });
         ui_state.dyn_active = true;
         if commit {
-            let cmd = format!("@{}<{}", ui_state.dyn_length.trim(), ui_state.dyn_angle.trim());
+            let cmd = format!(
+                "@{}<{}",
+                ui_state.dyn_length.trim(),
+                ui_state.dyn_angle.trim()
+            );
             app.run_command(&cmd);
             ui_state.dyn_active = false;
         }
@@ -55,7 +91,12 @@ pub(super) fn dyn_line_hud(ctx: &egui::Context, app: &mut AppState, ui_state: &m
     }
 }
 
-pub(super) fn dyn_circle_hud(ctx: &egui::Context, app: &mut AppState, ui_state: &mut UiState, origin: egui::Pos2) {
+pub(super) fn dyn_circle_hud(
+    ctx: &egui::Context,
+    app: &mut AppState,
+    ui_state: &mut UiState,
+    origin: egui::Pos2,
+) {
     let circle_center = if let Tool::Circle { center: Some(c) } = &app.tool {
         Some(c.to_f64())
     } else {
@@ -66,29 +107,45 @@ pub(super) fn dyn_circle_hud(ctx: &egui::Context, app: &mut AppState, ui_state: 
 
         let rad_id = egui::Id::new("dyn_radius");
         let first_show = !ui_state.dyn_circle_active;
-        if first_show { ui_state.dyn_radius.clear(); }
+        if first_show {
+            ui_state.dyn_radius.clear();
+        }
         ui_state.dyn_circle_active = true;
         if ctx.input(|i| i.key_pressed(egui::Key::Enter))
             && let Ok(rad) = ui_state.dyn_radius.trim().parse::<f64>()
-                && rad > 1e-9 {
-                    app.place_tool_point(Point2d::from_f64(cx + rad, cy));
-                    ui_state.dyn_circle_active = false;
-                    return;
-                }
+            && rad > 1e-9
+        {
+            app.place_tool_point(Point2d::from_f64(cx + rad, cy));
+            ui_state.dyn_circle_active = false;
+            return;
+        }
 
         let cur = app.view.world_to_screen(crx, cry);
-        let hud_pos = pos2(origin.x + cur.0 as f32 + 18.0, origin.y + cur.1 as f32 - 38.0);
+        let hud_pos = pos2(
+            origin.x + cur.0 as f32 + 18.0,
+            origin.y + cur.1 as f32 - 38.0,
+        );
         egui::Area::new(egui::Id::new("dyn_circle_hud"))
             .fixed_pos(hud_pos)
             .order(egui::Order::Foreground)
             .show(ctx, |ui| {
                 corner_glass_frame().show(ui, |ui| {
                     ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("R").size(12.0).color(Color32::from_gray(170)));
-                        let rr = ui.add(egui::TextEdit::singleline(&mut ui_state.dyn_radius)
-                            .id(rad_id).desired_width(58.0).hint_text("radius"));
+                        ui.label(
+                            egui::RichText::new("R")
+                                .size(12.0)
+                                .color(Color32::from_gray(170)),
+                        );
+                        let rr = ui.add(
+                            egui::TextEdit::singleline(&mut ui_state.dyn_radius)
+                                .id(rad_id)
+                                .desired_width(58.0)
+                                .hint_text("radius"),
+                        );
                         let nothing_focused = ui.ctx().memory(|m| m.focused().is_none());
-                        if first_show || nothing_focused { rr.request_focus(); }
+                        if first_show || nothing_focused {
+                            rr.request_focus();
+                        }
                     });
                 });
             });
@@ -96,9 +153,22 @@ pub(super) fn dyn_circle_hud(ctx: &egui::Context, app: &mut AppState, ui_state: 
         ui_state.dyn_circle_active = false;
     }
 }
-pub(super) fn dyn_polygon_hud(ctx: &egui::Context, app: &mut AppState, ui_state: &mut UiState, origin: egui::Pos2) {
+pub(super) fn dyn_polygon_hud(
+    ctx: &egui::Context,
+    app: &mut AppState,
+    ui_state: &mut UiState,
+    origin: egui::Pos2,
+) {
     // `Some(sides)` here is the current Option<usize> count (None until entered).
-    let sides = if let Tool::Polygon { center: None, sides } = &app.tool { Some(*sides) } else { None };
+    let sides = if let Tool::Polygon {
+        center: None,
+        sides,
+    } = &app.tool
+    {
+        Some(*sides)
+    } else {
+        None
+    };
     if let (true, Some(sides)) = (app.dyn_on, sides) {
         let sid = egui::Id::new("dyn_poly_sides");
         if !ctx.memory(|m| m.has_focus(sid)) {
@@ -107,7 +177,10 @@ pub(super) fn dyn_polygon_hud(ctx: &egui::Context, app: &mut AppState, ui_state:
 
         let (cx, cy) = app.cursor_world;
         let cur = app.view.world_to_screen(cx, cy);
-        let hud_pos = pos2(origin.x + cur.0 as f32 + 18.0, origin.y + cur.1 as f32 - 38.0);
+        let hud_pos = pos2(
+            origin.x + cur.0 as f32 + 18.0,
+            origin.y + cur.1 as f32 - 38.0,
+        );
         let first_show = !ui_state.dyn_poly_active;
         egui::Area::new(egui::Id::new("dyn_poly_hud"))
             .fixed_pos(hud_pos)
@@ -115,25 +188,48 @@ pub(super) fn dyn_polygon_hud(ctx: &egui::Context, app: &mut AppState, ui_state:
             .show(ctx, |ui| {
                 corner_glass_frame().show(ui, |ui| {
                     ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("Sides").size(12.0).color(Color32::from_gray(170)));
-                        let r = ui.add(egui::TextEdit::singleline(&mut ui_state.dyn_poly_sides)
-                            .id(sid).desired_width(40.0).hint_text("3+"));
+                        ui.label(
+                            egui::RichText::new("Sides")
+                                .size(12.0)
+                                .color(Color32::from_gray(170)),
+                        );
+                        let r = ui.add(
+                            egui::TextEdit::singleline(&mut ui_state.dyn_poly_sides)
+                                .id(sid)
+                                .desired_width(40.0)
+                                .hint_text("3+"),
+                        );
                         let nothing_focused = ui.ctx().memory(|m| m.focused().is_none());
-                        if first_show || nothing_focused { r.request_focus(); }
+                        if first_show || nothing_focused {
+                            r.request_focus();
+                        }
                     });
                 });
             });
         ui_state.dyn_poly_active = true;
-        let parsed = ui_state.dyn_poly_sides.trim().parse::<usize>().ok().filter(|n| *n >= 3);
+        let parsed = ui_state
+            .dyn_poly_sides
+            .trim()
+            .parse::<usize>()
+            .ok()
+            .filter(|n| *n >= 3);
         if parsed != sides {
-            app.tool = Tool::Polygon { center: None, sides: parsed };
+            app.tool = Tool::Polygon {
+                center: None,
+                sides: parsed,
+            };
         }
     } else {
         ui_state.dyn_poly_active = false;
     }
 }
 
-pub(super) fn dyn_rect_hud(ctx: &egui::Context, app: &mut AppState, ui_state: &mut UiState, origin: egui::Pos2) {
+pub(super) fn dyn_rect_hud(
+    ctx: &egui::Context,
+    app: &mut AppState,
+    ui_state: &mut UiState,
+    origin: egui::Pos2,
+) {
     let rect_first = if let Tool::Rectangle { first: Some(f) } = &app.tool {
         Some(f.to_f64())
     } else {
@@ -155,7 +251,11 @@ pub(super) fn dyn_rect_hud(ctx: &egui::Context, app: &mut AppState, ui_state: &m
         if ctx.input(|i| i.key_pressed(egui::Key::Enter)) {
             if !ui_state.dyn_rect_stage_h {
                 if let Ok(w) = ui_state.dyn_rect_width.trim().parse::<f64>()
-                    && w.abs() > 1e-9 { ui_state.dyn_rect_stage_h = true; focus_field = true; }
+                    && w.abs() > 1e-9
+                {
+                    ui_state.dyn_rect_stage_h = true;
+                    focus_field = true;
+                }
             } else if let Ok(h) = ui_state.dyn_rect_height.trim().parse::<f64>() {
                 let w = ui_state.dyn_rect_width.trim().parse::<f64>().unwrap_or(0.0);
                 if h.abs() > 1e-9 && w.abs() > 1e-9 {
@@ -165,11 +265,16 @@ pub(super) fn dyn_rect_hud(ctx: &egui::Context, app: &mut AppState, ui_state: &m
                 }
             }
         }
-        if committed { return; }
+        if committed {
+            return;
+        }
 
         let on_height = ui_state.dyn_rect_stage_h;
         let cur = app.view.world_to_screen(crx, cry);
-        let hud_pos = pos2(origin.x + cur.0 as f32 + 18.0, origin.y + cur.1 as f32 - 38.0);
+        let hud_pos = pos2(
+            origin.x + cur.0 as f32 + 18.0,
+            origin.y + cur.1 as f32 - 38.0,
+        );
         egui::Area::new(egui::Id::new("dyn_rect_hud"))
             .fixed_pos(hud_pos)
             .order(egui::Order::Foreground)
@@ -181,11 +286,21 @@ pub(super) fn dyn_rect_hud(ctx: &egui::Context, app: &mut AppState, ui_state: &m
                         } else {
                             ("W", &mut ui_state.dyn_rect_width, "width, Enter")
                         };
-                        ui.label(egui::RichText::new(label).size(12.0).color(Color32::from_gray(170)));
-                        let r = ui.add(egui::TextEdit::singleline(buf)
-                            .id(field_id).desired_width(70.0).hint_text(hint));
+                        ui.label(
+                            egui::RichText::new(label)
+                                .size(12.0)
+                                .color(Color32::from_gray(170)),
+                        );
+                        let r = ui.add(
+                            egui::TextEdit::singleline(buf)
+                                .id(field_id)
+                                .desired_width(70.0)
+                                .hint_text(hint),
+                        );
                         let nothing_focused = ui.ctx().memory(|m| m.focused().is_none());
-                        if focus_field || nothing_focused { r.request_focus(); }
+                        if focus_field || nothing_focused {
+                            r.request_focus();
+                        }
                     });
                 });
             });
@@ -193,10 +308,21 @@ pub(super) fn dyn_rect_hud(ctx: &egui::Context, app: &mut AppState, ui_state: &m
         ui_state.dyn_rect_active = false;
     }
 }
-pub(super) fn dyn_ellipse_hud(ctx: &egui::Context, app: &mut AppState, ui_state: &mut UiState, origin: egui::Pos2) {
+pub(super) fn dyn_ellipse_hud(
+    ctx: &egui::Context,
+    app: &mut AppState,
+    ui_state: &mut UiState,
+    origin: egui::Pos2,
+) {
     let stage = match &app.tool {
-        Tool::Ellipse { center: Some(c), axis_end: None } => Some((c.to_f64(), None)),
-        Tool::Ellipse { center: Some(c), axis_end: Some(a) } => Some((c.to_f64(), Some(a.to_f64()))),
+        Tool::Ellipse {
+            center: Some(c),
+            axis_end: None,
+        } => Some((c.to_f64(), None)),
+        Tool::Ellipse {
+            center: Some(c),
+            axis_end: Some(a),
+        } => Some((c.to_f64(), Some(a.to_f64()))),
         _ => None,
     };
     if let (true, Some((center, axis_end))) = (app.dyn_on, stage) {
@@ -212,39 +338,58 @@ pub(super) fn dyn_ellipse_hud(ctx: &egui::Context, app: &mut AppState, ui_state:
         let active_id = if axis_end.is_none() { maj_id } else { min_id };
         let tab = ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Tab))
             | ctx.input_mut(|i| i.consume_key(egui::Modifiers::SHIFT, egui::Key::Tab));
-        if tab { ctx.memory_mut(|m| m.request_focus(active_id)); }
+        if tab {
+            ctx.memory_mut(|m| m.request_focus(active_id));
+        }
 
         let mut committed = false;
         if ctx.input(|i| i.key_pressed(egui::Key::Enter)) {
             match axis_end {
                 None => {
                     if let Ok(maj) = ui_state.dyn_ell_major.trim().parse::<f64>()
-                        && maj.abs() > 1e-9 {
-                            let dir = (crx - center.0, cry - center.1);
-                            let len = (dir.0 * dir.0 + dir.1 * dir.1).sqrt();
-                            let (ux, uy) = if len > 1e-9 { (dir.0 / len, dir.1 / len) } else { (1.0, 0.0) };
-                            app.place_tool_point(Point2d::from_f64(center.0 + maj * ux, center.1 + maj * uy));
-                            ui_state.dyn_ell_active = false;
-                            committed = true;
-                        }
+                        && maj.abs() > 1e-9
+                    {
+                        let dir = (crx - center.0, cry - center.1);
+                        let len = (dir.0 * dir.0 + dir.1 * dir.1).sqrt();
+                        let (ux, uy) = if len > 1e-9 {
+                            (dir.0 / len, dir.1 / len)
+                        } else {
+                            (1.0, 0.0)
+                        };
+                        app.place_tool_point(Point2d::from_f64(
+                            center.0 + maj * ux,
+                            center.1 + maj * uy,
+                        ));
+                        ui_state.dyn_ell_active = false;
+                        committed = true;
+                    }
                 }
                 Some(a_end) => {
                     if let Ok(minr) = ui_state.dyn_ell_minor.trim().parse::<f64>()
-                        && minr.abs() > 1e-9 {
-                            let dir = (a_end.0 - center.0, a_end.1 - center.1);
-                            let len = (dir.0 * dir.0 + dir.1 * dir.1).sqrt().max(1e-12);
-                            let (px, py) = (-dir.1 / len, dir.0 / len);
-                            app.place_tool_point(Point2d::from_f64(center.0 + minr * px, center.1 + minr * py));
-                            ui_state.dyn_ell_active = false;
-                            committed = true;
-                        }
+                        && minr.abs() > 1e-9
+                    {
+                        let dir = (a_end.0 - center.0, a_end.1 - center.1);
+                        let len = (dir.0 * dir.0 + dir.1 * dir.1).sqrt().max(1e-12);
+                        let (px, py) = (-dir.1 / len, dir.0 / len);
+                        app.place_tool_point(Point2d::from_f64(
+                            center.0 + minr * px,
+                            center.1 + minr * py,
+                        ));
+                        ui_state.dyn_ell_active = false;
+                        committed = true;
+                    }
                 }
             }
         }
-        if committed { return; }
+        if committed {
+            return;
+        }
 
         let cur = app.view.world_to_screen(crx, cry);
-        let hud_pos = pos2(origin.x + cur.0 as f32 + 18.0, origin.y + cur.1 as f32 - 52.0);
+        let hud_pos = pos2(
+            origin.x + cur.0 as f32 + 18.0,
+            origin.y + cur.1 as f32 - 52.0,
+        );
         egui::Area::new(egui::Id::new("dyn_ell_hud"))
             .fixed_pos(hud_pos)
             .order(egui::Order::Foreground)
@@ -252,19 +397,39 @@ pub(super) fn dyn_ellipse_hud(ctx: &egui::Context, app: &mut AppState, ui_state:
                 corner_glass_frame().show(ui, |ui| {
                     if axis_end.is_none() {
                         ui.horizontal(|ui| {
-                            ui.label(egui::RichText::new("A").size(12.0).color(Color32::from_gray(170)));
-                            let mr = ui.add(egui::TextEdit::singleline(&mut ui_state.dyn_ell_major)
-                                .id(maj_id).desired_width(54.0).hint_text("major (aim with cursor)"));
+                            ui.label(
+                                egui::RichText::new("A")
+                                    .size(12.0)
+                                    .color(Color32::from_gray(170)),
+                            );
+                            let mr = ui.add(
+                                egui::TextEdit::singleline(&mut ui_state.dyn_ell_major)
+                                    .id(maj_id)
+                                    .desired_width(54.0)
+                                    .hint_text("major (aim with cursor)"),
+                            );
                             let nothing_focused = ui.ctx().memory(|m| m.focused().is_none());
-                            if first_show || nothing_focused { mr.request_focus(); }
+                            if first_show || nothing_focused {
+                                mr.request_focus();
+                            }
                         });
                     } else {
                         ui.horizontal(|ui| {
-                            ui.label(egui::RichText::new("B").size(12.0).color(Color32::from_gray(170)));
-                            let br = ui.add(egui::TextEdit::singleline(&mut ui_state.dyn_ell_minor)
-                                .id(min_id).desired_width(54.0).hint_text("minor"));
+                            ui.label(
+                                egui::RichText::new("B")
+                                    .size(12.0)
+                                    .color(Color32::from_gray(170)),
+                            );
+                            let br = ui.add(
+                                egui::TextEdit::singleline(&mut ui_state.dyn_ell_minor)
+                                    .id(min_id)
+                                    .desired_width(54.0)
+                                    .hint_text("minor"),
+                            );
                             let nothing_focused = ui.ctx().memory(|m| m.focused().is_none());
-                            if first_show || nothing_focused { br.request_focus(); }
+                            if first_show || nothing_focused {
+                                br.request_focus();
+                            }
                         });
                     }
                 });
@@ -274,45 +439,90 @@ pub(super) fn dyn_ellipse_hud(ctx: &egui::Context, app: &mut AppState, ui_state:
     }
 }
 
-pub(super) fn dyn_offset_hud(ctx: &egui::Context, app: &mut AppState, ui_state: &mut UiState, origin: egui::Pos2) {
-    let dist = if let Tool::Offset { dist, .. } = &app.tool { Some(*dist) } else { None };
+pub(super) fn dyn_offset_hud(
+    ctx: &egui::Context,
+    app: &mut AppState,
+    ui_state: &mut UiState,
+    origin: egui::Pos2,
+) {
+    let dist = if let Tool::Offset { dist, .. } = &app.tool {
+        Some(*dist)
+    } else {
+        None
+    };
     if let (true, Some(dist)) = (app.dyn_on, dist) {
         let first_show = !ui_state.dyn_offset_active;
-        if first_show { ui_state.dyn_offset_dist = format!("{:.4}", dist).trim_end_matches('0').trim_end_matches('.').to_string(); }
+        if first_show {
+            ui_state.dyn_offset_dist = format!("{:.4}", dist)
+                .trim_end_matches('0')
+                .trim_end_matches('.')
+                .to_string();
+        }
         let did = egui::Id::new("dyn_offset_dist");
 
         let (crx, cry) = app.cursor_world;
         let cur = app.view.world_to_screen(crx, cry);
-        let hud_pos = pos2(origin.x + cur.0 as f32 + 18.0, origin.y + cur.1 as f32 - 38.0);
+        let hud_pos = pos2(
+            origin.x + cur.0 as f32 + 18.0,
+            origin.y + cur.1 as f32 - 38.0,
+        );
         egui::Area::new(egui::Id::new("dyn_offset_hud"))
             .fixed_pos(hud_pos)
             .order(egui::Order::Foreground)
             .show(ctx, |ui| {
                 corner_glass_frame().show(ui, |ui| {
                     ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("Dist").size(12.0).color(Color32::from_gray(170)));
-                        let dr = ui.add(egui::TextEdit::singleline(&mut ui_state.dyn_offset_dist)
-                            .id(did).desired_width(58.0).hint_text("distance"));
+                        ui.label(
+                            egui::RichText::new("Dist")
+                                .size(12.0)
+                                .color(Color32::from_gray(170)),
+                        );
+                        let dr = ui.add(
+                            egui::TextEdit::singleline(&mut ui_state.dyn_offset_dist)
+                                .id(did)
+                                .desired_width(58.0)
+                                .hint_text("distance"),
+                        );
                         let nothing_focused = ui.ctx().memory(|m| m.focused().is_none());
-                        if first_show || nothing_focused { dr.request_focus(); }
+                        if first_show || nothing_focused {
+                            dr.request_focus();
+                        }
                     });
                 });
             });
         ui_state.dyn_offset_active = true;
         if let Ok(d) = ui_state.dyn_offset_dist.trim().parse::<f64>()
             && d > 1e-9
-                && let Tool::Offset { source, .. } = &app.tool {
-                    app.tool = Tool::Offset { dist: d, source: *source };
-                }
+            && let Tool::Offset { source, .. } = &app.tool
+        {
+            app.tool = Tool::Offset {
+                dist: d,
+                source: *source,
+            };
+        }
     } else {
         ui_state.dyn_offset_active = false;
     }
 }
-pub(super) fn dyn_text_hud(ctx: &egui::Context, app: &mut AppState, ui_state: &mut UiState, origin: egui::Pos2) {
-    let anchor = if let Tool::Text { anchor: Some(a), .. } = &app.tool { Some(a.to_f64()) } else { None };
+pub(super) fn dyn_text_hud(
+    ctx: &egui::Context,
+    app: &mut AppState,
+    ui_state: &mut UiState,
+    origin: egui::Pos2,
+) {
+    let anchor = if let Tool::Text {
+        anchor: Some(a), ..
+    } = &app.tool
+    {
+        Some(a.to_f64())
+    } else {
+        None
+    };
     if let Some((ax, ay)) = anchor {
         let first_show = !ui_state.dyn_text_active;
-        if first_show { ui_state.dyn_text_content.clear(); }
+        if first_show {
+            ui_state.dyn_text_content.clear();
+        }
         let tid = egui::Id::new("dyn_text_field");
         let sp = app.view.world_to_screen(ax, ay);
         let hud_pos = pos2(origin.x + sp.0 as f32, origin.y + sp.1 as f32 - 26.0);
@@ -324,23 +534,37 @@ pub(super) fn dyn_text_hud(ctx: &egui::Context, app: &mut AppState, ui_state: &m
             .show(ctx, |ui| {
                 egui::Frame::popup(ui.style()).show(ui, |ui| {
                     ui.horizontal(|ui| {
-                        let te = ui.add(egui::TextEdit::singleline(&mut ui_state.dyn_text_content)
-                            .id(tid).desired_width(180.0).hint_text("type text, Enter to place"));
+                        let te = ui.add(
+                            egui::TextEdit::singleline(&mut ui_state.dyn_text_content)
+                                .id(tid)
+                                .desired_width(180.0)
+                                .hint_text("type text, Enter to place"),
+                        );
                         ui.add_space(4.0);
                         super::chrome::font_combo(ui, "dyn_text_font", &mut app.text_font);
                         height_glyph(ui);
-                        let mut size = if let Tool::Text { height, .. } = &app.tool { *height } else { 2.5 };
+                        let mut size = if let Tool::Text { height, .. } = &app.tool {
+                            *height
+                        } else {
+                            2.5
+                        };
                         let dv = ui
                             .add(egui::DragValue::new(&mut size).speed(0.05).range(0.1..=1e6))
                             .on_hover_text("Text height");
                         if dv.changed()
-                            && let Tool::Text { height, .. } = &mut app.tool {
-                                *height = size;
-                            }
+                            && let Tool::Text { height, .. } = &mut app.tool
+                        {
+                            *height = size;
+                        }
                         let nothing_focused = ui.ctx().memory(|m| m.focused().is_none());
-                        if first_show || nothing_focused { te.request_focus(); }
-                        if ui.input(|i| i.key_pressed(egui::Key::Escape)) { cancel = true; }
-                        else if (te.lost_focus() || te.has_focus()) && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                        if first_show || nothing_focused {
+                            te.request_focus();
+                        }
+                        if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                            cancel = true;
+                        } else if (te.lost_focus() || te.has_focus())
+                            && ui.input(|i| i.key_pressed(egui::Key::Enter))
+                        {
                             commit = true;
                         }
                     });

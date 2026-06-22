@@ -23,34 +23,39 @@ pub fn curvature_at(curve: &Curve, t: f64) -> Option<f64> {
     let (ddx, ddy) = ((txp - txm) / dt, (typ - tym) / dt);
 
     let speed_sq = dx * dx + dy * dy;
-    if speed_sq < 1e-20 { return None; }
+    if speed_sq < 1e-20 {
+        return None;
+    }
     Some((dx * ddy - dy * ddx) / speed_sq.powf(1.5))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::primitives::{LineSeg, CircularArc};
     use crate::point::Point2d;
+    use crate::primitives::{CircularArc, LineSeg};
 
-    fn pt(x: i64, y: i64) -> Point2d { Point2d::from_i64(x, y) }
+    fn pt(x: i64, y: i64) -> Point2d {
+        Point2d::from_i64(x, y)
+    }
 
     #[test]
     fn curvature_of_circle_is_1_over_r() {
         let r_val = 3.0;
-        let arc = CircularArc::new(
-            pt(0,0), 3.0,
-            0.0, 2.0 * std::f64::consts::PI,
-        );
+        let arc = CircularArc::new(pt(0, 0), 3.0, 0.0, 2.0 * std::f64::consts::PI);
         let c = Curve::Arc(arc);
         let kappa = curvature_at(&c, 0.0).unwrap();
-        assert!((kappa.abs() - 1.0 / r_val).abs() < 1e-6,
-            "κ={}, expected ±{}", kappa, 1.0 / r_val);
+        assert!(
+            (kappa.abs() - 1.0 / r_val).abs() < 1e-6,
+            "κ={}, expected ±{}",
+            kappa,
+            1.0 / r_val
+        );
     }
 
     #[test]
     fn curvature_of_line_is_zero() {
-        let line = Curve::Line(LineSeg::from_endpoints(pt(0,0), pt(4,0)));
+        let line = Curve::Line(LineSeg::from_endpoints(pt(0, 0), pt(4, 0)));
         let kappa = curvature_at(&line, 0.5).unwrap();
         assert!(kappa.abs() < 1e-6, "κ={}", kappa);
     }
@@ -58,8 +63,10 @@ mod tests {
     #[test]
     fn tangent_perpendicular_to_normal() {
         let arc = Curve::Arc(CircularArc::new(
-            pt(0,0), 2.0,
-            0.0, 2.0 * std::f64::consts::PI,
+            pt(0, 0),
+            2.0,
+            0.0,
+            2.0 * std::f64::consts::PI,
         ));
         let (tx, ty) = tangent_at(&arc, 0.0);
         let (nx, ny) = normal_at(&arc, 0.0);

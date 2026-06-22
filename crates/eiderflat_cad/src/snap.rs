@@ -1,8 +1,5 @@
-use eiderflat_geometry::{
-    Curve, CurveSegment, Point2d,
-    intersect, project_point_onto_curve,
-};
-use eiderflat_document::{Document, EntityKind, EntityId};
+use eiderflat_document::{Document, EntityId, EntityKind};
+use eiderflat_geometry::{Curve, CurveSegment, Point2d, intersect, project_point_onto_curve};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SnapKind {
@@ -47,8 +44,13 @@ impl Default for SnapSettings {
     fn default() -> Self {
         SnapSettings {
             enabled: vec![
-                SnapKind::Endpoint, SnapKind::Midpoint, SnapKind::Center, SnapKind::Quadrant,
-                SnapKind::Intersection, SnapKind::Perpendicular, SnapKind::Tangent,
+                SnapKind::Endpoint,
+                SnapKind::Midpoint,
+                SnapKind::Center,
+                SnapKind::Quadrant,
+                SnapKind::Intersection,
+                SnapKind::Perpendicular,
+                SnapKind::Tangent,
             ],
             tolerance: 0.5,
         }
@@ -76,22 +78,35 @@ pub fn find_snaps(
             EntityKind::Curve(c) => {
                 let pad = tol * 4.0;
                 let (minx, miny, maxx, maxy) = fast_bbox_f64(c);
-                let near_bbox = cursor.0 >= minx - pad && cursor.0 <= maxx + pad
-                    && cursor.1 >= miny - pad && cursor.1 <= maxy + pad;
+                let near_bbox = cursor.0 >= minx - pad
+                    && cursor.0 <= maxx + pad
+                    && cursor.1 >= miny - pad
+                    && cursor.1 <= maxy + pad;
                 let near_center = on(SnapKind::Center)
                     && center(c).map(|p| dist(p, cursor) <= tol).unwrap_or(false);
-                if !near_bbox && !near_center { continue; }
+                if !near_bbox && !near_center {
+                    continue;
+                }
 
                 if on(SnapKind::Endpoint) {
-                    for p in endpoints(c) { push_if_near(&mut out, SnapKind::Endpoint, p, e.id, cursor, tol); }
+                    for p in endpoints(c) {
+                        push_if_near(&mut out, SnapKind::Endpoint, p, e.id, cursor, tol);
+                    }
                 }
                 if on(SnapKind::Midpoint) {
-                    for p in midpoints(c) { push_if_near(&mut out, SnapKind::Midpoint, p, e.id, cursor, tol); }
+                    for p in midpoints(c) {
+                        push_if_near(&mut out, SnapKind::Midpoint, p, e.id, cursor, tol);
+                    }
                 }
                 if on(SnapKind::Center)
-                    && let Some(p) = center(c) { push_if_near(&mut out, SnapKind::Center, p, e.id, cursor, tol); }
+                    && let Some(p) = center(c)
+                {
+                    push_if_near(&mut out, SnapKind::Center, p, e.id, cursor, tol);
+                }
                 if on(SnapKind::Quadrant) {
-                    for p in quadrants(c) { push_if_near(&mut out, SnapKind::Quadrant, p, e.id, cursor, tol); }
+                    for p in quadrants(c) {
+                        push_if_near(&mut out, SnapKind::Quadrant, p, e.id, cursor, tol);
+                    }
                 }
                 if on(SnapKind::Nearest) {
                     let pr = project_point_onto_curve(c, cursor.0, cursor.1);
@@ -99,43 +114,63 @@ pub fn find_snaps(
                 }
                 if on(SnapKind::Perpendicular)
                     && let Some(r) = reference
-                        && let Some(p) = perpendicular_foot(c, r) {
-                            let pr = project_point_onto_curve(c, cursor.0, cursor.1);
-                            if dist(pr.point, cursor) <= tol && dist(p, cursor) <= tol * 4.0 {
-                                out.push(SnapPoint { kind: SnapKind::Perpendicular, pos: p, entity: e.id });
-                            }
-                        }
+                    && let Some(p) = perpendicular_foot(c, r)
+                {
+                    let pr = project_point_onto_curve(c, cursor.0, cursor.1);
+                    if dist(pr.point, cursor) <= tol && dist(p, cursor) <= tol * 4.0 {
+                        out.push(SnapPoint {
+                            kind: SnapKind::Perpendicular,
+                            pos: p,
+                            entity: e.id,
+                        });
+                    }
+                }
                 if on(SnapKind::Tangent)
-                    && let Some(r) = reference {
-                        let pr = project_point_onto_curve(c, cursor.0, cursor.1);
-                        if dist(pr.point, cursor) <= tol {
-                            for p in tangent_points(c, r) {
-                                if dist(p, cursor) <= tol * 4.0 {
-                                    out.push(SnapPoint { kind: SnapKind::Tangent, pos: p, entity: e.id });
-                                }
+                    && let Some(r) = reference
+                {
+                    let pr = project_point_onto_curve(c, cursor.0, cursor.1);
+                    if dist(pr.point, cursor) <= tol {
+                        for p in tangent_points(c, r) {
+                            if dist(p, cursor) <= tol * 4.0 {
+                                out.push(SnapPoint {
+                                    kind: SnapKind::Tangent,
+                                    pos: p,
+                                    entity: e.id,
+                                });
                             }
                         }
                     }
-            }
-            EntityKind::Point(p)
-                if on(SnapKind::Node) => { push_if_near(&mut out, SnapKind::Node, p.to_f64(), e.id, cursor, tol); }
-            EntityKind::Insert { transform, .. }
-                if on(SnapKind::Insertion) => {
-                    let base = transform.apply_point(&Point2d::new(0.0, 0.0));
-                    push_if_near(&mut out, SnapKind::Insertion, base.to_f64(), e.id, cursor, tol);
                 }
+            }
+            EntityKind::Point(p) if on(SnapKind::Node) => {
+                push_if_near(&mut out, SnapKind::Node, p.to_f64(), e.id, cursor, tol);
+            }
+            EntityKind::Insert { transform, .. } if on(SnapKind::Insertion) => {
+                let base = transform.apply_point(&Point2d::new(0.0, 0.0));
+                push_if_near(
+                    &mut out,
+                    SnapKind::Insertion,
+                    base.to_f64(),
+                    e.id,
+                    cursor,
+                    tol,
+                );
+            }
             _ => {}
         }
     }
 
     if on(SnapKind::Intersection) {
         let pad = tol * 5.0;
-        let curves: Vec<_> = entities.iter()
+        let curves: Vec<_> = entities
+            .iter()
             .filter_map(|e| {
                 e.as_curve().and_then(|c| {
                     let (minx, miny, maxx, maxy) = fast_bbox_f64(c);
-                    let near = cursor.0 >= minx - pad && cursor.0 <= maxx + pad
-                        && cursor.1 >= miny - pad && cursor.1 <= maxy + pad;
+                    let near = cursor.0 >= minx - pad
+                        && cursor.0 <= maxx + pad
+                        && cursor.1 >= miny - pad
+                        && cursor.1 <= maxy + pad;
                     if near { Some((e.id, c)) } else { None }
                 })
             })
@@ -143,15 +178,25 @@ pub fn find_snaps(
         for i in 0..curves.len() {
             for j in (i + 1)..curves.len() {
                 for hit in intersect(curves[i].1, curves[j].1) {
-                    push_if_near(&mut out, SnapKind::Intersection, hit.point, curves[i].0, cursor, tol);
+                    push_if_near(
+                        &mut out,
+                        SnapKind::Intersection,
+                        hit.point,
+                        curves[i].0,
+                        cursor,
+                        tol,
+                    );
                 }
             }
         }
     }
 
     out.sort_by(|a, b| {
-        a.kind.priority().cmp(&b.kind.priority())
-            .then(dist(a.pos, cursor).partial_cmp(&dist(b.pos, cursor)).unwrap_or(std::cmp::Ordering::Equal))
+        a.kind.priority().cmp(&b.kind.priority()).then(
+            dist(a.pos, cursor)
+                .partial_cmp(&dist(b.pos, cursor))
+                .unwrap_or(std::cmp::Ordering::Equal),
+        )
     });
     out
 }
@@ -162,10 +207,19 @@ pub fn best_snap(
     settings: &SnapSettings,
     reference: Option<(f64, f64)>,
 ) -> Option<SnapPoint> {
-    find_snaps(doc, cursor, settings, reference).into_iter().next()
+    find_snaps(doc, cursor, settings, reference)
+        .into_iter()
+        .next()
 }
 
-fn push_if_near(out: &mut Vec<SnapPoint>, kind: SnapKind, pos: (f64, f64), entity: EntityId, cursor: (f64, f64), tol: f64) {
+fn push_if_near(
+    out: &mut Vec<SnapPoint>,
+    kind: SnapKind,
+    pos: (f64, f64),
+    entity: EntityId,
+    cursor: (f64, f64),
+    tol: f64,
+) {
     if dist(pos, cursor) <= tol {
         out.push(SnapPoint { kind, pos, entity });
     }
@@ -175,7 +229,9 @@ fn endpoints(c: &Curve) -> Vec<(f64, f64)> {
     match c {
         Curve::Arc(a) => {
             let span = (a.end_angle - a.start_angle).abs();
-            if (span - 2.0 * std::f64::consts::PI).abs() < 1e-9 { return vec![]; }
+            if (span - 2.0 * std::f64::consts::PI).abs() < 1e-9 {
+                return vec![];
+            }
             vec![c.evaluate_f64(a.start_angle), c.evaluate_f64(a.end_angle)]
         }
         Curve::Poly(p) => p.segments.iter().flat_map(endpoints).collect(),
@@ -208,23 +264,43 @@ fn fast_bbox_f64(c: &Curve) -> (f64, f64, f64, f64) {
         }
         Curve::Bezier(b) => {
             let pts = [b.p0.to_f64(), b.p1.to_f64(), b.p2.to_f64(), b.p3.to_f64()];
-            pts.iter().fold((f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY),
-                |acc, &(x, y)| join(acc, (x, y, x, y)))
+            pts.iter().fold(
+                (
+                    f64::INFINITY,
+                    f64::INFINITY,
+                    f64::NEG_INFINITY,
+                    f64::NEG_INFINITY,
+                ),
+                |acc, &(x, y)| join(acc, (x, y, x, y)),
+            )
         }
-        Curve::Poly(p) => {
-            p.segments.iter().map(fast_bbox_f64)
-                .fold((f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY), join)
-        }
-        Curve::Rational(rb) => {
-            rb.points.iter()
-                .fold((f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY),
-                    |acc, p| join(acc, (p.x, p.y, p.x, p.y)))
-        }
-        Curve::Nurbs(nc) => {
-            nc.control.iter()
-                .fold((f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY),
-                    |acc, p| join(acc, (p.x, p.y, p.x, p.y)))
-        }
+        Curve::Poly(p) => p.segments.iter().map(fast_bbox_f64).fold(
+            (
+                f64::INFINITY,
+                f64::INFINITY,
+                f64::NEG_INFINITY,
+                f64::NEG_INFINITY,
+            ),
+            join,
+        ),
+        Curve::Rational(rb) => rb.points.iter().fold(
+            (
+                f64::INFINITY,
+                f64::INFINITY,
+                f64::NEG_INFINITY,
+                f64::NEG_INFINITY,
+            ),
+            |acc, p| join(acc, (p.x, p.y, p.x, p.y)),
+        ),
+        Curve::Nurbs(nc) => nc.control.iter().fold(
+            (
+                f64::INFINITY,
+                f64::INFINITY,
+                f64::NEG_INFINITY,
+                f64::NEG_INFINITY,
+            ),
+            |acc, p| join(acc, (p.x, p.y, p.x, p.y)),
+        ),
     }
 }
 
@@ -244,7 +320,9 @@ fn midpoint(c: &Curve) -> Option<(f64, f64)> {
         }
         Curve::Arc(a) => {
             let span = (a.end_angle - a.start_angle).abs();
-            if (span - 2.0 * std::f64::consts::PI).abs() < 1e-9 { return None; }
+            if (span - 2.0 * std::f64::consts::PI).abs() < 1e-9 {
+                return None;
+            }
             let mid = (a.start_angle + a.end_angle) / 2.0;
             Some(c.evaluate_f64(mid))
         }
@@ -270,20 +348,27 @@ fn quadrants(c: &Curve) -> Vec<(f64, f64)> {
             let (cx, cy) = a.center.to_f64();
             let span = (a.end_angle - a.start_angle).abs();
             let full = span >= TAU - 1e-9;
-            (0..4).filter_map(|k| {
-                let ang = k as f64 * FRAC_PI_2;
-                let in_range = full || {
-                    let mut t = ang;
-                    while t < a.start_angle { t += TAU; }
-                    t <= a.end_angle + 1e-9
-                };
-                in_range.then(|| (cx + a.radius * ang.cos(), cy + a.radius * ang.sin()))
-            }).collect()
+            (0..4)
+                .filter_map(|k| {
+                    let ang = k as f64 * FRAC_PI_2;
+                    let in_range = full || {
+                        let mut t = ang;
+                        while t < a.start_angle {
+                            t += TAU;
+                        }
+                        t <= a.end_angle + 1e-9
+                    };
+                    in_range.then(|| (cx + a.radius * ang.cos(), cy + a.radius * ang.sin()))
+                })
+                .collect()
         }
         Curve::Ellipse(e) => {
             let (cx, cy) = e.center.to_f64();
             let mut out = Vec::with_capacity(4);
-            for (len, ang) in [(e.semi_major, e.rotation), (e.semi_minor, e.rotation + FRAC_PI_2)] {
+            for (len, ang) in [
+                (e.semi_major, e.rotation),
+                (e.semi_minor, e.rotation + FRAC_PI_2),
+            ] {
                 for s in [1.0, -1.0] {
                     out.push((cx + s * len * ang.cos(), cy + s * len * ang.sin()));
                 }
@@ -301,7 +386,9 @@ fn perpendicular_foot(c: &Curve, reference: (f64, f64)) -> Option<(f64, f64)> {
             let (bx, by) = l.p1.to_f64();
             let (dx, dy) = (bx - ax, by - ay);
             let len_sq = dx * dx + dy * dy;
-            if len_sq < 1e-20 { return None; }
+            if len_sq < 1e-20 {
+                return None;
+            }
             let t = ((reference.0 - ax) * dx + (reference.1 - ay) * dy) / len_sq;
             if (-1e-9..=1.0 + 1e-9).contains(&t) {
                 let t_clamped = t.clamp(0.0, 1.0);
@@ -315,12 +402,18 @@ fn perpendicular_foot(c: &Curve, reference: (f64, f64)) -> Option<(f64, f64)> {
             let r = a.radius;
             let (dx, dy) = (reference.0 - cx, reference.1 - cy);
             let len = (dx * dx + dy * dy).sqrt();
-            if len < 1e-12 { return None; }
+            if len < 1e-12 {
+                return None;
+            }
             let angle = dy.atan2(dx);
             let pi2 = 2.0 * std::f64::consts::PI;
             let mut diff = angle - a.start_angle;
-            while diff < 0.0 { diff += pi2; }
-            while diff >= pi2 { diff -= pi2; }
+            while diff < 0.0 {
+                diff += pi2;
+            }
+            while diff >= pi2 {
+                diff -= pi2;
+            }
             if diff <= a.included_angle() + 1e-9 {
                 Some((cx + r * dx / len, cy + r * dy / len))
             } else {
@@ -341,7 +434,9 @@ fn tangent_points(c: &Curve, reference: (f64, f64)) -> Vec<(f64, f64)> {
             let r = a.radius;
             let (dx, dy) = (reference.0 - cx, reference.1 - cy);
             let d = (dx * dx + dy * dy).sqrt();
-            if d <= r + 1e-12 { return vec![]; }
+            if d <= r + 1e-12 {
+                return vec![];
+            }
             let base = dy.atan2(dx);
             let off = (r / d).acos();
             let pi2 = 2.0 * std::f64::consts::PI;
@@ -349,8 +444,12 @@ fn tangent_points(c: &Curve, reference: (f64, f64)) -> Vec<(f64, f64)> {
             let mut result = Vec::new();
             for angle in [base + off, base - off] {
                 let mut diff = angle - a.start_angle;
-                while diff < 0.0 { diff += pi2; }
-                while diff >= pi2 { diff -= pi2; }
+                while diff < 0.0 {
+                    diff += pi2;
+                }
+                while diff >= pi2 {
+                    diff -= pi2;
+                }
                 if diff <= inc + 1e-9 {
                     result.push((cx + r * angle.cos(), cy + r * angle.sin()));
                 }
@@ -364,15 +463,19 @@ fn tangent_points(c: &Curve, reference: (f64, f64)) -> Vec<(f64, f64)> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use eiderflat_geometry::{LineSeg, CircularArc, CubicBezier};
     use eiderflat_document::EntityKind;
+    use eiderflat_geometry::{CircularArc, CubicBezier, LineSeg};
 
-    fn pt(x: i64, y: i64) -> Point2d { Point2d::from_i64(x, y) }
+    fn pt(x: i64, y: i64) -> Point2d {
+        Point2d::from_i64(x, y)
+    }
 
     fn doc_with_line() -> (Document, EntityId) {
         let mut doc = Document::new();
-        let id = doc.add(EntityKind::Curve(Curve::Line(
-            LineSeg::from_endpoints(pt(0, 0), pt(10, 0)))));
+        let id = doc.add(EntityKind::Curve(Curve::Line(LineSeg::from_endpoints(
+            pt(0, 0),
+            pt(10, 0),
+        ))));
         (doc, id)
     }
 
@@ -385,13 +488,17 @@ mod tests {
             let y = 0.987654321098 + i as f64 * 0.11;
             doc.add(EntityKind::Curve(Curve::Line(LineSeg::from_endpoints(
                 Point2d::from_f64(x, y),
-                Point2d::from_f64(x + 1.234567890123, y + 0.55)))));
+                Point2d::from_f64(x + 1.234567890123, y + 0.55),
+            ))));
         }
         for i in 0..20 {
             let x = i as f64 * 2.345678901234;
             doc.add(EntityKind::Curve(Curve::Bezier(CubicBezier::new(
-                Point2d::from_f64(x, 0.1), Point2d::from_f64(x + 0.7, 2.3),
-                Point2d::from_f64(x + 1.3, -1.7), Point2d::from_f64(x + 2.1, 0.4)))));
+                Point2d::from_f64(x, 0.1),
+                Point2d::from_f64(x + 0.7, 2.3),
+                Point2d::from_f64(x + 1.3, -1.7),
+                Point2d::from_f64(x + 2.1, 0.4),
+            ))));
         }
         let s = SnapSettings::default();
         let start = Instant::now();
@@ -399,8 +506,11 @@ mod tests {
             let cx = 10.0 + (k as f64) * 0.05;
             let _ = find_snaps(&doc, (cx, 5.0), &s, Some((0.0, 0.0)));
         }
-        assert!(start.elapsed().as_millis() < 300,
-            "snap scan too slow for interactive use: {:?}", start.elapsed());
+        assert!(
+            start.elapsed().as_millis() < 300,
+            "snap scan too slow for interactive use: {:?}",
+            start.elapsed()
+        );
     }
 
     #[test]
@@ -409,12 +519,24 @@ mod tests {
         let mut doc = Document::new();
         // Two cubic Béziers that cross near (5, 5).
         doc.add(EntityKind::Curve(Curve::Bezier(CubicBezier::new(
-            pt(0, 0), pt(3, 10), pt(7, 10), pt(10, 0)))));
+            pt(0, 0),
+            pt(3, 10),
+            pt(7, 10),
+            pt(10, 0),
+        ))));
         doc.add(EntityKind::Curve(Curve::Bezier(CubicBezier::new(
-            pt(0, 8), pt(3, -2), pt(7, -2), pt(10, 8)))));
+            pt(0, 8),
+            pt(3, -2),
+            pt(7, -2),
+            pt(10, 8),
+        ))));
         let s = SnapSettings {
-            enabled: vec![SnapKind::Intersection, SnapKind::Nearest,
-                          SnapKind::Endpoint, SnapKind::Midpoint],
+            enabled: vec![
+                SnapKind::Intersection,
+                SnapKind::Nearest,
+                SnapKind::Endpoint,
+                SnapKind::Midpoint,
+            ],
             tolerance: 1.0,
         };
         let start = Instant::now();
@@ -422,25 +544,39 @@ mod tests {
             let _ = find_snaps(&doc, (5.0, 5.2), &s, None);
         }
         let elapsed = start.elapsed();
-        assert!(elapsed.as_millis() < 500,
-            "intersection snapping over two Béziers too slow: {elapsed:?} for 50 frames");
+        assert!(
+            elapsed.as_millis() < 500,
+            "intersection snapping over two Béziers too slow: {elapsed:?} for 50 frames"
+        );
     }
 
     #[test]
     fn snap_endpoint() {
         let (doc, _) = doc_with_line();
-        let s = SnapSettings { enabled: vec![SnapKind::Endpoint], tolerance: 0.5 };
+        let s = SnapSettings {
+            enabled: vec![SnapKind::Endpoint],
+            tolerance: 0.5,
+        };
         let snaps = find_snaps(&doc, (0.1, 0.1), &s, None);
-        assert!(snaps.iter().any(|sp| sp.kind == SnapKind::Endpoint
-            && dist(sp.pos, (0.0, 0.0)) < 1e-9));
+        assert!(
+            snaps
+                .iter()
+                .any(|sp| sp.kind == SnapKind::Endpoint && dist(sp.pos, (0.0, 0.0)) < 1e-9)
+        );
     }
 
     #[test]
     fn snap_midpoint_exact() {
         let (doc, _) = doc_with_line();
-        let s = SnapSettings { enabled: vec![SnapKind::Midpoint], tolerance: 0.5 };
+        let s = SnapSettings {
+            enabled: vec![SnapKind::Midpoint],
+            tolerance: 0.5,
+        };
         let snaps = find_snaps(&doc, (5.1, 0.1), &s, None);
-        let mid = snaps.iter().find(|sp| sp.kind == SnapKind::Midpoint).unwrap();
+        let mid = snaps
+            .iter()
+            .find(|sp| sp.kind == SnapKind::Midpoint)
+            .unwrap();
         assert!((mid.pos.0 - 5.0).abs() < 1e-9 && mid.pos.1.abs() < 1e-9);
     }
 
@@ -453,34 +589,57 @@ mod tests {
             Curve::Line(LineSeg::from_endpoints(pt(4, 4), pt(0, 4))),
             Curve::Line(LineSeg::from_endpoints(pt(0, 4), pt(0, 0))),
         ];
-        doc.add(EntityKind::Curve(Curve::Poly(Box::new(PolyCurve::new(segs)))));
+        doc.add(EntityKind::Curve(Curve::Poly(Box::new(PolyCurve::new(
+            segs,
+        )))));
         doc
     }
 
     #[test]
     fn snap_polycurve_interior_vertex_endpoint() {
         let doc = doc_with_square_poly();
-        let s = SnapSettings { enabled: vec![SnapKind::Endpoint], tolerance: 0.5 };
+        let s = SnapSettings {
+            enabled: vec![SnapKind::Endpoint],
+            tolerance: 0.5,
+        };
         let snaps = find_snaps(&doc, (4.1, 3.9), &s, None);
-        assert!(snaps.iter().any(|sp| sp.kind == SnapKind::Endpoint
-            && dist(sp.pos, (4.0, 4.0)) < 1e-9), "must snap to the (4,4) vertex");
+        assert!(
+            snaps
+                .iter()
+                .any(|sp| sp.kind == SnapKind::Endpoint && dist(sp.pos, (4.0, 4.0)) < 1e-9),
+            "must snap to the (4,4) vertex"
+        );
     }
 
     #[test]
     fn snap_polycurve_segment_midpoint() {
         let doc = doc_with_square_poly();
-        let s = SnapSettings { enabled: vec![SnapKind::Midpoint], tolerance: 0.5 };
+        let s = SnapSettings {
+            enabled: vec![SnapKind::Midpoint],
+            tolerance: 0.5,
+        };
         let snaps = find_snaps(&doc, (2.05, 0.05), &s, None);
-        assert!(snaps.iter().any(|sp| sp.kind == SnapKind::Midpoint
-            && dist(sp.pos, (2.0, 0.0)) < 1e-9), "must snap to the bottom-edge midpoint");
+        assert!(
+            snaps
+                .iter()
+                .any(|sp| sp.kind == SnapKind::Midpoint && dist(sp.pos, (2.0, 0.0)) < 1e-9),
+            "must snap to the bottom-edge midpoint"
+        );
     }
 
     #[test]
     fn snap_center_of_circle() {
         let mut doc = Document::new();
         doc.add(EntityKind::Curve(Curve::Arc(CircularArc::new(
-            pt(3, 4), 5.0, 0.0, 2.0 * std::f64::consts::PI))));
-        let s = SnapSettings { enabled: vec![SnapKind::Center], tolerance: 0.5 };
+            pt(3, 4),
+            5.0,
+            0.0,
+            2.0 * std::f64::consts::PI,
+        ))));
+        let s = SnapSettings {
+            enabled: vec![SnapKind::Center],
+            tolerance: 0.5,
+        };
         let snaps = find_snaps(&doc, (3.2, 4.1), &s, None);
         let c = snaps.iter().find(|sp| sp.kind == SnapKind::Center).unwrap();
         assert!((c.pos.0 - 3.0).abs() < 1e-9 && (c.pos.1 - 4.0).abs() < 1e-9);
@@ -489,20 +648,38 @@ mod tests {
     #[test]
     fn snap_intersection_of_two_lines() {
         let mut doc = Document::new();
-        doc.add(EntityKind::Curve(Curve::Line(LineSeg::from_endpoints(pt(0,0), pt(10,10)))));
-        doc.add(EntityKind::Curve(Curve::Line(LineSeg::from_endpoints(pt(0,10), pt(10,0)))));
-        let s = SnapSettings { enabled: vec![SnapKind::Intersection], tolerance: 0.5 };
+        doc.add(EntityKind::Curve(Curve::Line(LineSeg::from_endpoints(
+            pt(0, 0),
+            pt(10, 10),
+        ))));
+        doc.add(EntityKind::Curve(Curve::Line(LineSeg::from_endpoints(
+            pt(0, 10),
+            pt(10, 0),
+        ))));
+        let s = SnapSettings {
+            enabled: vec![SnapKind::Intersection],
+            tolerance: 0.5,
+        };
         let snaps = find_snaps(&doc, (5.2, 4.9), &s, None);
-        let x = snaps.iter().find(|sp| sp.kind == SnapKind::Intersection).unwrap();
+        let x = snaps
+            .iter()
+            .find(|sp| sp.kind == SnapKind::Intersection)
+            .unwrap();
         assert!((x.pos.0 - 5.0).abs() < 1e-6 && (x.pos.1 - 5.0).abs() < 1e-6);
     }
 
     #[test]
     fn snap_perpendicular_to_line() {
         let (doc, _) = doc_with_line(); // line y=0 from (0,0)-(10,0)
-        let s = SnapSettings { enabled: vec![SnapKind::Perpendicular], tolerance: 1.0 };
+        let s = SnapSettings {
+            enabled: vec![SnapKind::Perpendicular],
+            tolerance: 1.0,
+        };
         let snaps = find_snaps(&doc, (3.1, 0.1), &s, Some((3.0, 5.0)));
-        let p = snaps.iter().find(|sp| sp.kind == SnapKind::Perpendicular).unwrap();
+        let p = snaps
+            .iter()
+            .find(|sp| sp.kind == SnapKind::Perpendicular)
+            .unwrap();
         assert!((p.pos.0 - 3.0).abs() < 1e-9 && p.pos.1.abs() < 1e-9);
     }
 
@@ -510,8 +687,15 @@ mod tests {
     fn snap_tangent_to_circle() {
         let mut doc = Document::new();
         doc.add(EntityKind::Curve(Curve::Arc(CircularArc::new(
-            pt(0, 0), 1.0, 0.0, 2.0 * std::f64::consts::PI))));
-        let s = SnapSettings { enabled: vec![SnapKind::Tangent], tolerance: 5.0 };
+            pt(0, 0),
+            1.0,
+            0.0,
+            2.0 * std::f64::consts::PI,
+        ))));
+        let s = SnapSettings {
+            enabled: vec![SnapKind::Tangent],
+            tolerance: 5.0,
+        };
         let snaps = find_snaps(&doc, (0.5, 0.9), &s, Some((2.0, 0.0)));
         assert!(snaps.iter().any(|sp| sp.kind == SnapKind::Tangent
             && (sp.pos.0 - 0.5).abs() < 1e-6
@@ -521,9 +705,15 @@ mod tests {
     #[test]
     fn snap_nearest_on_line() {
         let (doc, _) = doc_with_line();
-        let s = SnapSettings { enabled: vec![SnapKind::Nearest], tolerance: 1.0 };
+        let s = SnapSettings {
+            enabled: vec![SnapKind::Nearest],
+            tolerance: 1.0,
+        };
         let snaps = find_snaps(&doc, (7.0, 0.3), &s, None);
-        let n = snaps.iter().find(|sp| sp.kind == SnapKind::Nearest).unwrap();
+        let n = snaps
+            .iter()
+            .find(|sp| sp.kind == SnapKind::Nearest)
+            .unwrap();
         assert!((n.pos.0 - 7.0).abs() < 1e-6 && n.pos.1.abs() < 1e-6);
     }
 }

@@ -1,9 +1,11 @@
+use eiderflat_geometry::{BoundingBox, Curve, LineSeg, Point2d};
 use eiderflat_spatial::Quadtree;
-use eiderflat_geometry::{Curve, LineSeg, Point2d, BoundingBox};
 
 fn line(x0: f64, y0: f64, x1: f64, y1: f64) -> Curve {
     Curve::Line(LineSeg::from_endpoints(
-        Point2d::from_f64(x0, y0), Point2d::from_f64(x1, y1)))
+        Point2d::from_f64(x0, y0),
+        Point2d::from_f64(x1, y1),
+    ))
 }
 
 #[test]
@@ -16,7 +18,11 @@ fn many_curves_in_small_region_still_queryable() {
     }
     let found = qt.query_rect(&BoundingBox::from_corners(-1.0, -1.0, 1.0, 1.0));
     for id in &ids {
-        assert!(found.contains(id), "curve {} missing from query results", id);
+        assert!(
+            found.contains(id),
+            "curve {} missing from query results",
+            id
+        );
     }
 }
 
@@ -26,7 +32,11 @@ fn query_disjoint_region_returns_nothing() {
     qt.insert(line(0.0, 0.0, 5.0, 5.0));
     qt.insert(line(10.0, 10.0, 15.0, 15.0));
     let found = qt.query_rect(&BoundingBox::from_corners(50.0, 50.0, 60.0, 60.0));
-    assert!(found.is_empty(), "expected no curves in far region, got {:?}", found);
+    assert!(
+        found.is_empty(),
+        "expected no curves in far region, got {:?}",
+        found
+    );
 }
 
 #[test]
@@ -35,7 +45,11 @@ fn nearest_curve_picks_closest() {
     let near = qt.insert(line(0.0, 0.0, 1.0, 0.0));
     let _far = qt.insert(line(50.0, 50.0, 60.0, 50.0));
     let nn = qt.nearest_curve(0.5, 0.1);
-    assert_eq!(nn, Some(near), "nearest to (0.5,0.1) should be the segment at origin");
+    assert_eq!(
+        nn,
+        Some(near),
+        "nearest to (0.5,0.1) should be the segment at origin"
+    );
 }
 
 #[test]
@@ -43,7 +57,10 @@ fn query_point_returns_leaf() {
     let mut qt = Quadtree::new(BoundingBox::from_corners(-10.0, -10.0, 10.0, 10.0), 8);
     qt.insert(line(0.0, 0.0, 2.0, 2.0));
     let leaf = qt.query_point(1.0, 1.0);
-    assert!(leaf.is_some(), "point inside model bounds should land in a leaf");
+    assert!(
+        leaf.is_some(),
+        "point inside model bounds should land in a leaf"
+    );
     // Point outside the model bounds → None
     assert!(qt.query_point(100.0, 100.0).is_none());
 }

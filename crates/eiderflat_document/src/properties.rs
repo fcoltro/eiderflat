@@ -59,13 +59,25 @@ pub struct LineTypeDef {
 
 impl LineTypeDef {
     pub fn continuous() -> Self {
-        LineTypeDef { name: "Continuous".into(), description: "Solid line".into(), pattern: vec![] }
+        LineTypeDef {
+            name: "Continuous".into(),
+            description: "Solid line".into(),
+            pattern: vec![],
+        }
     }
     pub fn dashed() -> Self {
-        LineTypeDef { name: "Dashed".into(), description: "__ __ __".into(), pattern: vec![0.5, -0.25] }
+        LineTypeDef {
+            name: "Dashed".into(),
+            description: "__ __ __".into(),
+            pattern: vec![0.5, -0.25],
+        }
     }
     pub fn center() -> Self {
-        LineTypeDef { name: "Center".into(), description: "____ _ ____".into(), pattern: vec![1.0, -0.25, 0.25, -0.25] }
+        LineTypeDef {
+            name: "Center".into(),
+            description: "____ _ ____".into(),
+            pattern: vec![1.0, -0.25, 0.25, -0.25],
+        }
     }
 }
 
@@ -76,7 +88,10 @@ pub struct XData {
 
 impl XData {
     pub fn get(&self, key: &str) -> Option<&str> {
-        self.entries.iter().find(|(k, _)| k == key).map(|(_, v)| v.as_str())
+        self.entries
+            .iter()
+            .find(|(k, _)| k == key)
+            .map(|(_, v)| v.as_str())
     }
     pub fn set(&mut self, key: &str, value: &str) {
         if let Some(e) = self.entries.iter_mut().find(|(k, _)| k == key) {

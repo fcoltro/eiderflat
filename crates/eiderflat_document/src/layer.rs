@@ -46,13 +46,18 @@ pub struct LayerTable {
 
 impl Default for LayerTable {
     fn default() -> Self {
-        LayerTable { layers: vec![Layer::new("0")], current: 0 }
+        LayerTable {
+            layers: vec![Layer::new("0")],
+            current: 0,
+        }
     }
 }
 
 impl LayerTable {
     pub fn add(&mut self, layer: Layer) -> usize {
-        if let Some(i) = self.index_of(&layer.name) { return i; }
+        if let Some(i) = self.index_of(&layer.name) {
+            return i;
+        }
         self.layers.push(layer);
         self.layers.len() - 1
     }
@@ -61,21 +66,38 @@ impl LayerTable {
         self.layers.iter().position(|l| l.name == name)
     }
 
-    pub fn get(&self, idx: usize) -> Option<&Layer> { self.layers.get(idx) }
-    pub fn get_mut(&mut self, idx: usize) -> Option<&mut Layer> { self.layers.get_mut(idx) }
+    pub fn get(&self, idx: usize) -> Option<&Layer> {
+        self.layers.get(idx)
+    }
+    pub fn get_mut(&mut self, idx: usize) -> Option<&mut Layer> {
+        self.layers.get_mut(idx)
+    }
 
-    pub fn current_layer(&self) -> &Layer { &self.layers[self.current] }
+    pub fn current_layer(&self) -> &Layer {
+        &self.layers[self.current]
+    }
 
     pub fn set_current(&mut self, name: &str) -> bool {
-        if let Some(i) = self.index_of(name) { self.current = i; true } else { false }
+        if let Some(i) = self.index_of(name) {
+            self.current = i;
+            true
+        } else {
+            false
+        }
     }
 
     pub fn delete(&mut self, name: &str) -> Result<(), &'static str> {
-        if name == "0" { return Err("cannot delete layer 0"); }
+        if name == "0" {
+            return Err("cannot delete layer 0");
+        }
         let idx = self.index_of(name).ok_or("layer not found")?;
-        if idx == self.current { return Err("cannot delete the current layer"); }
+        if idx == self.current {
+            return Err("cannot delete the current layer");
+        }
         self.layers.remove(idx);
-        if self.current > idx { self.current -= 1; }
+        if self.current > idx {
+            self.current -= 1;
+        }
         Ok(())
     }
 }

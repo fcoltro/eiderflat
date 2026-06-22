@@ -1,12 +1,17 @@
-use eiderflat_ui::AppState;
-use eiderflat_document::{EntityKind};
+use eiderflat_document::EntityKind;
 use eiderflat_geometry::{Curve, LineSeg, Point2d};
+use eiderflat_ui::AppState;
 
-fn pt(x: i64, y: i64) -> Point2d { Point2d::from_i64(x, y) }
+fn pt(x: i64, y: i64) -> Point2d {
+    Point2d::from_i64(x, y)
+}
 
 fn app_with_line() -> AppState {
     let mut a = AppState::new(800.0, 600.0);
-    a.add_entity(EntityKind::Curve(Curve::Line(LineSeg::from_endpoints(pt(0,0), pt(10,0)))));
+    a.add_entity(EntityKind::Curve(Curve::Line(LineSeg::from_endpoints(
+        pt(0, 0),
+        pt(10, 0),
+    ))));
     a
 }
 
@@ -28,9 +33,21 @@ fn line_tool_snaps_to_existing_endpoint() {
     if let Some(Curve::Line(l)) = new_line.as_curve() {
         let (x0, y0) = l.p0.to_f64();
         let (x1, y1) = l.p1.to_f64();
-        assert!(x0.abs() < 1e-6 && y0.abs() < 1e-6, "start should snap to (0,0): ({},{})", x0, y0);
-        assert!((x1 - 10.0).abs() < 1e-6 && y1.abs() < 1e-6, "end should snap to (10,0): ({},{})", x1, y1);
-    } else { panic!("expected a line"); }
+        assert!(
+            x0.abs() < 1e-6 && y0.abs() < 1e-6,
+            "start should snap to (0,0): ({},{})",
+            x0,
+            y0
+        );
+        assert!(
+            (x1 - 10.0).abs() < 1e-6 && y1.abs() < 1e-6,
+            "end should snap to (10,0): ({},{})",
+            x1,
+            y1
+        );
+    } else {
+        panic!("expected a line");
+    }
 }
 
 #[test]
@@ -39,7 +56,11 @@ fn click_select_then_erase() {
     a.snap_on = false;
     let (sx, sy) = a.view.world_to_screen(5.0, 0.0);
     a.canvas_click(sx, sy);
-    assert_eq!(a.selection.len(), 1, "click should select the line under cursor");
+    assert_eq!(
+        a.selection.len(),
+        1,
+        "click should select the line under cursor"
+    );
     a.run_command("ERASE");
     assert_eq!(a.document.len(), 1);
 }
@@ -62,7 +83,9 @@ fn draw_undo_redo_cycle() {
     let e = a.document.iter().find(|e| e.id != a.origin_id).unwrap();
     if let Some(Curve::Line(l)) = e.as_curve() {
         assert!((l.p1.x - 4.0).abs() < 1e-4 && (l.p1.y - 3.0).abs() < 1e-4);
-    } else { panic!(); }
+    } else {
+        panic!();
+    }
 }
 
 #[test]
@@ -77,10 +100,24 @@ fn copy_command_full_flow() {
     a.canvas_click(b1x, b1y);
     a.canvas_click(b2x, b2y);
     assert_eq!(a.document.len(), 3, "copy should add one entity");
-    let ys: Vec<f64> = a.document.iter()
+    let ys: Vec<f64> = a
+        .document
+        .iter()
         .filter_map(|e| e.as_curve())
-        .filter_map(|c| if let Curve::Line(l) = c { Some(l.p0.y) } else { None })
+        .filter_map(|c| {
+            if let Curve::Line(l) = c {
+                Some(l.p0.y)
+            } else {
+                None
+            }
+        })
         .collect();
-    assert!(ys.iter().any(|&y| y.abs() < 1e-4), "original at y=0 missing");
-    assert!(ys.iter().any(|&y| (y - 5.0).abs() < 1e-4), "copy at y=5 missing");
+    assert!(
+        ys.iter().any(|&y| y.abs() < 1e-4),
+        "original at y=0 missing"
+    );
+    assert!(
+        ys.iter().any(|&y| (y - 5.0).abs() < 1e-4),
+        "copy at y=5 missing"
+    );
 }

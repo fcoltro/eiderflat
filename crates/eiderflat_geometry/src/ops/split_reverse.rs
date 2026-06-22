@@ -1,6 +1,6 @@
 use crate::curve::Curve;
-use crate::primitives::{CircularArc, EllipticalArc, CubicBezier, PolyCurve};
 use crate::nurbs::NurbsCurve;
+use crate::primitives::{CircularArc, CubicBezier, EllipticalArc, PolyCurve};
 
 pub fn split_curve(curve: &Curve, t: f64) -> (Curve, Curve) {
     match curve {
@@ -10,19 +10,27 @@ pub fn split_curve(curve: &Curve, t: f64) -> (Curve, Curve) {
         }
         Curve::Arc(a) => {
             let mid_angle = a.start_angle + t * (a.end_angle - a.start_angle);
-            let left  = CircularArc::new(a.center, a.radius, a.start_angle, mid_angle);
+            let left = CircularArc::new(a.center, a.radius, a.start_angle, mid_angle);
             let right = CircularArc::new(a.center, a.radius, mid_angle, a.end_angle);
             (Curve::Arc(left), Curve::Arc(right))
         }
         Curve::Ellipse(e) => {
             let mid_angle = e.start_angle + t * (e.end_angle - e.start_angle);
             let left = EllipticalArc::new(
-                e.center, e.semi_major, e.semi_minor,
-                e.rotation, e.start_angle, mid_angle,
+                e.center,
+                e.semi_major,
+                e.semi_minor,
+                e.rotation,
+                e.start_angle,
+                mid_angle,
             );
             let right = EllipticalArc::new(
-                e.center, e.semi_major, e.semi_minor,
-                e.rotation, mid_angle, e.end_angle,
+                e.center,
+                e.semi_major,
+                e.semi_minor,
+                e.rotation,
+                mid_angle,
+                e.end_angle,
             );
             (Curve::Ellipse(left), Curve::Ellipse(right))
         }
@@ -33,8 +41,10 @@ pub fn split_curve(curve: &Curve, t: f64) -> (Curve, Curve) {
         Curve::Poly(pc) => {
             let n = pc.segments.len();
             if n == 0 {
-                return (Curve::Poly(Box::new(PolyCurve::new(vec![]))),
-                        Curve::Poly(Box::new(PolyCurve::new(vec![]))));
+                return (
+                    Curve::Poly(Box::new(PolyCurve::new(vec![]))),
+                    Curve::Poly(Box::new(PolyCurve::new(vec![]))),
+                );
             }
             let seg_idx = ((t * n as f64) as usize).min(n - 1);
             let t_local = (t * n as f64 - seg_idx as f64).clamp(0.0, 1.0);
@@ -67,20 +77,22 @@ pub fn reverse_curve(curve: &Curve) -> Curve {
     match curve {
         Curve::Line(l) => Curve::Line(l.reverse()),
         Curve::Arc(a) => Curve::Arc(CircularArc::new(
-            a.center, a.radius,
-            a.end_angle, a.start_angle,
+            a.center,
+            a.radius,
+            a.end_angle,
+            a.start_angle,
         )),
         Curve::Ellipse(e) => Curve::Ellipse(EllipticalArc::new(
-            e.center, e.semi_major, e.semi_minor,
-            e.rotation, e.end_angle, e.start_angle,
+            e.center,
+            e.semi_major,
+            e.semi_minor,
+            e.rotation,
+            e.end_angle,
+            e.start_angle,
         )),
-        Curve::Bezier(bz) => Curve::Bezier(CubicBezier::new(
-            bz.p3, bz.p2, bz.p1, bz.p0,
-        )),
+        Curve::Bezier(bz) => Curve::Bezier(CubicBezier::new(bz.p3, bz.p2, bz.p1, bz.p0)),
         Curve::Poly(pc) => {
-            let reversed_segs: Vec<Curve> = pc.segments.iter().rev()
-                .map(reverse_curve)
-                .collect();
+            let reversed_segs: Vec<Curve> = pc.segments.iter().rev().map(reverse_curve).collect();
             Curve::Poly(Box::new(PolyCurve::new(reversed_segs)))
         }
         Curve::Rational(rb) => Curve::Rational(rb.reverse()),
@@ -95,14 +107,16 @@ pub fn reverse_curve(curve: &Curve) -> Curve {
 mod tests {
     use super::*;
     use crate::curve::CurveSegment;
-    use crate::primitives::LineSeg;
     use crate::point::Point2d;
+    use crate::primitives::LineSeg;
 
-    fn pt(x: i64, y: i64) -> Point2d { Point2d::from_i64(x, y) }
+    fn pt(x: i64, y: i64) -> Point2d {
+        Point2d::from_i64(x, y)
+    }
 
     #[test]
     fn split_line_at_half() {
-        let line = Curve::Line(LineSeg::from_endpoints(pt(0,0), pt(4,6)));
+        let line = Curve::Line(LineSeg::from_endpoints(pt(0, 0), pt(4, 6)));
         let (left, right) = split_curve(&line, 0.5);
         let (lx, ly) = left.evaluate_f64(1.0);
         let (rx, ry) = right.evaluate_f64(0.0);
@@ -112,7 +126,7 @@ mod tests {
 
     #[test]
     fn split_bezier_preserves_shape() {
-        let bz = Curve::Bezier(CubicBezier::new(pt(0,0), pt(1,3), pt(3,3), pt(4,0)));
+        let bz = Curve::Bezier(CubicBezier::new(pt(0, 0), pt(1, 3), pt(3, 3), pt(4, 0)));
         let (left, right) = split_curve(&bz, 0.5);
         let (lx0, ly0) = left.evaluate_f64(0.0);
         assert!((lx0 - 0.0).abs() < 1e-9 && (ly0 - 0.0).abs() < 1e-9);
@@ -125,7 +139,7 @@ mod tests {
 
     #[test]
     fn reverse_line_swaps_endpoints() {
-        let line = Curve::Line(LineSeg::from_endpoints(pt(0,0), pt(5,5)));
+        let line = Curve::Line(LineSeg::from_endpoints(pt(0, 0), pt(5, 5)));
         let rev = reverse_curve(&line);
         let (x0, y0) = rev.evaluate_f64(0.0);
         let (x1, y1) = rev.evaluate_f64(1.0);
@@ -135,7 +149,7 @@ mod tests {
 
     #[test]
     fn reverse_bezier_swaps_endpoints() {
-        let bz = CubicBezier::new(pt(0,0), pt(1,3), pt(3,3), pt(4,0));
+        let bz = CubicBezier::new(pt(0, 0), pt(1, 3), pt(3, 3), pt(4, 0));
         let rev = reverse_curve(&Curve::Bezier(bz.clone()));
         if let Curve::Bezier(r) = rev {
             assert_eq!(r.p0, bz.p3);

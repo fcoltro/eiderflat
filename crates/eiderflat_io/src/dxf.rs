@@ -1,26 +1,34 @@
+use eiderflat_document::{Color, Document, EntityKind, Layer, LineTypeRef};
 use eiderflat_geometry::{
-    Curve, CurveSegment, Point2d, LineSeg, CircularArc, EllipticalArc, PolyCurve,
+    CircularArc, Curve, CurveSegment, EllipticalArc, LineSeg, Point2d, PolyCurve,
 };
-use eiderflat_document::{Document, EntityKind, Layer, Color, LineTypeRef};
 
 const TAU: f64 = std::f64::consts::TAU;
 const DEG: f64 = std::f64::consts::PI / 180.0;
 
 #[derive(Clone, Debug)]
-struct Pair { code: i32, value: String }
+struct Pair {
+    code: i32,
+    value: String,
+}
 
 fn tokenize(text: &str) -> Vec<Pair> {
     let mut lines = text.lines();
     let mut pairs = Vec::new();
     while let (Some(code_line), Some(val_line)) = (lines.next(), lines.next()) {
         if let Ok(code) = code_line.trim().parse::<i32>() {
-            pairs.push(Pair { code, value: val_line.trim().to_string() });
+            pairs.push(Pair {
+                code,
+                value: val_line.trim().to_string(),
+            });
         }
     }
     pairs
 }
 
-fn f(p: &Pair) -> f64 { p.value.parse().unwrap_or(0.0) }
+fn f(p: &Pair) -> f64 {
+    p.value.parse().unwrap_or(0.0)
+}
 
 pub fn import_dxf(text: &str) -> Document {
     let pairs = tokenize(text);
@@ -29,10 +37,13 @@ pub fn import_dxf(text: &str) -> Document {
 
     while i < pairs.len() {
         if pairs[i].code == 0 && pairs[i].value == "SECTION" {
-            let name = pairs.get(i + 1).map(|p| p.value.clone()).unwrap_or_default();
+            let name = pairs
+                .get(i + 1)
+                .map(|p| p.value.clone())
+                .unwrap_or_default();
             let end = find_endsec(&pairs, i);
             match name.as_str() {
-                "TABLES"   => parse_tables(&pairs[i..end], &mut doc),
+                "TABLES" => parse_tables(&pairs[i..end], &mut doc),
                 "ENTITIES" => parse_entities(&pairs[i..end], &mut doc),
                 _ => {}
             }
@@ -47,7 +58,9 @@ pub fn import_dxf(text: &str) -> Document {
 fn find_endsec(pairs: &[Pair], start: usize) -> usize {
     let mut i = start + 1;
     while i < pairs.len() {
-        if pairs[i].code == 0 && pairs[i].value == "ENDSEC" { return i; }
+        if pairs[i].code == 0 && pairs[i].value == "ENDSEC" {
+            return i;
+        }
         i += 1;
     }
     pairs.len()
@@ -56,12 +69,18 @@ fn find_endsec(pairs: &[Pair], start: usize) -> usize {
 fn records(pairs: &[Pair]) -> Vec<&[Pair]> {
     let mut starts = Vec::new();
     for (idx, p) in pairs.iter().enumerate() {
-        if p.code == 0 { starts.push(idx); }
+        if p.code == 0 {
+            starts.push(idx);
+        }
     }
     let mut out = Vec::new();
     for w in 0..starts.len() {
         let s = starts[w];
-        let e = if w + 1 < starts.len() { starts[w + 1] } else { pairs.len() };
+        let e = if w + 1 < starts.len() {
+            starts[w + 1]
+        } else {
+            pairs.len()
+        };
         out.push(&pairs[s..e]);
     }
     out
@@ -69,19 +88,23 @@ fn records(pairs: &[Pair]) -> Vec<&[Pair]> {
 
 fn parse_tables(pairs: &[Pair], doc: &mut Document) {
     for rec in records(pairs) {
-        if rec[0].value != "LAYER" { continue; }
+        if rec[0].value != "LAYER" {
+            continue;
+        }
         let mut layer = Layer::new("");
         for p in &rec[1..] {
             match p.code {
-                2  => layer.name = p.value.clone(),
+                2 => layer.name = p.value.clone(),
                 62 => {
                     let aci = p.value.parse::<i32>().unwrap_or(7);
                     if let Color::Rgb(r, g, b) = Color::from_aci(aci.unsigned_abs() as u8) {
                         layer.color = (r, g, b);
                     }
-                    if aci < 0 { layer.on = false; } // negative ACI = layer off
+                    if aci < 0 {
+                        layer.on = false;
+                    } // negative ACI = layer off
                 }
-                6  => layer.line_type = LineTypeRef::Named(p.value.clone()),
+                6 => layer.line_type = LineTypeRef::Named(p.value.clone()),
                 70 => {
                     let flags = p.value.parse::<i32>().unwrap_or(0);
                     layer.frozen = flags & 1 != 0;
@@ -99,20 +122,22 @@ fn parse_tables(pairs: &[Pair], doc: &mut Document) {
 fn parse_entities(pairs: &[Pair], doc: &mut Document) {
     for rec in records(pairs) {
         let kind = rec[0].value.as_str();
-        if kind == "SECTION" || kind == "ENDSEC" { continue; }
+        if kind == "SECTION" || kind == "ENDSEC" {
+            continue;
+        }
         let layer_name = rec.iter().find(|p| p.code == 8).map(|p| p.value.clone());
         let layer_idx = layer_name
             .and_then(|n| doc.layers.index_of(&n))
             .unwrap_or(0);
 
         let entities = match kind {
-            "LINE"       => parse_line(rec),
-            "CIRCLE"     => parse_circle(rec),
-            "ARC"        => parse_arc(rec),
-            "ELLIPSE"    => parse_ellipse(rec),
-            "POINT"      => parse_point(rec),
+            "LINE" => parse_line(rec),
+            "CIRCLE" => parse_circle(rec),
+            "ARC" => parse_arc(rec),
+            "ELLIPSE" => parse_ellipse(rec),
+            "POINT" => parse_point(rec),
             "LWPOLYLINE" => parse_lwpolyline(rec),
-            "TEXT"       => parse_text(rec),
+            "TEXT" => parse_text(rec),
             _ => vec![],
         };
         for kind in entities {
@@ -129,14 +154,20 @@ fn parse_line(rec: &[Pair]) -> Vec<EntityKind> {
     let (x1, y1) = (get(rec, 10).unwrap_or(0.0), get(rec, 20).unwrap_or(0.0));
     let (x2, y2) = (get(rec, 11).unwrap_or(0.0), get(rec, 21).unwrap_or(0.0));
     vec![EntityKind::Curve(Curve::Line(LineSeg::from_endpoints(
-        Point2d::from_f64(x1, y1), Point2d::from_f64(x2, y2))))]
+        Point2d::from_f64(x1, y1),
+        Point2d::from_f64(x2, y2),
+    )))]
 }
 
 fn parse_circle(rec: &[Pair]) -> Vec<EntityKind> {
     let (cx, cy) = (get(rec, 10).unwrap_or(0.0), get(rec, 20).unwrap_or(0.0));
     let r = get(rec, 40).unwrap_or(1.0);
     vec![EntityKind::Curve(Curve::Arc(CircularArc::new(
-        Point2d::from_f64(cx, cy), r, 0.0, TAU)))]
+        Point2d::from_f64(cx, cy),
+        r,
+        0.0,
+        TAU,
+    )))]
 }
 
 fn parse_arc(rec: &[Pair]) -> Vec<EntityKind> {
@@ -145,7 +176,11 @@ fn parse_arc(rec: &[Pair]) -> Vec<EntityKind> {
     let start = get(rec, 50).unwrap_or(0.0) * DEG;
     let end = get(rec, 51).unwrap_or(360.0) * DEG;
     vec![EntityKind::Curve(Curve::Arc(CircularArc::new(
-        Point2d::from_f64(cx, cy), r, start, end)))]
+        Point2d::from_f64(cx, cy),
+        r,
+        start,
+        end,
+    )))]
 }
 
 fn parse_ellipse(rec: &[Pair]) -> Vec<EntityKind> {
@@ -161,7 +196,10 @@ fn parse_ellipse(rec: &[Pair]) -> Vec<EntityKind> {
         Point2d::from_f64(cx, cy),
         major,
         major * ratio,
-        rotation, start, end)))]
+        rotation,
+        start,
+        end,
+    )))]
 }
 
 fn parse_point(rec: &[Pair]) -> Vec<EntityKind> {
@@ -173,12 +211,26 @@ fn parse_text(rec: &[Pair]) -> Vec<EntityKind> {
     let (x, y) = (get(rec, 10).unwrap_or(0.0), get(rec, 20).unwrap_or(0.0));
     let height = get(rec, 40).unwrap_or(1.0);
     let rotation = get(rec, 50).unwrap_or(0.0) * DEG;
-    let content = rec.iter().find(|p| p.code == 1).map(|p| p.value.clone()).unwrap_or_default();
-    vec![EntityKind::Text { anchor: Point2d::from_f64(x, y), content, height, rotation, font: None }]
+    let content = rec
+        .iter()
+        .find(|p| p.code == 1)
+        .map(|p| p.value.clone())
+        .unwrap_or_default();
+    vec![EntityKind::Text {
+        anchor: Point2d::from_f64(x, y),
+        content,
+        height,
+        rotation,
+        font: None,
+    }]
 }
 
 fn parse_lwpolyline(rec: &[Pair]) -> Vec<EntityKind> {
-    let closed = rec.iter().find(|p| p.code == 70).map(|p| p.value.parse::<i32>().unwrap_or(0) & 1 != 0).unwrap_or(false);
+    let closed = rec
+        .iter()
+        .find(|p| p.code == 70)
+        .map(|p| p.value.parse::<i32>().unwrap_or(0) & 1 != 0)
+        .unwrap_or(false);
 
     let mut verts: Vec<(f64, f64, f64)> = Vec::new();
     let mut cur_x = None;
@@ -199,13 +251,21 @@ fn parse_lwpolyline(rec: &[Pair]) -> Vec<EntityKind> {
                     cur_bulge = 0.0;
                 }
             }
-            42 => { if let Some(last) = verts.last_mut() { last.2 = f(p); } else { cur_bulge = f(p); } }
+            42 => {
+                if let Some(last) = verts.last_mut() {
+                    last.2 = f(p);
+                } else {
+                    cur_bulge = f(p);
+                }
+            }
             _ => {}
         }
     }
 
     let n = verts.len();
-    if n < 2 { return vec![]; }
+    if n < 2 {
+        return vec![];
+    }
     let mut segments: Vec<Curve> = Vec::new();
     let count = if closed { n } else { n - 1 };
     for i in 0..count {
@@ -219,11 +279,13 @@ fn parse_lwpolyline(rec: &[Pair]) -> Vec<EntityKind> {
             segments.push(bulge_arc(x1, y1, x2, y2, bulge));
         }
     }
-    vec![EntityKind::Curve(Curve::Poly(Box::new(PolyCurve::new(segments))))]
+    vec![EntityKind::Curve(Curve::Poly(Box::new(PolyCurve::new(
+        segments,
+    ))))]
 }
 
 fn bulge_arc(x1: f64, y1: f64, x2: f64, y2: f64, bulge: f64) -> Curve {
-    let theta = 4.0 * bulge.atan();          // signed included angle
+    let theta = 4.0 * bulge.atan(); // signed included angle
     let chord = ((x2 - x1).powi(2) + (y2 - y1).powi(2)).sqrt();
     let radius = (chord / 2.0) / (theta / 2.0).sin().abs();
     let mx = (x1 + x2) / 2.0;
@@ -235,31 +297,56 @@ fn bulge_arc(x1: f64, y1: f64, x2: f64, y2: f64, bulge: f64) -> Curve {
     let cy = my + sign * d * dx;
     let start = (y1 - cy).atan2(x1 - cx);
     let end = (y2 - cy).atan2(x2 - cx);
-    let (start, end) = if bulge > 0.0 { (start, end) } else { (end, start) };
-    Curve::Arc(CircularArc::new(Point2d::from_f64(cx, cy), radius, start, end))
+    let (start, end) = if bulge > 0.0 {
+        (start, end)
+    } else {
+        (end, start)
+    };
+    Curve::Arc(CircularArc::new(
+        Point2d::from_f64(cx, cy),
+        radius,
+        start,
+        end,
+    ))
 }
 
 pub fn export_dxf(doc: &Document) -> String {
     let mut s = String::new();
-    let mut w = |code: i32, val: &str| { s.push_str(&format!("{}\n{}\n", code, val)); };
+    let mut w = |code: i32, val: &str| {
+        s.push_str(&format!("{}\n{}\n", code, val));
+    };
 
-    w(0, "SECTION"); w(2, "TABLES");
-    w(0, "TABLE"); w(2, "LAYER");
+    w(0, "SECTION");
+    w(2, "TABLES");
+    w(0, "TABLE");
+    w(2, "LAYER");
     for layer in &doc.layers.layers {
         w(0, "LAYER");
         w(2, &layer.name);
         let mut flags = 0;
-        if layer.frozen { flags |= 1; }
-        if layer.locked { flags |= 4; }
+        if layer.frozen {
+            flags |= 1;
+        }
+        if layer.locked {
+            flags |= 4;
+        }
         w(70, &flags.to_string());
         w(62, &aci_for(layer.color, layer.on).to_string());
-        if let LineTypeRef::Named(n) = &layer.line_type { w(6, n); }
+        if let LineTypeRef::Named(n) = &layer.line_type {
+            w(6, n);
+        }
     }
-    w(0, "ENDTAB"); w(0, "ENDSEC");
+    w(0, "ENDTAB");
+    w(0, "ENDSEC");
 
-    w(0, "SECTION"); w(2, "ENTITIES");
+    w(0, "SECTION");
+    w(2, "ENTITIES");
     for e in doc.iter() {
-        let layer_name = doc.layers.get(e.layer).map(|l| l.name.clone()).unwrap_or_else(|| "0".into());
+        let layer_name = doc
+            .layers
+            .get(e.layer)
+            .map(|l| l.name.clone())
+            .unwrap_or_else(|| "0".into());
         write_entity(&mut w, &e.kind, &layer_name);
     }
     w(0, "ENDSEC");
@@ -270,22 +357,32 @@ pub fn export_dxf(doc: &Document) -> String {
 fn write_entity(w: &mut impl FnMut(i32, &str), kind: &EntityKind, layer: &str) {
     match kind {
         EntityKind::Curve(Curve::Line(l)) => {
-            w(0, "LINE"); w(8, layer);
+            w(0, "LINE");
+            w(8, layer);
             let (x1, y1) = l.p0.to_f64();
             let (x2, y2) = l.p1.to_f64();
-            w(10, &fmt(x1)); w(20, &fmt(y1));
-            w(11, &fmt(x2)); w(21, &fmt(y2));
+            w(10, &fmt(x1));
+            w(20, &fmt(y1));
+            w(11, &fmt(x2));
+            w(21, &fmt(y2));
         }
         EntityKind::Curve(Curve::Arc(a)) => {
             let (cx, cy) = a.center.to_f64();
             let span = (a.end_angle - a.start_angle).abs();
             if (span - TAU).abs() < 1e-9 {
-                w(0, "CIRCLE"); w(8, layer);
-                w(10, &fmt(cx)); w(20, &fmt(cy)); w(40, &fmt(a.radius));
+                w(0, "CIRCLE");
+                w(8, layer);
+                w(10, &fmt(cx));
+                w(20, &fmt(cy));
+                w(40, &fmt(a.radius));
             } else {
-                w(0, "ARC"); w(8, layer);
-                w(10, &fmt(cx)); w(20, &fmt(cy)); w(40, &fmt(a.radius));
-                w(50, &fmt(a.start_angle / DEG)); w(51, &fmt(a.end_angle / DEG));
+                w(0, "ARC");
+                w(8, layer);
+                w(10, &fmt(cx));
+                w(20, &fmt(cy));
+                w(40, &fmt(a.radius));
+                w(50, &fmt(a.start_angle / DEG));
+                w(51, &fmt(a.end_angle / DEG));
             }
         }
         EntityKind::Curve(Curve::Ellipse(e)) => {
@@ -293,35 +390,52 @@ fn write_entity(w: &mut impl FnMut(i32, &str), kind: &EntityKind, layer: &str) {
             let major = e.semi_major;
             let mx = major * e.rotation.cos();
             let my = major * e.rotation.sin();
-            let ratio = if major.abs() > 1e-12 { e.semi_minor / major } else { 1.0 };
-            w(0, "ELLIPSE"); w(8, layer);
-            w(10, &fmt(cx)); w(20, &fmt(cy));
-            w(11, &fmt(mx)); w(21, &fmt(my));
+            let ratio = if major.abs() > 1e-12 {
+                e.semi_minor / major
+            } else {
+                1.0
+            };
+            w(0, "ELLIPSE");
+            w(8, layer);
+            w(10, &fmt(cx));
+            w(20, &fmt(cy));
+            w(11, &fmt(mx));
+            w(21, &fmt(my));
             w(40, &fmt(ratio));
-            w(41, &fmt(e.start_angle)); w(42, &fmt(e.end_angle));
+            w(41, &fmt(e.start_angle));
+            w(42, &fmt(e.end_angle));
         }
         EntityKind::Curve(Curve::Bezier(b)) => {
             let verts = crate::flatten_for_export(&Curve::Bezier(b.clone()));
-            w(0, "LWPOLYLINE"); w(8, layer);
-            w(90, &verts.len().to_string()); w(70, "0");
+            w(0, "LWPOLYLINE");
+            w(8, layer);
+            w(90, &verts.len().to_string());
+            w(70, "0");
             for p in &verts {
-                w(10, &fmt(p.x)); w(20, &fmt(p.y));
+                w(10, &fmt(p.x));
+                w(20, &fmt(p.y));
             }
         }
         EntityKind::Curve(Curve::Rational(rb)) => {
             let verts = crate::flatten_for_export(&Curve::Rational(rb.clone()));
-            w(0, "LWPOLYLINE"); w(8, layer);
-            w(90, &verts.len().to_string()); w(70, "0");
+            w(0, "LWPOLYLINE");
+            w(8, layer);
+            w(90, &verts.len().to_string());
+            w(70, "0");
             for p in &verts {
-                w(10, &fmt(p.x)); w(20, &fmt(p.y));
+                w(10, &fmt(p.x));
+                w(20, &fmt(p.y));
             }
         }
         EntityKind::Curve(Curve::Nurbs(nc)) => {
             let verts = crate::flatten_for_export(&Curve::Nurbs(nc.clone()));
-            w(0, "LWPOLYLINE"); w(8, layer);
-            w(90, &verts.len().to_string()); w(70, "0");
+            w(0, "LWPOLYLINE");
+            w(8, layer);
+            w(90, &verts.len().to_string());
+            w(70, "0");
             for p in &verts {
-                w(10, &fmt(p.x)); w(20, &fmt(p.y));
+                w(10, &fmt(p.x));
+                w(20, &fmt(p.y));
             }
         }
         EntityKind::Curve(Curve::Poly(pc)) => {
@@ -329,15 +443,30 @@ fn write_entity(w: &mut impl FnMut(i32, &str), kind: &EntityKind, layer: &str) {
         }
         EntityKind::Point(p) => {
             let (x, y) = p.to_f64();
-            w(0, "POINT"); w(8, layer); w(10, &fmt(x)); w(20, &fmt(y));
+            w(0, "POINT");
+            w(8, layer);
+            w(10, &fmt(x));
+            w(20, &fmt(y));
         }
-        EntityKind::Text { anchor, content, height, rotation, .. } => {
+        EntityKind::Text {
+            anchor,
+            content,
+            height,
+            rotation,
+            ..
+        } => {
             let (x, y) = anchor.to_f64();
-            w(0, "TEXT"); w(8, layer);
-            w(10, &fmt(x)); w(20, &fmt(y)); w(40, &fmt(*height));
-            w(1, content); w(50, &fmt(rotation / DEG));
+            w(0, "TEXT");
+            w(8, layer);
+            w(10, &fmt(x));
+            w(20, &fmt(y));
+            w(40, &fmt(*height));
+            w(1, content);
+            w(50, &fmt(rotation / DEG));
         }
-        EntityKind::Hatch { boundary, holes, .. } => {
+        EntityKind::Hatch {
+            boundary, holes, ..
+        } => {
             write_polyline(w, &PolyCurve::new(boundary.clone()), layer);
             for hole in holes {
                 write_polyline(w, &PolyCurve::new(hole.clone()), layer);
@@ -358,7 +487,11 @@ fn write_polyline(w: &mut impl FnMut(i32, &str), pc: &PolyCurve, layer: &str) {
             Curve::Arc(a) => {
                 let (sx, sy) = a.start_point();
                 let theta = a.included_angle();
-                let signed = if a.end_angle >= a.start_angle { theta } else { -theta };
+                let signed = if a.end_angle >= a.start_angle {
+                    theta
+                } else {
+                    -theta
+                };
                 verts.push((sx, sy, (signed / 4.0).tan()));
             }
             Curve::Rational(_) => {
@@ -381,12 +514,16 @@ fn write_polyline(w: &mut impl FnMut(i32, &str), pc: &PolyCurve, layer: &str) {
         verts.push((ex, ey, 0.0));
     }
 
-    w(0, "LWPOLYLINE"); w(8, layer);
+    w(0, "LWPOLYLINE");
+    w(8, layer);
     w(90, &verts.len().to_string());
     w(70, "0");
     for (x, y, bulge) in &verts {
-        w(10, &fmt(*x)); w(20, &fmt(*y));
-        if bulge.abs() > 1e-12 { w(42, &fmt(*bulge)); }
+        w(10, &fmt(*x));
+        w(20, &fmt(*y));
+        if bulge.abs() > 1e-12 {
+            w(42, &fmt(*bulge));
+        }
     }
 }
 
@@ -396,8 +533,12 @@ fn fmt(x: f64) -> String {
 
 fn aci_for(rgb: (u8, u8, u8), on: bool) -> i32 {
     let base = match rgb {
-        (255, 0, 0) => 1, (255, 255, 0) => 2, (0, 255, 0) => 3,
-        (0, 255, 255) => 4, (0, 0, 255) => 5, (255, 0, 255) => 6,
+        (255, 0, 0) => 1,
+        (255, 255, 0) => 2,
+        (0, 255, 0) => 3,
+        (0, 255, 255) => 4,
+        (0, 0, 255) => 5,
+        (255, 0, 255) => 6,
         _ => 7,
     };
     if on { base } else { -base }
@@ -408,7 +549,9 @@ mod tests {
     use super::*;
     use eiderflat_document::EntityKind;
 
-    fn pt(x: i64, y: i64) -> Point2d { Point2d::from_i64(x, y) }
+    fn pt(x: i64, y: i64) -> Point2d {
+        Point2d::from_i64(x, y)
+    }
 
     #[test]
     fn import_basic_line() {
@@ -419,7 +562,9 @@ mod tests {
         if let Some(Curve::Line(l)) = entities[0].as_curve() {
             assert!((l.p1.x - 10.0).abs() < 1e-9);
             assert!((l.p1.y - 5.0).abs() < 1e-9);
-        } else { panic!("expected line"); }
+        } else {
+            panic!("expected line");
+        }
     }
 
     #[test]
@@ -444,10 +589,22 @@ mod tests {
     #[test]
     fn roundtrip_line_circle_arc() {
         let mut doc = Document::new();
-        doc.add(EntityKind::Curve(Curve::Line(LineSeg::from_endpoints(pt(0,0), pt(10,5)))));
-        doc.add(EntityKind::Curve(Curve::Arc(CircularArc::new(pt(3,4), 5.0, 0.0, TAU))));
-        doc.add(EntityKind::Curve(Curve::Arc(CircularArc::new(pt(0,0), 2.0,
-            0.0, std::f64::consts::FRAC_PI_2))));
+        doc.add(EntityKind::Curve(Curve::Line(LineSeg::from_endpoints(
+            pt(0, 0),
+            pt(10, 5),
+        ))));
+        doc.add(EntityKind::Curve(Curve::Arc(CircularArc::new(
+            pt(3, 4),
+            5.0,
+            0.0,
+            TAU,
+        ))));
+        doc.add(EntityKind::Curve(Curve::Arc(CircularArc::new(
+            pt(0, 0),
+            2.0,
+            0.0,
+            std::f64::consts::FRAC_PI_2,
+        ))));
 
         let dxf = export_dxf(&doc);
         let doc2 = import_dxf(&dxf);
@@ -471,9 +628,15 @@ mod tests {
         let dxf = export_dxf(&doc);
         let doc2 = import_dxf(&dxf);
         assert!(doc2.layers.index_of("walls").is_some());
-        let w = doc2.layers.get(doc2.layers.index_of("walls").unwrap()).unwrap();
+        let w = doc2
+            .layers
+            .get(doc2.layers.index_of("walls").unwrap())
+            .unwrap();
         assert_eq!(w.color, (255, 0, 0));
-        let h = doc2.layers.get(doc2.layers.index_of("hidden").unwrap()).unwrap();
+        let h = doc2
+            .layers
+            .get(doc2.layers.index_of("hidden").unwrap())
+            .unwrap();
         assert!(h.frozen);
     }
 
@@ -491,7 +654,9 @@ mod tests {
         if let Some(Curve::Poly(pc)) = entities[0].as_curve() {
             assert_eq!(pc.segments.len(), 2);
             assert!(matches!(pc.segments[1], Curve::Arc(_)));
-        } else { panic!("expected polyline"); }
+        } else {
+            panic!("expected polyline");
+        }
     }
 
     #[test]
@@ -512,7 +677,10 @@ mod tests {
         assert!(dxf.contains("LWPOLYLINE"));
         let doc2 = import_dxf(&dxf);
         assert_eq!(doc2.len(), 1);
-        assert!(matches!(doc2.iter().next().unwrap().as_curve(), Some(Curve::Poly(_))));
+        assert!(matches!(
+            doc2.iter().next().unwrap().as_curve(),
+            Some(Curve::Poly(_))
+        ));
     }
 
     #[test]

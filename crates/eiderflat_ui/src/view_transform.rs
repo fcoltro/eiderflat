@@ -11,8 +11,12 @@ pub struct ViewTransform {
 impl ViewTransform {
     pub fn new(width: f64, height: f64) -> Self {
         ViewTransform {
-            center: (0.0, 0.0), zoom: 50.0, width, height,
-            min_visible: 0.05, max_visible: 50_000.0,
+            center: (0.0, 0.0),
+            zoom: 50.0,
+            width,
+            height,
+            min_visible: 0.05,
+            max_visible: 50_000.0,
         }
     }
 
@@ -41,24 +45,35 @@ impl ViewTransform {
         (wx, wy)
     }
 
-    pub fn pixel_world_size(&self) -> f64 { 1.0 / self.zoom }
+    pub fn pixel_world_size(&self) -> f64 {
+        1.0 / self.zoom
+    }
 
     /// Magnification readout for the status pill (100% at the default 50 px/unit).
-    pub fn zoom_percent(&self) -> f64 { self.zoom * 2.0 }
+    pub fn zoom_percent(&self) -> f64 {
+        self.zoom * 2.0
+    }
 
     pub fn grid_spacing(&self) -> f64 {
         let raw = 80.0 * self.pixel_world_size();
         let mag = raw.log10().floor();
         let base = 10f64.powf(mag);
-        if raw / base < 1.5 { base }
-        else if raw / base < 3.5 { 2.0 * base }
-        else if raw / base < 7.5 { 5.0 * base }
-        else { 10.0 * base }
+        if raw / base < 1.5 {
+            base
+        } else if raw / base < 3.5 {
+            2.0 * base
+        } else if raw / base < 7.5 {
+            5.0 * base
+        } else {
+            10.0 * base
+        }
     }
 
     pub fn snap_to_grid(&self, wx: f64, wy: f64) -> (f64, f64) {
         let g = self.grid_spacing();
-        if !(g.is_finite() && g > 0.0) { return (wx, wy); }
+        if !(g.is_finite() && g > 0.0) {
+            return (wx, wy);
+        }
         ((wx / g).round() * g, (wy / g).round() * g)
     }
 
@@ -70,7 +85,9 @@ impl ViewTransform {
     pub fn zoom_at(&mut self, wx: f64, wy: f64, factor: f64) {
         let old = self.zoom;
         let new = self.clamp_zoom(old * factor);
-        if new == old { return; }
+        if new == old {
+            return;
+        }
         let eff = new / old;
         self.zoom = new;
         self.center.0 = wx + (self.center.0 - wx) / eff;
@@ -97,7 +114,12 @@ impl ViewTransform {
     pub fn visible_bounds(&self) -> (f64, f64, f64, f64) {
         let hw = self.width / (2.0 * self.zoom);
         let hh = self.height / (2.0 * self.zoom);
-        (self.center.0 - hw, self.center.1 - hh, self.center.0 + hw, self.center.1 + hh)
+        (
+            self.center.0 - hw,
+            self.center.1 - hh,
+            self.center.0 + hw,
+            self.center.1 + hh,
+        )
     }
 }
 
@@ -134,11 +156,23 @@ mod tests {
         let mut v = ViewTransform::new(800.0, 600.0);
         v.set_visible_range(0.05, 50_000.0);
         let dim = 800.0_f64;
-        for _ in 0..200 { v.zoom_at(0.0, 0.0, 2.0); }
-        assert!((v.zoom - dim / 0.05).abs() / (dim / 0.05) < 1e-9, "zoom-in not capped: {}", v.zoom);
+        for _ in 0..200 {
+            v.zoom_at(0.0, 0.0, 2.0);
+        }
+        assert!(
+            (v.zoom - dim / 0.05).abs() / (dim / 0.05) < 1e-9,
+            "zoom-in not capped: {}",
+            v.zoom
+        );
         assert!(v.at_zoom_in_limit());
-        for _ in 0..400 { v.zoom_at(0.0, 0.0, 0.5); }
-        assert!((v.zoom - dim / 50_000.0).abs() / (dim / 50_000.0) < 1e-9, "zoom-out not capped: {}", v.zoom);
+        for _ in 0..400 {
+            v.zoom_at(0.0, 0.0, 0.5);
+        }
+        assert!(
+            (v.zoom - dim / 50_000.0).abs() / (dim / 50_000.0) < 1e-9,
+            "zoom-out not capped: {}",
+            v.zoom
+        );
         assert!(v.at_zoom_out_limit());
     }
 

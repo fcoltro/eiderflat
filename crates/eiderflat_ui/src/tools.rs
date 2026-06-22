@@ -1,29 +1,83 @@
-use eiderflat_geometry::{Curve, LineSeg, CircularArc, EllipticalArc, Point2d, Transform2d, PolyCurve, NurbsCurve, cv_spline_segments};
-use eiderflat_document::{EntityKind, EntityId};
+use eiderflat_document::{EntityId, EntityKind};
+use eiderflat_geometry::{
+    CircularArc, Curve, EllipticalArc, LineSeg, NurbsCurve, Point2d, PolyCurve, Transform2d,
+    cv_spline_segments,
+};
 #[allow(clippy::large_enum_variant)]
 #[derive(Clone, Debug)]
 pub enum Tool {
     Select,
-    Line { last: Option<Point2d> },
-    Circle { center: Option<Point2d> },
-    Arc3 { pts: Vec<Point2d> },
-    Ellipse { center: Option<Point2d>, axis_end: Option<Point2d> },
-    Rectangle { first: Option<Point2d> },
-    Move { base: Option<Point2d>, ids: Vec<EntityId> },
-    Copy { base: Option<Point2d>, ids: Vec<EntityId> },
-    Spline { pts: Vec<Point2d> },
-    Polyline { pts: Vec<Point2d> },
-    Polygon { center: Option<Point2d>, sides: Option<usize> },
-    Text { anchor: Option<Point2d>, height: f64 },
-    Rotate { base: Option<Point2d>, ids: Vec<EntityId> },
-    Scale { base: Option<Point2d>, reference: Option<f64>, ids: Vec<EntityId> },
-    Mirror { first: Option<Point2d>, ids: Vec<EntityId> },
+    Line {
+        last: Option<Point2d>,
+    },
+    Circle {
+        center: Option<Point2d>,
+    },
+    Arc3 {
+        pts: Vec<Point2d>,
+    },
+    Ellipse {
+        center: Option<Point2d>,
+        axis_end: Option<Point2d>,
+    },
+    Rectangle {
+        first: Option<Point2d>,
+    },
+    Move {
+        base: Option<Point2d>,
+        ids: Vec<EntityId>,
+    },
+    Copy {
+        base: Option<Point2d>,
+        ids: Vec<EntityId>,
+    },
+    Spline {
+        pts: Vec<Point2d>,
+    },
+    Polyline {
+        pts: Vec<Point2d>,
+    },
+    Polygon {
+        center: Option<Point2d>,
+        sides: Option<usize>,
+    },
+    Text {
+        anchor: Option<Point2d>,
+        height: f64,
+    },
+    Rotate {
+        base: Option<Point2d>,
+        ids: Vec<EntityId>,
+    },
+    Scale {
+        base: Option<Point2d>,
+        reference: Option<f64>,
+        ids: Vec<EntityId>,
+    },
+    Mirror {
+        first: Option<Point2d>,
+        ids: Vec<EntityId>,
+    },
     Trim,
     Extend,
-    Offset { dist: f64, source: Option<EntityId> },
-    Fillet { radius: f64, first: Option<EntityId> },
-    Chamfer { dist: f64, first: Option<EntityId> },
-    Stretch { c1: Option<Point2d>, c2: Option<Point2d>, base: Option<Point2d>, ids: Vec<EntityId> },
+    Offset {
+        dist: f64,
+        source: Option<EntityId>,
+    },
+    Fillet {
+        radius: f64,
+        first: Option<EntityId>,
+    },
+    Chamfer {
+        dist: f64,
+        first: Option<EntityId>,
+    },
+    Stretch {
+        c1: Option<Point2d>,
+        c2: Option<Point2d>,
+        base: Option<Point2d>,
+        ids: Vec<EntityId>,
+    },
     Hatch,
 }
 
@@ -69,9 +123,16 @@ impl Tool {
     }
 
     pub fn wants_point_snap(&self) -> bool {
-        !matches!(self,
-            Tool::Select | Tool::Trim | Tool::Extend | Tool::Hatch
-            | Tool::Offset { .. } | Tool::Fillet { .. } | Tool::Chamfer { .. })
+        !matches!(
+            self,
+            Tool::Select
+                | Tool::Trim
+                | Tool::Extend
+                | Tool::Hatch
+                | Tool::Offset { .. }
+                | Tool::Fillet { .. }
+                | Tool::Chamfer { .. }
+        )
     }
 
     pub fn on_point(&mut self, p: Point2d) -> ToolEvent {
@@ -80,29 +141,36 @@ impl Tool {
 
             Tool::Line { last } => {
                 let ev = match last.take() {
-                    Some(prev) => ToolEvent::Create(vec![EntityKind::Curve(
-                        Curve::Line(LineSeg::from_endpoints(prev, p)))]),
+                    Some(prev) => ToolEvent::Create(vec![EntityKind::Curve(Curve::Line(
+                        LineSeg::from_endpoints(prev, p),
+                    ))]),
                     None => ToolEvent::Pending,
                 };
                 *last = Some(p);
                 ev
             }
 
-            Tool::Circle { center } => match center.take() {
-                None => { *center = Some(p); ToolEvent::Pending }
-                Some(c) => {
-                    let d = c.dist_f64(&p);
-                    if d < 1e-9 {
-                        *center = Some(c);
+            Tool::Circle { center } => {
+                match center.take() {
+                    None => {
+                        *center = Some(p);
                         ToolEvent::Pending
-                    } else {
-                        let r = d;
-                        *self = Tool::Circle { center: None };
-                        ToolEvent::Create(vec![EntityKind::Curve(Curve::Arc(
-                            CircularArc::new(c, r, 0.0, std::f64::consts::TAU)))])
+                    }
+                    Some(c) => {
+                        let d = c.dist_f64(&p);
+                        if d < 1e-9 {
+                            *center = Some(c);
+                            ToolEvent::Pending
+                        } else {
+                            let r = d;
+                            *self = Tool::Circle { center: None };
+                            ToolEvent::Create(vec![EntityKind::Curve(Curve::Arc(
+                                CircularArc::new(c, r, 0.0, std::f64::consts::TAU),
+                            ))])
+                        }
                     }
                 }
-            },
+            }
 
             Tool::Arc3 { pts } => {
                 pts.push(p);
@@ -119,14 +187,24 @@ impl Tool {
             }
 
             Tool::Ellipse { center, axis_end } => match (*center, *axis_end) {
-                (None, _) => { *center = Some(p); ToolEvent::Pending }
+                (None, _) => {
+                    *center = Some(p);
+                    ToolEvent::Pending
+                }
                 (Some(c), None) => {
-                    if c.dist_f64(&p) < 1e-9 { ToolEvent::Pending }
-                    else { *axis_end = Some(p); ToolEvent::Pending }
+                    if c.dist_f64(&p) < 1e-9 {
+                        ToolEvent::Pending
+                    } else {
+                        *axis_end = Some(p);
+                        ToolEvent::Pending
+                    }
                 }
                 (Some(c), Some(a)) => match ellipse_from_axes(&c, &a, &p) {
                     Some(e) => {
-                        *self = Tool::Ellipse { center: None, axis_end: None };
+                        *self = Tool::Ellipse {
+                            center: None,
+                            axis_end: None,
+                        };
                         ToolEvent::Create(vec![EntityKind::Curve(Curve::Ellipse(e))])
                     }
                     None => ToolEvent::Pending,
@@ -134,7 +212,10 @@ impl Tool {
             },
 
             Tool::Rectangle { first } => match first.take() {
-                None => { *first = Some(p); ToolEvent::Pending }
+                None => {
+                    *first = Some(p);
+                    ToolEvent::Pending
+                }
                 Some(c0) => {
                     *self = Tool::Rectangle { first: None };
                     ToolEvent::Create(vec![closed_polycurve(rectangle_curves(&c0, &p))])
@@ -142,7 +223,10 @@ impl Tool {
             },
 
             Tool::Move { base, ids } => match base.take() {
-                None => { *base = Some(p); ToolEvent::Pending }
+                None => {
+                    *base = Some(p);
+                    ToolEvent::Pending
+                }
                 Some(b) => {
                     let t = Transform2d::translation(p.x - b.x, p.y - b.y);
                     let ids = std::mem::take(ids);
@@ -151,10 +235,16 @@ impl Tool {
             },
 
             Tool::Copy { base, ids } => match base.take() {
-                None => { *base = Some(p); ToolEvent::Pending }
+                None => {
+                    *base = Some(p);
+                    ToolEvent::Pending
+                }
                 Some(b) => {
                     let t = Transform2d::translation(p.x - b.x, p.y - b.y);
-                    ToolEvent::CopyOf { ids: ids.clone(), t }
+                    ToolEvent::CopyOf {
+                        ids: ids.clone(),
+                        t,
+                    }
                 }
             },
 
@@ -170,8 +260,12 @@ impl Tool {
 
             Tool::Polygon { center, sides } => match center.take() {
                 None => {
-                    if sides.is_none() { ToolEvent::Pending }
-                    else { *center = Some(p); ToolEvent::Pending }
+                    if sides.is_none() {
+                        ToolEvent::Pending
+                    } else {
+                        *center = Some(p);
+                        ToolEvent::Pending
+                    }
                 }
                 Some(c) => {
                     let cx = c.x;
@@ -189,8 +283,12 @@ impl Tool {
                         let start_angle = dy.atan2(dx);
                         let mut verts = Vec::with_capacity(n);
                         for i in 0..n {
-                            let angle = start_angle + (i as f64) * std::f64::consts::TAU / (n as f64);
-                            verts.push(Point2d::from_f64(cx + r * angle.cos(), cy + r * angle.sin()));
+                            let angle =
+                                start_angle + (i as f64) * std::f64::consts::TAU / (n as f64);
+                            verts.push(Point2d::from_f64(
+                                cx + r * angle.cos(),
+                                cy + r * angle.sin(),
+                            ));
                         }
                         let mut segments = Vec::new();
                         for i in 0..n {
@@ -199,44 +297,77 @@ impl Tool {
                                 verts[(i + 1) % n],
                             )));
                         }
-                        *self = Tool::Polygon { center: None, sides: Some(n) };
+                        *self = Tool::Polygon {
+                            center: None,
+                            sides: Some(n),
+                        };
                         ToolEvent::Create(vec![closed_polycurve(segments)])
                     }
                 }
-            }
+            },
 
             Tool::Rotate { base, ids } => match base.take() {
-                None => { *base = Some(p); ToolEvent::Pending }
+                None => {
+                    *base = Some(p);
+                    ToolEvent::Pending
+                }
                 Some(b) => {
                     let angle = (p.y - b.y).atan2(p.x - b.x);
                     let t = Transform2d::rotation_about(&b, angle);
-                    ToolEvent::Transform { ids: std::mem::take(ids), t }
+                    ToolEvent::Transform {
+                        ids: std::mem::take(ids),
+                        t,
+                    }
                 }
             },
 
-            Tool::Scale { base, reference, ids } => match *base {
-                None => { *base = Some(p); ToolEvent::Pending }
+            Tool::Scale {
+                base,
+                reference,
+                ids,
+            } => match *base {
+                None => {
+                    *base = Some(p);
+                    ToolEvent::Pending
+                }
                 Some(b) => match *reference {
-                    None => { *reference = Some(b.dist_f64(&p).max(1e-9)); ToolEvent::Pending }
+                    None => {
+                        *reference = Some(b.dist_f64(&p).max(1e-9));
+                        ToolEvent::Pending
+                    }
                     Some(r1) => {
                         let factor = (b.dist_f64(&p) / r1).max(1e-9);
                         let s = factor;
                         let t = Transform2d::scale_about(&b, s, s);
-                        ToolEvent::Transform { ids: std::mem::take(ids), t }
+                        ToolEvent::Transform {
+                            ids: std::mem::take(ids),
+                            t,
+                        }
                     }
                 },
             },
 
             Tool::Mirror { first, ids } => match first.take() {
-                None => { *first = Some(p); ToolEvent::Pending }
+                None => {
+                    *first = Some(p);
+                    ToolEvent::Pending
+                }
                 Some(f) => {
                     let t = Transform2d::mirror_line(&f, &p);
-                    ToolEvent::Transform { ids: std::mem::take(ids), t }
+                    ToolEvent::Transform {
+                        ids: std::mem::take(ids),
+                        t,
+                    }
                 }
             },
 
-            Tool::Trim | Tool::Extend | Tool::Hatch | Tool::Offset { .. }
-            | Tool::Fillet { .. } | Tool::Chamfer { .. } | Tool::Stretch { .. } => ToolEvent::Pending,
+            Tool::Trim
+            | Tool::Extend
+            | Tool::Hatch
+            | Tool::Offset { .. }
+            | Tool::Fillet { .. }
+            | Tool::Chamfer { .. }
+            | Tool::Stretch { .. } => ToolEvent::Pending,
         }
     }
 
@@ -245,19 +376,31 @@ impl Tool {
             Tool::Line { last } => *last = None,
             Tool::Circle { center } => *center = None,
             Tool::Arc3 { pts } => pts.clear(),
-            Tool::Ellipse { center, axis_end } => { *center = None; *axis_end = None; }
+            Tool::Ellipse { center, axis_end } => {
+                *center = None;
+                *axis_end = None;
+            }
             Tool::Rectangle { first } => *first = None,
             Tool::Move { base, .. } | Tool::Copy { base, .. } => *base = None,
             Tool::Spline { pts } => pts.clear(),
             Tool::Polyline { pts } => pts.clear(),
             Tool::Polygon { center, .. } => *center = None,
             Tool::Rotate { base, .. } => *base = None,
-            Tool::Scale { base, reference, .. } => { *base = None; *reference = None; }
+            Tool::Scale {
+                base, reference, ..
+            } => {
+                *base = None;
+                *reference = None;
+            }
             Tool::Mirror { first, .. } => *first = None,
             Tool::Offset { source, .. } => *source = None,
             Tool::Fillet { first, .. } => *first = None,
             Tool::Chamfer { first, .. } => *first = None,
-            Tool::Stretch { c1, c2, base, .. } => { *c1 = None; *c2 = None; *base = None; }
+            Tool::Stretch { c1, c2, base, .. } => {
+                *c1 = None;
+                *c2 = None;
+                *base = None;
+            }
             Tool::Text { anchor, .. } => *anchor = None,
             Tool::Trim | Tool::Extend | Tool::Hatch | Tool::Select => {}
         }
@@ -288,37 +431,50 @@ impl Tool {
 
     pub fn preview(&self, cursor: &Point2d) -> Vec<Curve> {
         match self {
-            Tool::Line { last: Some(p) } =>
-                vec![Curve::Line(LineSeg::from_endpoints(*p, *cursor))],
+            Tool::Line { last: Some(p) } => vec![Curve::Line(LineSeg::from_endpoints(*p, *cursor))],
             Tool::Circle { center: Some(c) } => {
                 let d = c.dist_f64(cursor);
                 if d < 1e-9 {
                     vec![]
                 } else {
                     let r = d;
-                    vec![Curve::Arc(CircularArc::new(*c, r, 0.0, std::f64::consts::TAU))]
+                    vec![Curve::Arc(CircularArc::new(
+                        *c,
+                        r,
+                        0.0,
+                        std::f64::consts::TAU,
+                    ))]
                 }
             }
             Tool::Rectangle { first: Some(c0) } => rectangle_curves(c0, cursor),
-            Tool::Ellipse { center: Some(c), axis_end: None } =>
-                vec![Curve::Line(LineSeg::from_endpoints(*c, *cursor))],
-            Tool::Ellipse { center: Some(c), axis_end: Some(a) } =>
-                match ellipse_from_axes(c, a, cursor) {
-                    Some(e) => vec![Curve::Ellipse(e)],
-                    None => vec![Curve::Line(LineSeg::from_endpoints(*c, *a))],
-                },
-            Tool::Arc3 { pts } if pts.len() == 1 =>
-                vec![Curve::Line(LineSeg::from_endpoints(pts[0], *cursor))],
+            Tool::Ellipse {
+                center: Some(c),
+                axis_end: None,
+            } => vec![Curve::Line(LineSeg::from_endpoints(*c, *cursor))],
+            Tool::Ellipse {
+                center: Some(c),
+                axis_end: Some(a),
+            } => match ellipse_from_axes(c, a, cursor) {
+                Some(e) => vec![Curve::Ellipse(e)],
+                None => vec![Curve::Line(LineSeg::from_endpoints(*c, *a))],
+            },
+            Tool::Arc3 { pts } if pts.len() == 1 => {
+                vec![Curve::Line(LineSeg::from_endpoints(pts[0], *cursor))]
+            }
             Tool::Arc3 { pts } if pts.len() == 2 => {
                 match CircularArc::from_three_points(&pts[0], &pts[1], cursor) {
                     Some(a) => vec![Curve::Arc(a)],
                     None => vec![Curve::Line(LineSeg::from_endpoints(pts[1], *cursor))],
                 }
             }
-            Tool::Move { base: Some(b), .. } | Tool::Copy { base: Some(b), .. }
-            | Tool::Rotate { base: Some(b), .. } | Tool::Scale { base: Some(b), .. }
-            | Tool::Mirror { first: Some(b), .. } | Tool::Stretch { base: Some(b), .. } =>
-                vec![Curve::Line(LineSeg::from_endpoints(*b, *cursor))],
+            Tool::Move { base: Some(b), .. }
+            | Tool::Copy { base: Some(b), .. }
+            | Tool::Rotate { base: Some(b), .. }
+            | Tool::Scale { base: Some(b), .. }
+            | Tool::Mirror { first: Some(b), .. }
+            | Tool::Stretch { base: Some(b), .. } => {
+                vec![Curve::Line(LineSeg::from_endpoints(*b, *cursor))]
+            }
             Tool::Spline { pts } => {
                 let mut cv = pts.clone();
                 cv.push(*cursor);
@@ -334,14 +490,17 @@ impl Tool {
             Tool::Polyline { pts } => {
                 let mut curves = Vec::new();
                 for i in 0..pts.len().saturating_sub(1) {
-                    curves.push(Curve::Line(LineSeg::from_endpoints(pts[i], pts[i+1])));
+                    curves.push(Curve::Line(LineSeg::from_endpoints(pts[i], pts[i + 1])));
                 }
                 if let Some(last) = pts.last() {
                     curves.push(Curve::Line(LineSeg::from_endpoints(*last, *cursor)));
                 }
                 curves
             }
-            Tool::Polygon { center: Some(c), sides: Some(n) } => {
+            Tool::Polygon {
+                center: Some(c),
+                sides: Some(n),
+            } => {
                 let cx = c.x;
                 let cy = c.y;
                 let rx = cursor.x;
@@ -354,7 +513,10 @@ impl Tool {
                 let mut verts = Vec::with_capacity(n);
                 for i in 0..n {
                     let angle = start_angle + (i as f64) * std::f64::consts::TAU / (n as f64);
-                    verts.push(Point2d::from_f64(cx + r * angle.cos(), cy + r * angle.sin()));
+                    verts.push(Point2d::from_f64(
+                        cx + r * angle.cos(),
+                        cy + r * angle.sin(),
+                    ));
                 }
                 let mut curves = Vec::new();
                 for i in 0..n {
@@ -386,8 +548,12 @@ impl Tool {
             Tool::Mirror { first, .. } => *first,
             Tool::Stretch { base, c1, .. } => (*base).or(*c1),
             Tool::Text { .. }
-            | Tool::Trim | Tool::Extend | Tool::Hatch
-            | Tool::Offset { .. } | Tool::Fillet { .. } | Tool::Chamfer { .. } => None,
+            | Tool::Trim
+            | Tool::Extend
+            | Tool::Hatch
+            | Tool::Offset { .. }
+            | Tool::Fillet { .. }
+            | Tool::Chamfer { .. } => None,
             Tool::Select => None,
         }
     }
@@ -398,7 +564,7 @@ impl Tool {
                 if pts.len() >= 2 {
                     let mut segments = Vec::new();
                     for i in 0..pts.len() - 1 {
-                        segments.push(Curve::Line(LineSeg::from_endpoints(pts[i], pts[i+1])));
+                        segments.push(Curve::Line(LineSeg::from_endpoints(pts[i], pts[i + 1])));
                     }
                     let poly = PolyCurve::new(segments);
                     *self = Tool::Polyline { pts: Vec::new() };
@@ -423,9 +589,12 @@ impl Tool {
                 if pts.len() >= 2 {
                     let mut segments = Vec::new();
                     for i in 0..pts.len() - 1 {
-                        segments.push(Curve::Line(LineSeg::from_endpoints(pts[i], pts[i+1])));
+                        segments.push(Curve::Line(LineSeg::from_endpoints(pts[i], pts[i + 1])));
                     }
-                    segments.push(Curve::Line(LineSeg::from_endpoints(*pts.last().unwrap(), pts[0])));
+                    segments.push(Curve::Line(LineSeg::from_endpoints(
+                        *pts.last().unwrap(),
+                        pts[0],
+                    )));
                     let poly = PolyCurve::new(segments);
                     *self = Tool::Polyline { pts: Vec::new() };
                     ToolEvent::Create(vec![EntityKind::Curve(Curve::Poly(Box::new(poly)))])
@@ -436,7 +605,9 @@ impl Tool {
             }
             Tool::Spline { pts } => {
                 let mut cv = pts.clone();
-                if cv.len() >= 3 { cv.push(cv[0]); }
+                if cv.len() >= 3 {
+                    cv.push(cv[0]);
+                }
                 let ev = spline_event(&cv);
                 *self = Tool::Spline { pts: Vec::new() };
                 ev
@@ -448,22 +619,35 @@ impl Tool {
 fn spline_event(cv: &[Point2d]) -> ToolEvent {
     match cv.len() {
         0 | 1 => ToolEvent::Pending,
-        2 => ToolEvent::Create(vec![EntityKind::Curve(
-            Curve::Line(LineSeg::from_endpoints(cv[0], cv[1])))]),
-        _ => ToolEvent::Create(vec![EntityKind::Curve(
-            Curve::Nurbs(NurbsCurve::uniform(cv.to_vec())))]),
+        2 => ToolEvent::Create(vec![EntityKind::Curve(Curve::Line(
+            LineSeg::from_endpoints(cv[0], cv[1]),
+        ))]),
+        _ => ToolEvent::Create(vec![EntityKind::Curve(Curve::Nurbs(NurbsCurve::uniform(
+            cv.to_vec(),
+        )))]),
     }
 }
 fn ellipse_from_axes(center: &Point2d, axis_end: &Point2d, p3: &Point2d) -> Option<EllipticalArc> {
     let dx = axis_end.x - center.x;
     let dy = axis_end.y - center.y;
     let semi_major = (dx * dx + dy * dy).sqrt();
-    if semi_major < 1e-9 { return None; }
+    if semi_major < 1e-9 {
+        return None;
+    }
     let rotation = dy.atan2(dx);
     let (nx, ny) = (-rotation.sin(), rotation.cos());
     let semi_minor = ((p3.x - center.x) * nx + (p3.y - center.y) * ny).abs();
-    if semi_minor < 1e-9 { return None; }
-    Some(EllipticalArc::new(*center, semi_major, semi_minor, rotation, 0.0, std::f64::consts::TAU))
+    if semi_minor < 1e-9 {
+        return None;
+    }
+    Some(EllipticalArc::new(
+        *center,
+        semi_major,
+        semi_minor,
+        rotation,
+        0.0,
+        std::f64::consts::TAU,
+    ))
 }
 
 fn rectangle_curves(c0: &Point2d, c1: &Point2d) -> Vec<Curve> {
@@ -471,8 +655,9 @@ fn rectangle_curves(c0: &Point2d, c1: &Point2d) -> Vec<Curve> {
     let (y0, y1) = order(c0.y, c1.y);
     let p = |x: f64, y: f64| Point2d::new(x, y);
     let corners = [p(x0, y0), p(x1, y0), p(x1, y1), p(x0, y1)];
-    (0..4).map(|i| Curve::Line(
-        LineSeg::from_endpoints(corners[i], corners[(i + 1) % 4]))).collect()
+    (0..4)
+        .map(|i| Curve::Line(LineSeg::from_endpoints(corners[i], corners[(i + 1) % 4])))
+        .collect()
 }
 fn closed_polycurve(curves: Vec<Curve>) -> EntityKind {
     EntityKind::Curve(Curve::Poly(Box::new(PolyCurve::new(curves))))
@@ -486,7 +671,9 @@ fn order(a: f64, b: f64) -> (f64, f64) {
 mod tests {
     use super::*;
 
-    fn pt(x: i64, y: i64) -> Point2d { Point2d::from_i64(x, y) }
+    fn pt(x: i64, y: i64) -> Point2d {
+        Point2d::from_i64(x, y)
+    }
 
     #[test]
     fn line_tool_chains_segments() {
@@ -509,7 +696,9 @@ mod tests {
                 assert_eq!(es.len(), 1);
                 if let EntityKind::Curve(Curve::Arc(a)) = &es[0] {
                     assert!((a.radius - 5.0).abs() < 1e-6);
-                } else { panic!() }
+                } else {
+                    panic!()
+                }
             }
             o => panic!("{:?}", o),
         }
@@ -517,7 +706,10 @@ mod tests {
 
     #[test]
     fn ellipse_tool_center_axis_minor() {
-        let mut t = Tool::Ellipse { center: None, axis_end: None };
+        let mut t = Tool::Ellipse {
+            center: None,
+            axis_end: None,
+        };
         assert!(matches!(t.on_point(pt(0, 0)), ToolEvent::Pending));
         assert!(matches!(t.on_point(pt(10, 0)), ToolEvent::Pending));
         match t.on_point(pt(0, 4)) {
@@ -527,11 +719,19 @@ mod tests {
                     assert!((e.semi_major - 10.0).abs() < 1e-6);
                     assert!((e.semi_minor - 4.0).abs() < 1e-6);
                     assert!(e.rotation.abs() < 1e-9);
-                } else { panic!("expected an ellipse, got {:?}", es[0]) }
+                } else {
+                    panic!("expected an ellipse, got {:?}", es[0])
+                }
             }
             o => panic!("{:?}", o),
         }
-        assert!(matches!(t, Tool::Ellipse { center: None, axis_end: None }));
+        assert!(matches!(
+            t,
+            Tool::Ellipse {
+                center: None,
+                axis_end: None
+            }
+        ));
     }
 
     #[test]
@@ -543,7 +743,9 @@ mod tests {
                 assert_eq!(es.len(), 1, "one entity, not four loose lines");
                 if let EntityKind::Curve(Curve::Poly(poly)) = &es[0] {
                     assert_eq!(poly.segments.len(), 4);
-                } else { panic!("expected PolyCurve, got {:?}", es[0]); }
+                } else {
+                    panic!("expected PolyCurve, got {:?}", es[0]);
+                }
             }
             o => panic!("{:?}", o),
         }
@@ -552,12 +754,15 @@ mod tests {
     #[test]
     fn move_tool_emits_translation() {
         let ids = vec![EntityId(1), EntityId(2)];
-        let mut t = Tool::Move { base: None, ids: ids.clone() };
+        let mut t = Tool::Move {
+            base: None,
+            ids: ids.clone(),
+        };
         assert!(matches!(t.on_point(pt(0, 0)), ToolEvent::Pending));
         match t.on_point(pt(10, 5)) {
             ToolEvent::Transform { ids: got, t } => {
                 assert_eq!(got, ids);
-                assert_eq!(t.apply_point(&pt(0,0)), pt(10, 5));
+                assert_eq!(t.apply_point(&pt(0, 0)), pt(10, 5));
             }
             o => panic!("{:?}", o),
         }
@@ -565,7 +770,10 @@ mod tests {
 
     #[test]
     fn copy_tool_emits_copy() {
-        let mut t = Tool::Copy { base: None, ids: vec![EntityId(7)] };
+        let mut t = Tool::Copy {
+            base: None,
+            ids: vec![EntityId(7)],
+        };
         t.on_point(pt(1, 1));
         assert!(matches!(t.on_point(pt(4, 1)), ToolEvent::CopyOf { .. }));
     }
@@ -584,7 +792,9 @@ mod tests {
         let mid = pt(0, 1);
         let end = pt(-1, 0);
 
-        let prev = Tool::Arc3 { pts: vec![start, mid] };
+        let prev = Tool::Arc3 {
+            pts: vec![start, mid],
+        };
         let preview = prev.preview(&end);
         let pa = match preview.as_slice() {
             [Curve::Arc(a)] => *a,
@@ -606,8 +816,11 @@ mod tests {
         assert!((pa.center.to_f64().1 - committed.center.to_f64().1).abs() < 1e-9);
         assert!((pa.start_angle - committed.start_angle).abs() < 1e-9);
         assert!((pa.end_angle - committed.end_angle).abs() < 1e-9);
-        assert!((pa.included_angle() - std::f64::consts::PI).abs() < 1e-6,
-            "expected a 180° arc, got {}", pa.included_angle());
+        assert!(
+            (pa.included_angle() - std::f64::consts::PI).abs() < 1e-6,
+            "expected a 180° arc, got {}",
+            pa.included_angle()
+        );
     }
 
     #[test]
@@ -621,7 +834,10 @@ mod tests {
 
     #[test]
     fn polygon_creates_regular_polygon() {
-        let mut t = Tool::Polygon { center: None, sides: Some(5) };
+        let mut t = Tool::Polygon {
+            center: None,
+            sides: Some(5),
+        };
         assert!(matches!(t.on_point(pt(0, 0)), ToolEvent::Pending));
         match t.on_point(pt(10, 0)) {
             ToolEvent::Create(es) => {
@@ -629,10 +845,16 @@ mod tests {
                 if let EntityKind::Curve(Curve::Poly(poly)) = &es[0] {
                     assert_eq!(poly.segments.len(), 5);
                     if let Curve::Line(l) = &poly.segments[0] {
-                        assert!((l.p0.x - 10.0).abs() < 1e-6 && l.p0.y.abs() < 1e-6,
-                            "first vertex on the cursor ray");
-                    } else { panic!("expected Line segment"); }
-                } else { panic!("expected PolyCurve, got {:?}", es[0]); }
+                        assert!(
+                            (l.p0.x - 10.0).abs() < 1e-6 && l.p0.y.abs() < 1e-6,
+                            "first vertex on the cursor ray"
+                        );
+                    } else {
+                        panic!("expected Line segment");
+                    }
+                } else {
+                    panic!("expected PolyCurve, got {:?}", es[0]);
+                }
             }
             o => panic!("{:?}", o),
         }
@@ -641,7 +863,14 @@ mod tests {
     #[test]
     fn cv_spline_commits_to_editable_nurbs() {
         let mut t = Tool::Spline { pts: vec![] };
-        let cvs = [pt(0, 0), pt(5, 5), pt(10, -5), pt(15, 0), pt(20, 6), pt(25, 0)];
+        let cvs = [
+            pt(0, 0),
+            pt(5, 5),
+            pt(10, -5),
+            pt(15, 0),
+            pt(20, 6),
+            pt(25, 0),
+        ];
         for p in cvs {
             assert!(matches!(t.on_point(p), ToolEvent::Pending));
         }
@@ -665,12 +894,19 @@ mod tests {
         let t = Tool::Spline { pts: pts.clone() };
         let commit_segs = eiderflat_geometry::cv_spline_segments(&pts);
         let cursor = Point2d::from_i64(99, -40);
-        let preview_segs: Vec<_> = t.preview(&cursor).into_iter()
-            .filter_map(|c| match c { Curve::Rational(rb) => Some(rb), _ => None })
+        let preview_segs: Vec<_> = t
+            .preview(&cursor)
+            .into_iter()
+            .filter_map(|c| match c {
+                Curve::Rational(rb) => Some(rb),
+                _ => None,
+            })
             .collect();
 
-        assert_eq!(preview_segs, commit_segs,
-            "preview spline must match the committed geometry (cursor excluded)");
+        assert_eq!(
+            preview_segs, commit_segs,
+            "preview spline must match the committed geometry (cursor excluded)"
+        );
     }
 
     #[test]
@@ -688,7 +924,7 @@ mod tests {
         assert!(matches!(t.on_point(pt(0, 0)), ToolEvent::Pending));
         assert!(matches!(t.on_point(pt(5, 5)), ToolEvent::Pending));
         assert!(matches!(t.on_point(pt(10, 0)), ToolEvent::Pending));
-        
+
         match t.commit() {
             ToolEvent::Create(es) => {
                 assert_eq!(es.len(), 1);
@@ -708,7 +944,7 @@ mod tests {
         assert!(matches!(t.on_point(pt(0, 0)), ToolEvent::Pending));
         assert!(matches!(t.on_point(pt(5, 5)), ToolEvent::Pending));
         assert!(matches!(t.on_point(pt(10, 0)), ToolEvent::Pending));
-        
+
         // Close and Commit
         match t.close_and_commit() {
             ToolEvent::Create(es) => {

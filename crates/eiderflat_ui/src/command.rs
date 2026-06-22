@@ -29,7 +29,9 @@ pub enum CoordInput {
 
 pub fn parse_coordinate(input: &str) -> Option<CoordInput> {
     let s = input.trim();
-    if s.is_empty() { return None; }
+    if s.is_empty() {
+        return None;
+    }
     let (relative, body) = match s.strip_prefix('@') {
         Some(rest) => (true, rest.trim()),
         None => (false, s),
@@ -57,61 +59,103 @@ pub fn parse_coordinate(input: &str) -> Option<CoordInput> {
 
 pub fn parse_command(input: &str) -> Command {
     let trimmed = input.trim();
-    if trimmed.is_empty() { return Command::Cancel; }
+    if trimmed.is_empty() {
+        return Command::Cancel;
+    }
 
     let mut parts = trimmed.split_whitespace();
     let verb = parts.next().unwrap_or("").to_ascii_uppercase();
     let rest: Vec<&str> = parts.collect();
 
     match verb.as_str() {
-        "LINE" | "L"            => Command::Activate(Tool::Line { last: None }),
-        "CIRCLE" | "C"          => Command::Activate(Tool::Circle { center: None }),
-        "ARC" | "A"             => Command::Activate(Tool::Arc3 { pts: vec![] }),
-        "ELLIPSE" | "EL"        => Command::Activate(Tool::Ellipse { center: None, axis_end: None }),
-        "RECTANGLE" | "REC" | "RECTANG"
-                                => Command::Activate(Tool::Rectangle { first: None }),
-        "MOVE" | "M"            => Command::Activate(Tool::Move { base: None, ids: vec![] }),
-        "COPY" | "CO" | "CP"    => Command::Activate(Tool::Copy { base: None, ids: vec![] }),
-        "POLYGON" | "POL"       => {
-            let sides = rest.first()
+        "LINE" | "L" => Command::Activate(Tool::Line { last: None }),
+        "CIRCLE" | "C" => Command::Activate(Tool::Circle { center: None }),
+        "ARC" | "A" => Command::Activate(Tool::Arc3 { pts: vec![] }),
+        "ELLIPSE" | "EL" => Command::Activate(Tool::Ellipse {
+            center: None,
+            axis_end: None,
+        }),
+        "RECTANGLE" | "REC" | "RECTANG" => Command::Activate(Tool::Rectangle { first: None }),
+        "MOVE" | "M" => Command::Activate(Tool::Move {
+            base: None,
+            ids: vec![],
+        }),
+        "COPY" | "CO" | "CP" => Command::Activate(Tool::Copy {
+            base: None,
+            ids: vec![],
+        }),
+        "POLYGON" | "POL" => {
+            let sides = rest
+                .first()
                 .and_then(|s| s.parse::<usize>().ok())
                 .filter(|n| *n >= 3);
-            Command::Activate(Tool::Polygon { center: None, sides })
+            Command::Activate(Tool::Polygon {
+                center: None,
+                sides,
+            })
         }
-        "SPLINE" | "SPL"        => Command::Activate(Tool::Spline { pts: vec![] }),
-        "POLYLINE" | "PLINE" | "PL"
-                                => Command::Activate(Tool::Polyline { pts: vec![] }),
-        "SELECT" | "SE"         => Command::Activate(Tool::Select),
-        "TEXT" | "T" | "DT" | "DTEXT" | "MTEXT" | "MT"
-                                => Command::Activate(Tool::Text { anchor: None, height: 2.5 }),
-        "ROTATE" | "RO"         => Command::Activate(Tool::Rotate { base: None, ids: vec![] }),
-        "SCALE" | "SC"          => Command::Activate(Tool::Scale { base: None, reference: None, ids: vec![] }),
-        "MIRROR" | "MI"         => Command::Activate(Tool::Mirror { first: None, ids: vec![] }),
-        "TRIM" | "TR"           => Command::Activate(Tool::Trim),
-        "EXTEND" | "EX"         => Command::Activate(Tool::Extend),
-        "OFFSET" | "O"          => {
-            let dist = rest.first().and_then(|s| s.parse::<f64>().ok()).unwrap_or(1.0);
+        "SPLINE" | "SPL" => Command::Activate(Tool::Spline { pts: vec![] }),
+        "POLYLINE" | "PLINE" | "PL" => Command::Activate(Tool::Polyline { pts: vec![] }),
+        "SELECT" | "SE" => Command::Activate(Tool::Select),
+        "TEXT" | "T" | "DT" | "DTEXT" | "MTEXT" | "MT" => Command::Activate(Tool::Text {
+            anchor: None,
+            height: 2.5,
+        }),
+        "ROTATE" | "RO" => Command::Activate(Tool::Rotate {
+            base: None,
+            ids: vec![],
+        }),
+        "SCALE" | "SC" => Command::Activate(Tool::Scale {
+            base: None,
+            reference: None,
+            ids: vec![],
+        }),
+        "MIRROR" | "MI" => Command::Activate(Tool::Mirror {
+            first: None,
+            ids: vec![],
+        }),
+        "TRIM" | "TR" => Command::Activate(Tool::Trim),
+        "EXTEND" | "EX" => Command::Activate(Tool::Extend),
+        "OFFSET" | "O" => {
+            let dist = rest
+                .first()
+                .and_then(|s| s.parse::<f64>().ok())
+                .unwrap_or(1.0);
             Command::Activate(Tool::Offset { dist, source: None })
         }
-        "FILLET" | "F"          => {
-            let radius = rest.first().and_then(|s| s.parse::<f64>().ok()).unwrap_or(1.0);
-            Command::Activate(Tool::Fillet { radius, first: None })
+        "FILLET" | "F" => {
+            let radius = rest
+                .first()
+                .and_then(|s| s.parse::<f64>().ok())
+                .unwrap_or(1.0);
+            Command::Activate(Tool::Fillet {
+                radius,
+                first: None,
+            })
         }
-        "CHAMFER" | "CHA"       => {
-            let dist = rest.first().and_then(|s| s.parse::<f64>().ok()).unwrap_or(1.0);
+        "CHAMFER" | "CHA" => {
+            let dist = rest
+                .first()
+                .and_then(|s| s.parse::<f64>().ok())
+                .unwrap_or(1.0);
             Command::Activate(Tool::Chamfer { dist, first: None })
         }
-        "STRETCH" | "S"         => Command::Activate(Tool::Stretch { c1: None, c2: None, base: None, ids: vec![] }),
-        "ERASE" | "E" | "DELETE"=> Command::Erase,
+        "STRETCH" | "S" => Command::Activate(Tool::Stretch {
+            c1: None,
+            c2: None,
+            base: None,
+            ids: vec![],
+        }),
+        "ERASE" | "E" | "DELETE" => Command::Erase,
         "DISJOINT" | "EXPLODE" | "X" => Command::Explode,
-        "JOIN" | "J"            => Command::Join,
-        "HATCH" | "H"           => Command::Hatch,
-        "UNDO" | "U"            => Command::Undo,
-        "REDO"                  => Command::Redo,
-        "ALL"                   => Command::SelectAll,
-        "ZOOM" | "Z"            => parse_zoom(&rest),
-        "LAYER" | "LA"          => parse_layer(&rest),
-        _                       => Command::Unknown(trimmed.to_string()),
+        "JOIN" | "J" => Command::Join,
+        "HATCH" | "H" => Command::Hatch,
+        "UNDO" | "U" => Command::Undo,
+        "REDO" => Command::Redo,
+        "ALL" => Command::SelectAll,
+        "ZOOM" | "Z" => parse_zoom(&rest),
+        "LAYER" | "LA" => parse_layer(&rest),
+        _ => Command::Unknown(trimmed.to_string()),
     }
 }
 
@@ -129,8 +173,9 @@ fn parse_zoom(rest: &[&str]) -> Command {
 fn parse_layer(rest: &[&str]) -> Command {
     match (rest.first().map(|s| s.to_ascii_uppercase()), rest.get(1)) {
         (Some(s), Some(name)) if s == "S" || s == "SET" => Command::LayerSet((*name).to_string()),
-        (Some(s), Some(name)) if s == "N" || s == "NEW" || s == "M" || s == "MAKE"
-            => Command::LayerNew((*name).to_string()),
+        (Some(s), Some(name)) if s == "N" || s == "NEW" || s == "M" || s == "MAKE" => {
+            Command::LayerNew((*name).to_string())
+        }
         _ => Command::Unknown("LAYER".into()),
     }
 }
@@ -141,23 +186,59 @@ mod tests {
 
     #[test]
     fn parses_drawing_commands() {
-        assert!(matches!(parse_command("LINE"), Command::Activate(Tool::Line { .. })));
-        assert!(matches!(parse_command("l"), Command::Activate(Tool::Line { .. })));
-        assert!(matches!(parse_command("CIRCLE"), Command::Activate(Tool::Circle { .. })));
-        assert!(matches!(parse_command("rec"), Command::Activate(Tool::Rectangle { .. })));
-        assert!(matches!(parse_command("M"), Command::Activate(Tool::Move { .. })));
-        assert!(matches!(parse_command("POLYGON"), Command::Activate(Tool::Polygon { sides: None, .. })));
-        assert!(matches!(parse_command("POL 6"), Command::Activate(Tool::Polygon { sides: Some(6), .. })));
-        assert!(matches!(parse_command("SPLINE"), Command::Activate(Tool::Spline { .. })));
-        assert!(matches!(parse_command("spl"), Command::Activate(Tool::Spline { .. })));
-        assert!(matches!(parse_command("POLYLINE"), Command::Activate(Tool::Polyline { .. })));
-        assert!(matches!(parse_command("pl"), Command::Activate(Tool::Polyline { .. })));
+        assert!(matches!(
+            parse_command("LINE"),
+            Command::Activate(Tool::Line { .. })
+        ));
+        assert!(matches!(
+            parse_command("l"),
+            Command::Activate(Tool::Line { .. })
+        ));
+        assert!(matches!(
+            parse_command("CIRCLE"),
+            Command::Activate(Tool::Circle { .. })
+        ));
+        assert!(matches!(
+            parse_command("rec"),
+            Command::Activate(Tool::Rectangle { .. })
+        ));
+        assert!(matches!(
+            parse_command("M"),
+            Command::Activate(Tool::Move { .. })
+        ));
+        assert!(matches!(
+            parse_command("POLYGON"),
+            Command::Activate(Tool::Polygon { sides: None, .. })
+        ));
+        assert!(matches!(
+            parse_command("POL 6"),
+            Command::Activate(Tool::Polygon { sides: Some(6), .. })
+        ));
+        assert!(matches!(
+            parse_command("SPLINE"),
+            Command::Activate(Tool::Spline { .. })
+        ));
+        assert!(matches!(
+            parse_command("spl"),
+            Command::Activate(Tool::Spline { .. })
+        ));
+        assert!(matches!(
+            parse_command("POLYLINE"),
+            Command::Activate(Tool::Polyline { .. })
+        ));
+        assert!(matches!(
+            parse_command("pl"),
+            Command::Activate(Tool::Polyline { .. })
+        ));
     }
 
     #[test]
     fn parses_zoom() {
         assert!(matches!(parse_command("ZOOM E"), Command::ZoomExtents));
-        assert!(matches!(parse_command("zoom extents"), Command::ZoomExtents));
+        assert!(matches!(
+            parse_command("zoom extents"),
+            Command::ZoomExtents
+        ));
         assert!(matches!(parse_command("Z 2.5"), Command::ZoomScale(s) if (s - 2.5).abs() < 1e-9));
         assert!(matches!(parse_command("ZOOM"), Command::ZoomExtents));
     }
@@ -170,12 +251,36 @@ mod tests {
 
     #[test]
     fn parses_coordinates() {
-        assert_eq!(parse_coordinate("10,20"), Some(CoordInput::Absolute(10.0, 20.0)));
-        assert_eq!(parse_coordinate("  3.5 , -4 "), Some(CoordInput::Absolute(3.5, -4.0)));
-        assert_eq!(parse_coordinate("@10,20"), Some(CoordInput::Relative(10.0, 20.0)));
-        assert_eq!(parse_coordinate("@-2.5,0"), Some(CoordInput::Relative(-2.5, 0.0)));
-        assert_eq!(parse_coordinate("5<90"), Some(CoordInput::PolarAbsolute { dist: 5.0, angle_deg: 90.0 }));
-        assert_eq!(parse_coordinate("@12<45"), Some(CoordInput::PolarRelative { dist: 12.0, angle_deg: 45.0 }));
+        assert_eq!(
+            parse_coordinate("10,20"),
+            Some(CoordInput::Absolute(10.0, 20.0))
+        );
+        assert_eq!(
+            parse_coordinate("  3.5 , -4 "),
+            Some(CoordInput::Absolute(3.5, -4.0))
+        );
+        assert_eq!(
+            parse_coordinate("@10,20"),
+            Some(CoordInput::Relative(10.0, 20.0))
+        );
+        assert_eq!(
+            parse_coordinate("@-2.5,0"),
+            Some(CoordInput::Relative(-2.5, 0.0))
+        );
+        assert_eq!(
+            parse_coordinate("5<90"),
+            Some(CoordInput::PolarAbsolute {
+                dist: 5.0,
+                angle_deg: 90.0
+            })
+        );
+        assert_eq!(
+            parse_coordinate("@12<45"),
+            Some(CoordInput::PolarRelative {
+                dist: 12.0,
+                angle_deg: 45.0
+            })
+        );
         assert_eq!(parse_coordinate("10"), None);
         assert_eq!(parse_coordinate("LINE"), None);
         assert_eq!(parse_coordinate(""), None);

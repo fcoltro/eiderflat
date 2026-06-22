@@ -1,6 +1,6 @@
-use eiderflat_boolean::{intersection, union, Region};
+use eiderflat_boolean::{Region, intersection, union};
 use eiderflat_document::{Document, Entity, EntityKind, HatchPattern};
-use eiderflat_geometry::{tessellate_curve, Curve, CurveSegment, LineSeg, Point2d};
+use eiderflat_geometry::{Curve, CurveSegment, LineSeg, Point2d, tessellate_curve};
 use std::collections::HashMap;
 
 const TAU: f64 = std::f64::consts::TAU;
@@ -127,7 +127,11 @@ fn clip_to_region(
     out
 }
 
-pub fn pattern_lines(boundary: &[Curve], holes: &[Vec<Curve>], pattern: HatchPattern) -> Vec<(Point2d, Point2d)> {
+pub fn pattern_lines(
+    boundary: &[Curve],
+    holes: &[Vec<Curve>],
+    pattern: HatchPattern,
+) -> Vec<(Point2d, Point2d)> {
     let (angles, spacing): (Vec<f64>, f64) = match pattern {
         HatchPattern::Lines { angle_deg, spacing } => (vec![angle_deg], spacing),
         HatchPattern::Cross { angle_deg, spacing } => (vec![angle_deg, angle_deg + 90.0], spacing),
@@ -165,7 +169,11 @@ pub fn pattern_lines(boundary: &[Curve], holes: &[Vec<Curve>], pattern: HatchPat
     out
 }
 
-pub fn pattern_dots(boundary: &[Curve], holes: &[Vec<Curve>], pattern: HatchPattern) -> Vec<Point2d> {
+pub fn pattern_dots(
+    boundary: &[Curve],
+    holes: &[Vec<Curve>],
+    pattern: HatchPattern,
+) -> Vec<Point2d> {
     let spacing = match pattern {
         HatchPattern::Dots { spacing } => spacing,
         _ => return Vec::new(),
@@ -626,9 +634,11 @@ fn split_at_intersections(segs: Vec<(P, P)>) -> Vec<(P, P)> {
                 continue;
             }
             if let Some((t, _)) = seg_intersect(a, b, c, d)
-                && t > 1e-9 && t < 1.0 - 1e-9 {
-                    ts.push(t);
-                }
+                && t > 1e-9
+                && t < 1.0 - 1e-9
+            {
+                ts.push(t);
+            }
         }
         ts.sort_by(|x, y| x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal));
         ts.dedup_by(|x, y| (*x - *y).abs() < 1e-9);

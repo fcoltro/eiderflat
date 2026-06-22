@@ -1,5 +1,5 @@
-use crate::point::{Point2d, BoundingBox};
 use crate::curve::CurveSegment;
+use crate::point::{BoundingBox, Point2d};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct CubicBezier {
@@ -10,7 +10,6 @@ pub struct CubicBezier {
 }
 
 impl CubicBezier {
-
     pub fn new(p0: Point2d, p1: Point2d, p2: Point2d, p3: Point2d) -> Self {
         CubicBezier { p0, p1, p2, p3 }
     }
@@ -31,11 +30,21 @@ impl CubicBezier {
         // Level 2
         let r0 = lerp(&q0, &q1);
         let r1 = lerp(&q1, &q2);
-        let s  = lerp(&r0, &r1);
+        let s = lerp(&r0, &r1);
 
         (
-            CubicBezier { p0: self.p0, p1: q0, p2: r0, p3: s },
-            CubicBezier { p0: s, p1: r1, p2: q2, p3: self.p3 },
+            CubicBezier {
+                p0: self.p0,
+                p1: q0,
+                p2: r0,
+                p3: s,
+            },
+            CubicBezier {
+                p0: s,
+                p1: r1,
+                p2: q2,
+                p3: self.p3,
+            },
         )
     }
 
@@ -47,11 +56,12 @@ impl CubicBezier {
         let q4 = self.p3;
         [q0, q1, q2, q3, q4]
     }
-
 }
 
 impl CurveSegment for CubicBezier {
-    fn domain(&self) -> (f64, f64) { (0.0, 1.0) }
+    fn domain(&self) -> (f64, f64) {
+        (0.0, 1.0)
+    }
 
     fn evaluate_f64(&self, t: f64) -> (f64, f64) {
         let (x0, y0) = self.p0.to_f64();
@@ -74,16 +84,20 @@ impl CurveSegment for CubicBezier {
     fn bounding_box(&self) -> BoundingBox {
         let (x0, y0) = self.p0.to_f64();
         let (x3, y3) = self.p3.to_f64();
-        let mut xmin = x0.min(x3); let mut xmax = x0.max(x3);
-        let mut ymin = y0.min(y3); let mut ymax = y0.max(y3);
+        let mut xmin = x0.min(x3);
+        let mut xmax = x0.max(x3);
+        let mut ymin = y0.min(y3);
+        let mut ymax = y0.max(y3);
 
         for &t in &deriv_roots(self.p0.x, self.p1.x, self.p2.x, self.p3.x) {
             let (x, _) = self.evaluate_f64(t);
-            xmin = xmin.min(x); xmax = xmax.max(x);
+            xmin = xmin.min(x);
+            xmax = xmax.max(x);
         }
         for &t in &deriv_roots(self.p0.y, self.p1.y, self.p2.y, self.p3.y) {
             let (_, y) = self.evaluate_f64(t);
-            ymin = ymin.min(y); ymax = ymax.max(y);
+            ymin = ymin.min(y);
+            ymax = ymax.max(y);
         }
         BoundingBox::from_corners(xmin, ymin, xmax, ymax)
     }
@@ -105,7 +119,13 @@ impl CurveSegment for CubicBezier {
 
     fn arc_length(&self) -> f64 {
         const NODES: [f64; 5] = [0.046910077, 0.230765346, 0.5, 0.769234654, 0.953089923];
-        const WEIGHTS: [f64; 5] = [0.118463442, 0.239314335, 0.284444444, 0.239314335, 0.118463442];
+        const WEIGHTS: [f64; 5] = [
+            0.118463442,
+            0.239314335,
+            0.284444444,
+            0.239314335,
+            0.118463442,
+        ];
         NODES.iter().zip(WEIGHTS.iter()).fold(0.0, |acc, (&t, &w)| {
             let (dx, dy) = self.tangent_f64(t);
             acc + w * (dx * dx + dy * dy).sqrt()
@@ -118,9 +138,15 @@ fn deriv_roots(c0: f64, c1: f64, c2: f64, c3: f64) -> Vec<f64> {
     let b = 2.0 * c0 - 4.0 * c1 + 2.0 * c2;
     let c = c1 - c0;
     let mut out = Vec::new();
-    let mut push = |t: f64| if t > 0.0 && t < 1.0 { out.push(t); };
+    let mut push = |t: f64| {
+        if t > 0.0 && t < 1.0 {
+            out.push(t);
+        }
+    };
     if a.abs() < 1e-12 {
-        if b.abs() > 1e-12 { push(-c / b); }
+        if b.abs() > 1e-12 {
+            push(-c / b);
+        }
     } else {
         let disc = b * b - 4.0 * a * c;
         if disc >= 0.0 {
@@ -136,7 +162,9 @@ fn deriv_roots(c0: f64, c1: f64, c2: f64, c3: f64) -> Vec<f64> {
 mod tests {
     use super::*;
 
-    fn pt(x: i64, y: i64) -> Point2d { Point2d::from_i64(x, y) }
+    fn pt(x: i64, y: i64) -> Point2d {
+        Point2d::from_i64(x, y)
+    }
 
     #[test]
     fn evaluate_endpoints() {
@@ -180,8 +208,14 @@ mod tests {
         for i in 0..=20 {
             let t = i as f64 / 20.0;
             let (x, y) = bz.evaluate_f64(t);
-            assert!(bb.contains_point_f64(x, y),
-                "t={}: ({},{}) outside {:?}", t, x, y, bb);
+            assert!(
+                bb.contains_point_f64(x, y),
+                "t={}: ({},{}) outside {:?}",
+                t,
+                x,
+                y,
+                bb
+            );
         }
     }
 
@@ -193,6 +227,10 @@ mod tests {
             Point2d::new(8.0 / 3.0, 0.0),
             Point2d::from_i64(4, 0),
         );
-        assert!((bz.arc_length() - 4.0).abs() < 1e-5, "length={}", bz.arc_length());
+        assert!(
+            (bz.arc_length() - 4.0).abs() < 1e-5,
+            "length={}",
+            bz.arc_length()
+        );
     }
 }

@@ -1,5 +1,5 @@
 use eiderflat_geometry::{Curve, CurveSegment, Point2d, tessellate_curve};
-use robust::{orient2d, Coord};
+use robust::{Coord, orient2d};
 
 #[derive(Clone, Debug)]
 pub struct Region {
@@ -9,7 +9,10 @@ pub struct Region {
 
 impl Region {
     pub fn new(outer: Vec<Curve>) -> Self {
-        Region { outer, holes: Vec::new() }
+        Region {
+            outer,
+            holes: Vec::new(),
+        }
     }
 
     pub fn with_holes(outer: Vec<Curve>, holes: Vec<Vec<Curve>>) -> Self {
@@ -18,7 +21,11 @@ impl Region {
 
     pub fn signed_area_f64(&self) -> f64 {
         boundary_signed_area(&self.outer)
-            - self.holes.iter().map(|h| boundary_signed_area(h).abs()).sum::<f64>()
+            - self
+                .holes
+                .iter()
+                .map(|h| boundary_signed_area(h).abs())
+                .sum::<f64>()
     }
 
     pub fn winding_number(&self, px: f64, py: f64) -> i32 {
@@ -58,7 +65,9 @@ fn winding_number_boundary(boundary: &[Curve], px: f64, py: f64) -> i32 {
             let (x1, y1) = (w[0].x, w[0].y);
             let (x2, y2) = (w[1].x, w[1].y);
             if y1 <= py {
-                if y2 > py && cross_sign(x1, y1, x2, y2, px, py) > 0.0 { wn += 1; }
+                if y2 > py && cross_sign(x1, y1, x2, y2, px, py) > 0.0 {
+                    wn += 1;
+                }
             } else if y2 <= py && cross_sign(x1, y1, x2, y2, px, py) < 0.0 {
                 wn -= 1;
             }
@@ -78,14 +87,26 @@ fn cross_sign(x1: f64, y1: f64, x2: f64, y2: f64, px: f64, py: f64) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use eiderflat_geometry::{LineSeg, CircularArc, Point2d, Curve};
+    use eiderflat_geometry::{CircularArc, Curve, LineSeg, Point2d};
 
     fn square_region() -> Region {
         Region::new(vec![
-            Curve::Line(LineSeg::from_endpoints(Point2d::from_i64(0,0), Point2d::from_i64(2,0))),
-            Curve::Line(LineSeg::from_endpoints(Point2d::from_i64(2,0), Point2d::from_i64(2,2))),
-            Curve::Line(LineSeg::from_endpoints(Point2d::from_i64(2,2), Point2d::from_i64(0,2))),
-            Curve::Line(LineSeg::from_endpoints(Point2d::from_i64(0,2), Point2d::from_i64(0,0))),
+            Curve::Line(LineSeg::from_endpoints(
+                Point2d::from_i64(0, 0),
+                Point2d::from_i64(2, 0),
+            )),
+            Curve::Line(LineSeg::from_endpoints(
+                Point2d::from_i64(2, 0),
+                Point2d::from_i64(2, 2),
+            )),
+            Curve::Line(LineSeg::from_endpoints(
+                Point2d::from_i64(2, 2),
+                Point2d::from_i64(0, 2),
+            )),
+            Curve::Line(LineSeg::from_endpoints(
+                Point2d::from_i64(0, 2),
+                Point2d::from_i64(0, 0),
+            )),
         ])
     }
 
@@ -105,17 +126,28 @@ mod tests {
     fn signed_area_positive_ccw() {
         let r = square_region();
         let area = r.signed_area_f64();
-        assert!(area > 0.0, "CCW boundary should have positive area, got {}", area);
+        assert!(
+            area > 0.0,
+            "CCW boundary should have positive area, got {}",
+            area
+        );
         assert!((area - 4.0).abs() < 0.1, "area≈{}", area);
     }
 
     #[test]
     fn circle_region_area_and_classification() {
         let r = Region::new(vec![Curve::Arc(CircularArc::new(
-            Point2d::from_i64(0, 0), 3.0, 0.0, std::f64::consts::TAU))]);
+            Point2d::from_i64(0, 0),
+            3.0,
+            0.0,
+            std::f64::consts::TAU,
+        ))]);
         let area = r.signed_area_f64();
         let expected = std::f64::consts::PI * 9.0;
-        assert!((area - expected).abs() < 1e-2, "circle area ≈ {expected}, got {area}");
+        assert!(
+            (area - expected).abs() < 1e-2,
+            "circle area ≈ {expected}, got {area}"
+        );
         assert!(r.contains_point(0.0, 0.0), "centre is inside");
         assert!(r.contains_point(2.9, 0.0), "just inside the rim");
         assert!(!r.contains_point(3.1, 0.0), "just outside the rim");
@@ -125,10 +157,22 @@ mod tests {
     #[test]
     fn rotated_diamond_classification_uses_robust_orientation() {
         let d = Region::new(vec![
-            Curve::Line(LineSeg::from_endpoints(Point2d::from_i64(3, 0), Point2d::from_i64(0, 3))),
-            Curve::Line(LineSeg::from_endpoints(Point2d::from_i64(0, 3), Point2d::from_i64(-3, 0))),
-            Curve::Line(LineSeg::from_endpoints(Point2d::from_i64(-3, 0), Point2d::from_i64(0, -3))),
-            Curve::Line(LineSeg::from_endpoints(Point2d::from_i64(0, -3), Point2d::from_i64(3, 0))),
+            Curve::Line(LineSeg::from_endpoints(
+                Point2d::from_i64(3, 0),
+                Point2d::from_i64(0, 3),
+            )),
+            Curve::Line(LineSeg::from_endpoints(
+                Point2d::from_i64(0, 3),
+                Point2d::from_i64(-3, 0),
+            )),
+            Curve::Line(LineSeg::from_endpoints(
+                Point2d::from_i64(-3, 0),
+                Point2d::from_i64(0, -3),
+            )),
+            Curve::Line(LineSeg::from_endpoints(
+                Point2d::from_i64(0, -3),
+                Point2d::from_i64(3, 0),
+            )),
         ]);
         assert!(d.contains_point(0.0, 0.0), "centre inside");
         assert!(d.contains_point(1.4, 1.4), "just inside the x+y=3 edge");

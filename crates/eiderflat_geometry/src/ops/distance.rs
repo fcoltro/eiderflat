@@ -21,13 +21,20 @@ pub fn project_point_onto_curve(curve: &Curve, px: f64, py: f64) -> ProjectionRe
             let dx = bx - ax;
             let dy = by - ay;
             let len_sq = dx * dx + dy * dy;
-            let t = if len_sq < 1e-20 { 0.0 } else {
+            let t = if len_sq < 1e-20 {
+                0.0
+            } else {
                 ((px - ax) * dx + (py - ay) * dy) / len_sq
-            }.clamp(0.0, 1.0);
+            }
+            .clamp(0.0, 1.0);
             let qx = ax + t * dx;
             let qy = ay + t * dy;
             let d = ((px - qx).powi(2) + (py - qy).powi(2)).sqrt();
-            return ProjectionResult { point: (qx, qy), t, distance: d };
+            return ProjectionResult {
+                point: (qx, qy),
+                t,
+                distance: d,
+            };
         }
         Arc(a) => {
             let (cx, cy) = a.center.to_f64();
@@ -38,7 +45,11 @@ pub fn project_point_onto_curve(curve: &Curve, px: f64, py: f64) -> ProjectionRe
             let qx = cx + r * angle_clamped.cos();
             let qy = cy + r * angle_clamped.sin();
             let d = ((px - qx).powi(2) + (py - qy).powi(2)).sqrt();
-            return ProjectionResult { point: (qx, qy), t: angle_clamped, distance: d };
+            return ProjectionResult {
+                point: (qx, qy),
+                t: angle_clamped,
+                distance: d,
+            };
         }
         Bezier(b) => {
             let (x0, y0) = b.p0.to_f64();
@@ -47,8 +58,10 @@ pub fn project_point_onto_curve(curve: &Curve, px: f64, py: f64) -> ProjectionRe
             let (x3, y3) = b.p3.to_f64();
             let ev = move |t: f64| {
                 let u = 1.0 - t;
-                (u*u*u*x0 + 3.0*u*u*t*x1 + 3.0*u*t*t*x2 + t*t*t*x3,
-                 u*u*u*y0 + 3.0*u*u*t*y1 + 3.0*u*t*t*y2 + t*t*t*y3)
+                (
+                    u * u * u * x0 + 3.0 * u * u * t * x1 + 3.0 * u * t * t * x2 + t * t * t * x3,
+                    u * u * u * y0 + 3.0 * u * u * t * y1 + 3.0 * u * t * t * y2 + t * t * t * y3,
+                )
             };
             return golden_section_projection_fn(&ev, (0.0, 1.0), px, py, 32);
         }
@@ -62,14 +75,22 @@ pub fn project_point_onto_curve(curve: &Curve, px: f64, py: f64) -> ProjectionRe
 fn clamp_angle(angle: f64, start: f64, end: f64) -> f64 {
     let pi2 = 2.0 * std::f64::consts::PI;
     let mut a = angle - start;
-    while a < 0.0   { a += pi2; }
-    while a > pi2   { a -= pi2; }
+    while a < 0.0 {
+        a += pi2;
+    }
+    while a > pi2 {
+        a -= pi2;
+    }
     let span = {
         let mut s = end - start;
-        while s <= 0.0 { s += pi2; }
+        while s <= 0.0 {
+            s += pi2;
+        }
         s
     };
-    if a <= span { start + a } else {
+    if a <= span {
+        start + a
+    } else {
         // Closest endpoint
         let d_start = a.min(pi2 - a);
         let d_end = a - span;
@@ -80,7 +101,8 @@ fn clamp_angle(angle: f64, start: f64, end: f64) -> f64 {
 fn golden_section_projection_fn(
     ev: &dyn Fn(f64) -> (f64, f64),
     domain: (f64, f64),
-    px: f64, py: f64,
+    px: f64,
+    py: f64,
     samples: usize,
 ) -> ProjectionResult {
     let (t0, t1) = domain;
@@ -95,7 +117,10 @@ fn golden_section_projection_fn(
     for i in 0..=samples {
         let t = t0 + i as f64 * dt;
         let d = dist_sq(t);
-        if d < best_d { best_d = d; best_t = t; }
+        if d < best_d {
+            best_d = d;
+            best_t = t;
+        }
     }
 
     let mut a = (best_t - dt).max(t0);
@@ -104,13 +129,23 @@ fn golden_section_projection_fn(
     for _ in 0..50 {
         let c = b - phi * (b - a);
         let d = a + phi * (b - a);
-        if dist_sq(c) < dist_sq(d) { b = d; } else { a = c; }
-        if (b - a).abs() < 1e-12 { break; }
+        if dist_sq(c) < dist_sq(d) {
+            b = d;
+        } else {
+            a = c;
+        }
+        if (b - a).abs() < 1e-12 {
+            break;
+        }
     }
     let t_opt = (a + b) / 2.0;
     let (qx, qy) = ev(t_opt);
     let d = ((px - qx).powi(2) + (py - qy).powi(2)).sqrt();
-    ProjectionResult { point: (qx, qy), t: t_opt, distance: d }
+    ProjectionResult {
+        point: (qx, qy),
+        t: t_opt,
+        distance: d,
+    }
 }
 
 pub fn curve_to_curve_distance(c1: &Curve, c2: &Curve) -> f64 {
@@ -122,13 +157,17 @@ pub fn curve_to_curve_distance(c1: &Curve, c2: &Curve) -> f64 {
         let t = t0_1 + (t1_1 - t0_1) * i as f64 / n as f64;
         let (px, py) = c1.evaluate_f64(t);
         let d = point_to_curve_distance(c2, px, py);
-        if d < best { best = d; }
+        if d < best {
+            best = d;
+        }
     }
     for i in 0..=n {
         let t = t0_2 + (t1_2 - t0_2) * i as f64 / n as f64;
         let (px, py) = c2.evaluate_f64(t);
         let d = point_to_curve_distance(c1, px, py);
-        if d < best { best = d; }
+        if d < best {
+            best = d;
+        }
     }
     best
 }
@@ -136,29 +175,35 @@ pub fn curve_to_curve_distance(c1: &Curve, c2: &Curve) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::primitives::{LineSeg, CircularArc};
     use crate::point::Point2d;
+    use crate::primitives::{CircularArc, LineSeg};
 
-    fn pt(x: i64, y: i64) -> Point2d { Point2d::from_i64(x, y) }
+    fn pt(x: i64, y: i64) -> Point2d {
+        Point2d::from_i64(x, y)
+    }
 
     #[test]
     fn point_to_line_distance() {
-        let line = Curve::Line(LineSeg::from_endpoints(pt(0,0), pt(4,0)));
+        let line = Curve::Line(LineSeg::from_endpoints(pt(0, 0), pt(4, 0)));
         let d = point_to_curve_distance(&line, 2.0, 3.0);
         assert!((d - 3.0).abs() < 1e-9, "d={}", d);
     }
 
     #[test]
     fn point_to_circle_distance() {
-        let arc = Curve::Arc(CircularArc::new(pt(0,0), 5.0,
-            -std::f64::consts::PI, std::f64::consts::PI));
+        let arc = Curve::Arc(CircularArc::new(
+            pt(0, 0),
+            5.0,
+            -std::f64::consts::PI,
+            std::f64::consts::PI,
+        ));
         let d = point_to_curve_distance(&arc, 8.0, 0.0);
         assert!((d - 3.0).abs() < 1e-6, "d={}", d);
     }
 
     #[test]
     fn projection_onto_line() {
-        let line = Curve::Line(LineSeg::from_endpoints(pt(0,0), pt(4,0)));
+        let line = Curve::Line(LineSeg::from_endpoints(pt(0, 0), pt(4, 0)));
         let proj = project_point_onto_curve(&line, 3.0, 5.0);
         assert!((proj.point.0 - 3.0).abs() < 1e-9);
         assert!((proj.point.1).abs() < 1e-9);
@@ -167,7 +212,7 @@ mod tests {
 
     #[test]
     fn projection_onto_arc_slightly_negative() {
-        let arc = Curve::Arc(CircularArc::new(pt(0,0), 5.0, 0.0, std::f64::consts::PI));
+        let arc = Curve::Arc(CircularArc::new(pt(0, 0), 5.0, 0.0, std::f64::consts::PI));
         let proj = project_point_onto_curve(&arc, 5.0, -0.1);
         assert!((proj.point.0 - 5.0).abs() < 1e-4);
         assert!((proj.point.1 - 0.0).abs() < 1e-4);

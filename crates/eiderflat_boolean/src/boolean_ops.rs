@@ -1,7 +1,7 @@
-use crate::clip::{clip, BoolOp};
+use crate::clip::{BoolOp, clip};
 use crate::region::Region;
-use crate::weld::{weld_region, WELD_TOL};
-use eiderflat_geometry::{tessellate_curve, Curve, CurveSegment, LineSeg, Point2d};
+use crate::weld::{WELD_TOL, weld_region};
+use eiderflat_geometry::{Curve, CurveSegment, LineSeg, Point2d, tessellate_curve};
 
 pub fn union(a: &Region, b: &Region) -> Region {
     loops_to_region(clip_regions(a, b, BoolOp::Union))

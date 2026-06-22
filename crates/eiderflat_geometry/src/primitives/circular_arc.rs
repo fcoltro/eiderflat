@@ -1,5 +1,5 @@
-use crate::point::{Point2d, BoundingBox};
 use crate::curve::CurveSegment;
+use crate::point::{BoundingBox, Point2d};
 
 #[derive(Clone, Copy, Debug)]
 pub struct CircularArc {
@@ -10,10 +10,14 @@ pub struct CircularArc {
 }
 
 impl CircularArc {
-
     pub fn new(center: Point2d, radius: f64, start_angle: f64, end_angle: f64) -> Self {
         assert!(radius > 0.0, "Radius must be positive");
-        CircularArc { center, radius, start_angle, end_angle }
+        CircularArc {
+            center,
+            radius,
+            start_angle,
+            end_angle,
+        }
     }
 
     pub fn from_three_points(p1: &Point2d, p2: &Point2d, p3: &Point2d) -> Option<Self> {
@@ -26,7 +30,9 @@ impl CircularArc {
         let r2 = (bx * (p2.x + p3.x) + by * (p2.y + p3.y)) / 2.0;
 
         let det = ax * by - ay * bx;
-        if det.abs() < 1e-12 { return None; }
+        if det.abs() < 1e-12 {
+            return None;
+        }
 
         let cx = (r1 * by - r2 * ay) / det;
         let cy = (ax * r2 - bx * r1) / det;
@@ -34,16 +40,24 @@ impl CircularArc {
         let center = Point2d { x: cx, y: cy };
         let radius = center.dist_f64(p1);
 
-        let angle_of = |p: &Point2d| {
-            (p.y - center.y).atan2(p.x - center.x)
-        };
+        let angle_of = |p: &Point2d| (p.y - center.y).atan2(p.x - center.x);
         let a1 = angle_of(p1);
         let a2 = angle_of(p2);
         let a3 = angle_of(p3);
 
         let pi2 = 2.0 * std::f64::consts::PI;
-        let lift = |start: f64, mut end: f64| { while end <= start { end += pi2; } end };
-        let on_arc = |start: f64, end: f64, mut a: f64| { while a < start { a += pi2; } a <= end + 1e-12 };
+        let lift = |start: f64, mut end: f64| {
+            while end <= start {
+                end += pi2;
+            }
+            end
+        };
+        let on_arc = |start: f64, end: f64, mut a: f64| {
+            while a < start {
+                a += pi2;
+            }
+            a <= end + 1e-12
+        };
 
         let (start_angle, end_angle) = {
             let e1 = lift(a1, a3);
@@ -54,7 +68,12 @@ impl CircularArc {
             }
         };
 
-        Some(CircularArc { center, radius, start_angle, end_angle })
+        Some(CircularArc {
+            center,
+            radius,
+            start_angle,
+            end_angle,
+        })
     }
 
     pub fn start_point(&self) -> (f64, f64) {
@@ -67,7 +86,9 @@ impl CircularArc {
 
     pub fn included_angle(&self) -> f64 {
         let mut a = self.end_angle - self.start_angle;
-        while a <= 0.0 { a += 2.0 * std::f64::consts::PI; }
+        while a <= 0.0 {
+            a += 2.0 * std::f64::consts::PI;
+        }
         a
     }
 
@@ -75,11 +96,12 @@ impl CircularArc {
         let r = self.radius;
         r - r * (self.included_angle() / 2.0).cos()
     }
-
 }
 
 impl CurveSegment for CircularArc {
-    fn domain(&self) -> (f64, f64) { (self.start_angle, self.end_angle) }
+    fn domain(&self) -> (f64, f64) {
+        (self.start_angle, self.end_angle)
+    }
 
     fn evaluate_f64(&self, t: f64) -> (f64, f64) {
         let (cx, cy) = self.center.to_f64();
@@ -100,18 +122,24 @@ impl CurveSegment for CircularArc {
         let end = self.start_angle + self.included_angle();
         while a < end {
             let (x, y) = self.evaluate_f64(a);
-            xmin = xmin.min(x); xmax = xmax.max(x);
-            ymin = ymin.min(y); ymax = ymax.max(y);
+            xmin = xmin.min(x);
+            xmax = xmax.max(x);
+            ymin = ymin.min(y);
+            ymax = ymax.max(y);
             a += std::f64::consts::FRAC_PI_2;
         }
         for k in 0..4 {
             let angle = k as f64 * std::f64::consts::FRAC_PI_2;
             let mut rel = angle - self.start_angle;
-            while rel < 0.0 { rel += 2.0 * std::f64::consts::PI; }
+            while rel < 0.0 {
+                rel += 2.0 * std::f64::consts::PI;
+            }
             if rel <= self.included_angle() + 1e-12 {
                 let (x, y) = self.evaluate_f64(self.start_angle + rel);
-                xmin = xmin.min(x); xmax = xmax.max(x);
-                ymin = ymin.min(y); ymax = ymax.max(y);
+                xmin = xmin.min(x);
+                xmax = xmax.max(x);
+                ymin = ymin.min(y);
+                ymax = ymax.max(y);
             }
         }
 
@@ -148,8 +176,10 @@ mod tests {
     #[test]
     fn arc_length_quarter_circle() {
         let arc = CircularArc::new(
-            Point2d::from_i64(0, 0), 5.0,
-            0.0, std::f64::consts::FRAC_PI_2,
+            Point2d::from_i64(0, 0),
+            5.0,
+            0.0,
+            std::f64::consts::FRAC_PI_2,
         );
         let expected = 5.0 * std::f64::consts::FRAC_PI_2;
         assert!((arc.arc_length() - expected).abs() < 1e-10);
@@ -157,10 +187,7 @@ mod tests {
 
     #[test]
     fn sagitta_semicircle() {
-        let arc = CircularArc::new(
-            Point2d::from_i64(0, 0), 4.0,
-            0.0, std::f64::consts::PI,
-        );
+        let arc = CircularArc::new(Point2d::from_i64(0, 0), 4.0, 0.0, std::f64::consts::PI);
         assert!((arc.sagitta() - 4.0).abs() < 1e-10);
     }
 }

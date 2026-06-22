@@ -116,27 +116,24 @@ pub(super) fn top_bar(ctx: &Context, app: &mut AppState, canvas_rect: egui::Rect
                         menu_items(ui, app);
 
                         // Right cluster (search · export · avatar), right-aligned.
-                        ui.with_layout(
-                            egui::Layout::right_to_left(egui::Align::Center),
-                            |ui| {
-                                ui.add_space(2.0);
-                                if ui
-                                    .add(export_button())
-                                    .on_hover_text("Export DXF / SVG")
-                                    .clicked()
-                                {
-                                    ui.ctx().data_mut(|d| {
-                                        d.insert_temp(egui::Id::new("open_export"), true)
-                                    });
-                                }
-                                ui.add_space(8.0);
-                                if ui.add(search_button()).clicked() {
-                                    ui.ctx().data_mut(|d| {
-                                        d.insert_temp(egui::Id::new("open_palette"), true)
-                                    });
-                                }
-                            },
-                        );
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            ui.add_space(2.0);
+                            if ui
+                                .add(export_button())
+                                .on_hover_text("Export DXF / SVG")
+                                .clicked()
+                            {
+                                ui.ctx().data_mut(|d| {
+                                    d.insert_temp(egui::Id::new("open_export"), true)
+                                });
+                            }
+                            ui.add_space(8.0);
+                            if ui.add(search_button()).clicked() {
+                                ui.ctx().data_mut(|d| {
+                                    d.insert_temp(egui::Id::new("open_palette"), true)
+                                });
+                            }
+                        });
                     });
                 });
         });
@@ -220,7 +217,10 @@ fn export_button() -> impl egui::Widget {
 }
 
 fn export_menu(ctx: &Context, app: &mut AppState) {
-    if !ctx.data(|d| d.get_temp::<bool>(egui::Id::new("open_export")).unwrap_or(false)) {
+    if !ctx.data(|d| {
+        d.get_temp::<bool>(egui::Id::new("open_export"))
+            .unwrap_or(false)
+    }) {
         return;
     }
     let mut open = true;
@@ -241,7 +241,9 @@ fn export_menu(ctx: &Context, app: &mut AppState) {
                 ctx.data_mut(|d| d.insert_temp(egui::Id::new("open_export"), false));
             }
             if ui.button("Export SVG…").clicked() {
-                if let Some(path) = FileDialog::new().add_filter("SVG image", &["svg"]).save_file()
+                if let Some(path) = FileDialog::new()
+                    .add_filter("SVG image", &["svg"])
+                    .save_file()
                 {
                     let content = eiderflat_io::export_svg(&app.document);
                     if let Err(e) = std::fs::write(&path, content) {
@@ -295,10 +297,7 @@ fn menu_items(ui: &mut egui::Ui, app: &mut AppState) {
         }
         ui.separator();
         if ui.button("Export DXF…").clicked() {
-            if let Some(path) = FileDialog::new()
-                .add_filter("DXF", &["dxf"])
-                .save_file()
-            {
+            if let Some(path) = FileDialog::new().add_filter("DXF", &["dxf"]).save_file() {
                 let content = eiderflat_io::export_dxf(&app.document);
                 if let Err(e) = std::fs::write(&path, content) {
                     app.command_log.push(format!("DXF export failed: {e}"));
@@ -528,7 +527,10 @@ fn menu_items(ui: &mut egui::Ui, app: &mut AppState) {
 
 pub(super) fn about_window(ctx: &Context, ui_state: &mut UiState) {
     // Pick up the open request flagged by the Help menu.
-    if ctx.data(|d| d.get_temp::<bool>(egui::Id::new("open_about")).unwrap_or(false)) {
+    if ctx.data(|d| {
+        d.get_temp::<bool>(egui::Id::new("open_about"))
+            .unwrap_or(false)
+    }) {
         ctx.data_mut(|d| d.insert_temp(egui::Id::new("open_about"), false));
         ui_state.about_open = true;
     }
@@ -541,7 +543,8 @@ pub(super) fn about_window(ctx: &Context, ui_state: &mut UiState) {
         .fixed_pos(ctx.content_rect().min)
         .show(ctx, |ui| {
             let r = ctx.content_rect();
-            ui.painter().rect_filled(r, 0.0, egui::Color32::from_black_alpha(160));
+            ui.painter()
+                .rect_filled(r, 0.0, egui::Color32::from_black_alpha(160));
             ui.allocate_rect(r, egui::Sense::click())
         });
     let mut close = backdrop.inner.clicked();
@@ -600,7 +603,9 @@ pub(super) fn font_combo(ui: &mut egui::Ui, salt: &str, font: &mut Option<String
                 changed = true;
             }
             for fam in &families {
-                if ui.selectable_label(font.as_deref() == Some(fam), fam).clicked()
+                if ui
+                    .selectable_label(font.as_deref() == Some(fam), fam)
+                    .clicked()
                     && font.as_deref() != Some(fam)
                 {
                     *font = Some(fam.clone());
@@ -664,7 +669,11 @@ fn draw_entries() -> Vec<(crate::icons::Icon, &'static str, Act)> {
     use crate::icons::Icon;
     vec![
         (Icon::Select, "Select  (SE)", Act::Tool(Tool::Select)),
-        (Icon::Line, "Line  (L)", Act::Tool(Tool::Line { last: None })),
+        (
+            Icon::Line,
+            "Line  (L)",
+            Act::Tool(Tool::Line { last: None }),
+        ),
         (
             Icon::Polyline,
             "Polyline  (PL)",
@@ -845,8 +854,7 @@ pub(super) fn ribbon(ctx: &Context, app: &mut AppState, canvas_rect: egui::Rect)
                             if i == 1 {
                                 dock_divider(ui);
                             }
-                            let active =
-                                matches!(act, Act::Tool(t) if app.tool.name() == t.name());
+                            let active = matches!(act, Act::Tool(t) if app.tool.name() == t.name());
                             if crate::icons::icon_button_sized(ui, *icon, tip, active, 38.0)
                                 .clicked()
                             {
@@ -876,7 +884,10 @@ pub(super) fn status_pill(ctx: &Context, app: &mut AppState, canvas_rect: egui::
     egui::Area::new(egui::Id::new("status_pill"))
         .anchor(
             egui::Align2::CENTER_BOTTOM,
-            egui::vec2(0.0, -(canvas_rect.bottom() - ctx.content_rect().bottom()) - 16.0),
+            egui::vec2(
+                0.0,
+                -(canvas_rect.bottom() - ctx.content_rect().bottom()) - 16.0,
+            ),
         )
         .order(egui::Order::Foreground)
         .show(ctx, |ui| {
@@ -906,8 +917,10 @@ pub(super) fn status_pill(ctx: &Context, app: &mut AppState, canvas_rect: egui::
                             ui.spacing_mut().item_spacing.x = 0.0;
                             let (cx, cy) = app.cursor_world;
                             let cell = |ui: &mut egui::Ui, text: String| {
-                                let (rect, _) =
-                                    ui.allocate_exact_size(egui::vec2(56.0, 18.0), egui::Sense::hover());
+                                let (rect, _) = ui.allocate_exact_size(
+                                    egui::vec2(56.0, 18.0),
+                                    egui::Sense::hover(),
+                                );
                                 ui.painter().text(
                                     egui::pos2(rect.left(), rect.center().y),
                                     egui::Align2::LEFT_CENTER,
@@ -916,11 +929,19 @@ pub(super) fn status_pill(ctx: &Context, app: &mut AppState, canvas_rect: egui::
                                     crate::theme::TEXT,
                                 );
                             };
-                            ui.label(egui::RichText::new("X").size(11.0).color(crate::theme::TEXT_DIM));
+                            ui.label(
+                                egui::RichText::new("X")
+                                    .size(11.0)
+                                    .color(crate::theme::TEXT_DIM),
+                            );
                             ui.add_space(8.0);
                             cell(ui, format!("{cx:.2}"));
                             ui.add_space(6.0);
-                            ui.label(egui::RichText::new("Y").size(11.0).color(crate::theme::TEXT_DIM));
+                            ui.label(
+                                egui::RichText::new("Y")
+                                    .size(11.0)
+                                    .color(crate::theme::TEXT_DIM),
+                            );
                             ui.add_space(8.0);
                             cell(ui, format!("{cy:.2}"));
                             ui.add_space(6.0);
@@ -988,7 +1009,9 @@ pub(super) fn status_pill(ctx: &Context, app: &mut AppState, canvas_rect: egui::
 fn unit_dropdown(ui: &mut egui::Ui, app: &mut AppState) {
     use eiderflat_document::Units;
     let open_id = egui::Id::new("unit_menu_open");
-    let mut open = ui.ctx().data(|d| d.get_temp::<bool>(open_id).unwrap_or(false));
+    let mut open = ui
+        .ctx()
+        .data(|d| d.get_temp::<bool>(open_id).unwrap_or(false));
 
     let label = app.units_label();
     let galley = ui.painter().layout_no_wrap(
@@ -1004,7 +1027,13 @@ fn unit_dropdown(ui: &mut egui::Ui, app: &mut AppState) {
         crate::theme::WIDGET_BG
     };
     let p = ui.painter();
-    p.rect(rect, 8.0, fill, egui::Stroke::new(1.0, crate::theme::OUTLINE), egui::StrokeKind::Inside);
+    p.rect(
+        rect,
+        8.0,
+        fill,
+        egui::Stroke::new(1.0, crate::theme::OUTLINE),
+        egui::StrokeKind::Inside,
+    );
     p.text(
         egui::pos2(rect.left() + 9.0, rect.center().y),
         egui::Align2::LEFT_CENTER,
@@ -1016,11 +1045,22 @@ fn unit_dropdown(ui: &mut egui::Ui, app: &mut AppState) {
     let cc = egui::pos2(rect.right() - 11.0, rect.center().y);
     let (dx, dy) = (3.2, 2.2);
     let chev = if open {
-        [egui::pos2(cc.x - dx, cc.y + dy * 0.6), egui::pos2(cc.x, cc.y - dy * 0.9), egui::pos2(cc.x + dx, cc.y + dy * 0.6)]
+        [
+            egui::pos2(cc.x - dx, cc.y + dy * 0.6),
+            egui::pos2(cc.x, cc.y - dy * 0.9),
+            egui::pos2(cc.x + dx, cc.y + dy * 0.6),
+        ]
     } else {
-        [egui::pos2(cc.x - dx, cc.y - dy * 0.6), egui::pos2(cc.x, cc.y + dy * 0.9), egui::pos2(cc.x + dx, cc.y - dy * 0.6)]
+        [
+            egui::pos2(cc.x - dx, cc.y - dy * 0.6),
+            egui::pos2(cc.x, cc.y + dy * 0.9),
+            egui::pos2(cc.x + dx, cc.y - dy * 0.6),
+        ]
     };
-    p.add(egui::Shape::line(chev.to_vec(), egui::Stroke::new(1.3, crate::theme::TEXT_DIM)));
+    p.add(egui::Shape::line(
+        chev.to_vec(),
+        egui::Stroke::new(1.3, crate::theme::TEXT_DIM),
+    ));
     if resp.clicked() {
         open = !open;
     }
@@ -1083,7 +1123,9 @@ fn round_btn(ui: &mut egui::Ui, glyph: &str, tip: &str) -> bool {
 /// while toggling and reflects the current state).
 fn snap_master(ui: &mut egui::Ui, app: &mut AppState) {
     let open_id = egui::Id::new("snap_kinds_open");
-    let mut open = ui.ctx().data(|d| d.get_temp::<bool>(open_id).unwrap_or(false));
+    let mut open = ui
+        .ctx()
+        .data(|d| d.get_temp::<bool>(open_id).unwrap_or(false));
 
     let h = 26.0;
     let saved_sp = ui.spacing().item_spacing.x;
@@ -1114,7 +1156,11 @@ fn snap_master(ui: &mut egui::Ui, app: &mut AppState) {
         egui::Align2::CENTER_CENTER,
         "SNAP",
         egui::FontId::proportional(11.0),
-        if on { crate::theme::ACCENT_BRIGHT } else { crate::theme::TEXT_DIM },
+        if on {
+            crate::theme::ACCENT_BRIGHT
+        } else {
+            crate::theme::TEXT_DIM
+        },
     );
     // Divider bar between the two halves.
     p.vline(
@@ -1131,7 +1177,11 @@ fn snap_master(ui: &mut egui::Ui, app: &mut AppState) {
         egui::Align2::CENTER_CENTER,
         "▲",
         egui::FontId::proportional(10.0),
-        if open { crate::theme::ACCENT_BRIGHT } else { crate::theme::TEXT_DIM },
+        if open {
+            crate::theme::ACCENT_BRIGHT
+        } else {
+            crate::theme::TEXT_DIM
+        },
     );
 
     if sresp.clicked() {
@@ -1273,7 +1323,12 @@ pub(super) fn inspector(ctx: &Context, app: &mut AppState, canvas_rect: egui::Re
                     // content (or a short window) doesn't fit.
                     ui.set_height(avail_h);
                     egui::Frame::new()
-                        .inner_margin(egui::Margin { left: 20, right: 14, top: 12, bottom: 12 })
+                        .inner_margin(egui::Margin {
+                            left: 20,
+                            right: 14,
+                            top: 12,
+                            bottom: 12,
+                        })
                         .show(ui, |ui| inspector_header(ui, app));
                     divider_h(ui);
                     let remaining = ui.available_height();
@@ -1282,7 +1337,12 @@ pub(super) fn inspector(ctx: &Context, app: &mut AppState, canvas_rect: egui::Re
                         .auto_shrink([false, false])
                         .show(ui, |ui| {
                             egui::Frame::new()
-                                .inner_margin(egui::Margin { left: 20, right: 14, top: 10, bottom: 10 })
+                                .inner_margin(egui::Margin {
+                                    left: 20,
+                                    right: 14,
+                                    top: 10,
+                                    bottom: 10,
+                                })
                                 .show(ui, |ui| {
                                     ui.set_width(WIDTH - 34.0);
                                     selection_properties(ui, app);
@@ -1314,8 +1374,10 @@ fn inspector_header(ui: &mut egui::Ui, app: &AppState) {
                 egui::FontId::monospace(11.0),
                 crate::theme::ACCENT_BRIGHT,
             );
-            let (rect, _) = ui
-                .allocate_exact_size(egui::vec2(galley.size().x + 14.0, 20.0), egui::Sense::hover());
+            let (rect, _) = ui.allocate_exact_size(
+                egui::vec2(galley.size().x + 14.0, 20.0),
+                egui::Sense::hover(),
+            );
             ui.painter().rect(
                 rect,
                 6.0,
@@ -1335,7 +1397,8 @@ fn inspector_header(ui: &mut egui::Ui, app: &AppState) {
 }
 
 pub(super) fn divider_h(ui: &mut egui::Ui) {
-    let (rect, _) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 1.0), egui::Sense::hover());
+    let (rect, _) =
+        ui.allocate_exact_size(egui::vec2(ui.available_width(), 1.0), egui::Sense::hover());
     ui.painter().hline(
         rect.x_range(),
         rect.center().y,
@@ -1352,8 +1415,14 @@ fn layers_section(ui: &mut egui::Ui, app: &mut AppState) {
                 .strong(),
         );
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if crate::icons::icon_button_sized(ui, crate::icons::Icon::AddLayer, "New Layer", false, 32.0)
-                .clicked()
+            if crate::icons::icon_button_sized(
+                ui,
+                crate::icons::Icon::AddLayer,
+                "New Layer",
+                false,
+                32.0,
+            )
+            .clicked()
             {
                 let n = app.document.layers.layers.len();
                 app.document.layers.add(Layer::new(format!("Layer{}", n)));
@@ -1376,7 +1445,15 @@ fn layers_section(ui: &mut egui::Ui, app: &mut AppState) {
         .layers
         .iter()
         .enumerate()
-        .map(|(i, l)| (i, l.name.clone(), [l.color.0, l.color.1, l.color.2], l.on, counts[i]))
+        .map(|(i, l)| {
+            (
+                i,
+                l.name.clone(),
+                [l.color.0, l.color.1, l.color.2],
+                l.on,
+                counts[i],
+            )
+        })
         .collect();
 
     let mut delete_layer: Option<usize> = None;
@@ -1397,7 +1474,10 @@ fn layers_section(ui: &mut egui::Ui, app: &mut AppState) {
                 crate::theme::OUTLINE
             };
             ui.painter().rect_filled(bar, 2.0, col);
-            if dresp.on_hover_text("Set as the current drawing layer").clicked() {
+            if dresp
+                .on_hover_text("Set as the current drawing layer")
+                .clicked()
+            {
                 app.document.layers.current = i;
             }
 
@@ -1409,15 +1489,14 @@ fn layers_section(ui: &mut egui::Ui, app: &mut AppState) {
                     ui.color_edit_button_srgb(&mut c).changed()
                 })
                 .inner;
-            if changed
-                && let Some(l) = app.document.layers.get_mut(i) {
-                    l.color = (c[0], c[1], c[2]);
-                }
+            if changed && let Some(l) = app.document.layers.get_mut(i) {
+                l.color = (c[0], c[1], c[2]);
+            }
 
             // Right cluster: count · eye · trash.
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.spacing_mut().item_spacing.x = 0.0;
-                use crate::icons::{icon_button_sized, Icon};
+                use crate::icons::{Icon, icon_button_sized};
                 let deletable = i != 0 && i != current;
                 ui.add_enabled_ui(deletable, |ui| {
                     let tip = if deletable {
@@ -1431,9 +1510,10 @@ fn layers_section(ui: &mut egui::Ui, app: &mut AppState) {
                 });
                 let icon = if on { Icon::Eye } else { Icon::EyeOff };
                 if icon_button_sized(ui, icon, "Show / hide this layer", false, 36.0).clicked()
-                    && let Some(l) = app.document.layers.get_mut(i) {
-                        l.on = !on;
-                    }
+                    && let Some(l) = app.document.layers.get_mut(i)
+                {
+                    l.on = !on;
+                }
                 ui.add_space(10.0);
                 ui.label(
                     egui::RichText::new(format!("{count:>2}"))
@@ -1444,7 +1524,11 @@ fn layers_section(ui: &mut egui::Ui, app: &mut AppState) {
                 ui.add_space(4.0);
                 // Editable layer name fills the gap between swatch and the cluster.
                 let mut buf = name.clone();
-                let name_col = if is_cur { crate::theme::TEXT } else { crate::theme::TEXT_DIM };
+                let name_col = if is_cur {
+                    crate::theme::TEXT
+                } else {
+                    crate::theme::TEXT_DIM
+                };
                 let resp = ui.add_sized(
                     [ui.available_width(), 22.0],
                     egui::TextEdit::singleline(&mut buf)
@@ -1453,28 +1537,31 @@ fn layers_section(ui: &mut egui::Ui, app: &mut AppState) {
                         .font(egui::TextStyle::Monospace),
                 );
                 if resp.changed()
-                    && let Some(l) = app.document.layers.get_mut(i) {
-                        l.name = buf;
-                    }
+                    && let Some(l) = app.document.layers.get_mut(i)
+                {
+                    l.name = buf;
+                }
             });
         });
     }
     if let Some(idx) = delete_layer
-        && idx != 0 && idx != app.document.layers.current {
-            let lname = app.document.layers.layers[idx].name.clone();
-            app.history.snapshot(&app.document);
-            let ids: Vec<_> = app.document.iter().map(|e| e.id).collect();
-            for id in ids {
-                if let Some(e) = app.document.get_mut(id) {
-                    if e.layer == idx {
-                        e.layer = 0;
-                    } else if e.layer > idx {
-                        e.layer -= 1;
-                    }
+        && idx != 0
+        && idx != app.document.layers.current
+    {
+        let lname = app.document.layers.layers[idx].name.clone();
+        app.history.snapshot(&app.document);
+        let ids: Vec<_> = app.document.iter().map(|e| e.id).collect();
+        for id in ids {
+            if let Some(e) = app.document.get_mut(id) {
+                if e.layer == idx {
+                    e.layer = 0;
+                } else if e.layer > idx {
+                    e.layer -= 1;
                 }
             }
-            let _ = app.document.layers.delete(&lname);
         }
+        let _ = app.document.layers.delete(&lname);
+    }
 }
 
 /// Floating contextual toolbar shown just above a single selected entity.
@@ -1493,8 +1580,12 @@ pub(super) fn contextual_toolbar(ctx: &Context, app: &mut AppState, canvas_rect:
     let anchor = canvas_rect.min + egui::vec2(sx as f32, sy as f32) - egui::vec2(0.0, 50.0);
     // Keep it inside the canvas.
     let anchor = egui::pos2(
-        anchor.x.clamp(canvas_rect.left() + 90.0, canvas_rect.right() - 200.0),
-        anchor.y.clamp(canvas_rect.top() + 70.0, canvas_rect.bottom() - 60.0),
+        anchor
+            .x
+            .clamp(canvas_rect.left() + 90.0, canvas_rect.right() - 200.0),
+        anchor
+            .y
+            .clamp(canvas_rect.top() + 70.0, canvas_rect.bottom() - 60.0),
     );
 
     egui::Area::new(egui::Id::new("contextual_toolbar"))
@@ -1506,21 +1597,42 @@ pub(super) fn contextual_toolbar(ctx: &Context, app: &mut AppState, canvas_rect:
                 .show(ui, |ui| {
                     ui.spacing_mut().item_spacing = egui::vec2(2.0, 0.0);
                     ui.horizontal(|ui| {
-                        use crate::icons::{icon_button_sized, Icon};
-                        if icon_button_sized(ui, Icon::Copy, "Duplicate  (CO)", false, 30.0).clicked() {
-                            app.execute(Command::Activate(Tool::Copy { base: None, ids: vec![] }));
+                        use crate::icons::{Icon, icon_button_sized};
+                        if icon_button_sized(ui, Icon::Copy, "Duplicate  (CO)", false, 30.0)
+                            .clicked()
+                        {
+                            app.execute(Command::Activate(Tool::Copy {
+                                base: None,
+                                ids: vec![],
+                            }));
                         }
-                        if icon_button_sized(ui, Icon::Mirror, "Mirror  (MI)", false, 30.0).clicked() {
-                            app.execute(Command::Activate(Tool::Mirror { first: None, ids: vec![] }));
+                        if icon_button_sized(ui, Icon::Mirror, "Mirror  (MI)", false, 30.0)
+                            .clicked()
+                        {
+                            app.execute(Command::Activate(Tool::Mirror {
+                                first: None,
+                                ids: vec![],
+                            }));
                         }
-                        if icon_button_sized(ui, Icon::Rotate, "Rotate  (RO)", false, 30.0).clicked() {
-                            app.execute(Command::Activate(Tool::Rotate { base: None, ids: vec![] }));
+                        if icon_button_sized(ui, Icon::Rotate, "Rotate  (RO)", false, 30.0)
+                            .clicked()
+                        {
+                            app.execute(Command::Activate(Tool::Rotate {
+                                base: None,
+                                ids: vec![],
+                            }));
                         }
-                        if icon_button_sized(ui, Icon::Offset, "Offset  (O)", false, 30.0).clicked() {
-                            app.execute(Command::Activate(Tool::Offset { dist: 1.0, source: None }));
+                        if icon_button_sized(ui, Icon::Offset, "Offset  (O)", false, 30.0).clicked()
+                        {
+                            app.execute(Command::Activate(Tool::Offset {
+                                dist: 1.0,
+                                source: None,
+                            }));
                         }
                         pill_sep(ui);
-                        if icon_button_sized(ui, Icon::Delete, "Delete  (Del)", false, 30.0).clicked() {
+                        if icon_button_sized(ui, Icon::Delete, "Delete  (Del)", false, 30.0)
+                            .clicked()
+                        {
                             app.erase_selection();
                         }
                     });
@@ -1541,8 +1653,12 @@ fn prop_section(ui: &mut egui::Ui, title: &str) {
 
 fn prop_caption(ui: &mut egui::Ui, text: &str) {
     ui.add(
-        egui::Label::new(egui::RichText::new(text).size(10.0).color(crate::theme::TEXT_DIM))
-            .truncate(),
+        egui::Label::new(
+            egui::RichText::new(text)
+                .size(10.0)
+                .color(crate::theme::TEXT_DIM),
+        )
+        .truncate(),
     );
 }
 
@@ -1578,14 +1694,7 @@ fn num_field(ui: &mut egui::Ui, caption: &str, v: &mut f64, speed: f64) -> bool 
     .inner
 }
 
-fn xy_fields(
-    ui: &mut egui::Ui,
-    ca: &str,
-    a: &mut f64,
-    cb: &str,
-    b: &mut f64,
-    speed: f64,
-) -> bool {
+fn xy_fields(ui: &mut egui::Ui, ca: &str, a: &mut f64, cb: &str, b: &mut f64, speed: f64) -> bool {
     let mut changed = false;
     ui.columns(2, |c| {
         changed |= num_field(&mut c[0], ca, a, speed);
@@ -1636,10 +1745,16 @@ fn kind_label(kind: &EntityKind) -> &'static str {
 fn kind_icon(kind: &EntityKind) -> crate::icons::Icon {
     use crate::icons::Icon;
     match kind {
-        EntityKind::Curve(Curve::Line(_)) | EntityKind::XLine { .. } | EntityKind::Ray { .. } => Icon::Line,
+        EntityKind::Curve(Curve::Line(_)) | EntityKind::XLine { .. } | EntityKind::Ray { .. } => {
+            Icon::Line
+        }
         EntityKind::Curve(Curve::Arc(a)) => {
             let span = (a.end_angle - a.start_angle).abs();
-            if (span - std::f64::consts::TAU).abs() < 1e-9 { Icon::Circle } else { Icon::Arc }
+            if (span - std::f64::consts::TAU).abs() < 1e-9 {
+                Icon::Circle
+            } else {
+                Icon::Arc
+            }
         }
         EntityKind::Curve(Curve::Ellipse(_)) => Icon::Ellipse,
         EntityKind::Curve(Curve::Poly(_)) => Icon::Polyline,
@@ -1673,7 +1788,12 @@ fn object_header(ui: &mut egui::Ui, name: &str, subtitle: &str, icon: crate::ico
         ui.add_space(4.0);
         ui.vertical(|ui| {
             ui.add_space(2.0);
-            ui.label(egui::RichText::new(name).size(14.0).strong().color(crate::theme::TEXT));
+            ui.label(
+                egui::RichText::new(name)
+                    .size(14.0)
+                    .strong()
+                    .color(crate::theme::TEXT),
+            );
             ui.label(
                 egui::RichText::new(subtitle)
                     .size(11.5)
@@ -1706,7 +1826,11 @@ fn measurements(ui: &mut egui::Ui, kind: &EntityKind) {
             if is_circle {
                 ui.columns(2, |c| {
                     metric_field(&mut c[0], "Circumference", std::f64::consts::TAU * a.radius);
-                    metric_field(&mut c[1], "Area", std::f64::consts::PI * a.radius * a.radius);
+                    metric_field(
+                        &mut c[1],
+                        "Area",
+                        std::f64::consts::PI * a.radius * a.radius,
+                    );
                 });
             } else {
                 ui.columns(2, |c| {
@@ -1754,17 +1878,19 @@ fn appearance_row(
                     vis.widgets.active.bg_fill = egui::Color32::TRANSPARENT;
                     vis.widgets.active.weak_bg_fill = egui::Color32::TRANSPARENT;
                     ui.menu_button(
-                        egui::RichText::new(value).size(12.5).color(crate::theme::TEXT),
+                        egui::RichText::new(value)
+                            .size(12.5)
+                            .color(crate::theme::TEXT),
                         add_options,
                     );
                     if let Some(c) = swatch {
-                        let (r, _) = ui
-                            .allocate_exact_size(egui::vec2(12.0, 12.0), egui::Sense::hover());
+                        let (r, _) =
+                            ui.allocate_exact_size(egui::vec2(12.0, 12.0), egui::Sense::hover());
                         ui.painter().rect_filled(r, 3.0, c);
                     }
                     if line_sample {
-                        let (r, _) = ui
-                            .allocate_exact_size(egui::vec2(34.0, 12.0), egui::Sense::hover());
+                        let (r, _) =
+                            ui.allocate_exact_size(egui::vec2(34.0, 12.0), egui::Sense::hover());
                         ui.painter().hline(
                             r.x_range(),
                             r.center().y,
@@ -1782,7 +1908,10 @@ fn appearance_section(ui: &mut egui::Ui, app: &mut AppState, sel: &[eiderflat_do
     prop_section(ui, "APPEARANCE");
 
     // ── Line weight ───────────────────────────────────────────────────────
-    let first_lw = sel.first().and_then(|&id| app.document.get(id)).map(|e| e.line_weight.clone());
+    let first_lw = sel
+        .first()
+        .and_then(|&id| app.document.get(id))
+        .map(|e| e.line_weight.clone());
     let lw_label = match &first_lw {
         Some(LineWeight::ByBlock) => "By block".to_string(),
         Some(LineWeight::Hundredths(h)) => format!("{:.2} mm", *h as f64 / 100.0),
@@ -1798,7 +1927,10 @@ fn appearance_section(ui: &mut egui::Ui, app: &mut AppState, sel: &[eiderflat_do
             ("0.70 mm", LineWeight::Hundredths(70)),
             ("1.00 mm", LineWeight::Hundredths(100)),
         ] {
-            if ui.selectable_label(first_lw.as_ref() == Some(&val), lbl).clicked() {
+            if ui
+                .selectable_label(first_lw.as_ref() == Some(&val), lbl)
+                .clicked()
+            {
                 app.history.snapshot(&app.document);
                 for &id in sel {
                     if let Some(e) = app.document.get_mut(id) {
@@ -1811,7 +1943,10 @@ fn appearance_section(ui: &mut egui::Ui, app: &mut AppState, sel: &[eiderflat_do
     });
 
     // ── Line type ─────────────────────────────────────────────────────────
-    let first_lt = sel.first().and_then(|&id| app.document.get(id)).map(|e| e.line_type.clone());
+    let first_lt = sel
+        .first()
+        .and_then(|&id| app.document.get(id))
+        .map(|e| e.line_type.clone());
     let lt_label = match &first_lt {
         Some(LineTypeRef::ByBlock) => "By block".to_string(),
         Some(LineTypeRef::Named(n)) if n == "Continuous" => "Solid".to_string(),
@@ -1825,7 +1960,10 @@ fn appearance_section(ui: &mut egui::Ui, app: &mut AppState, sel: &[eiderflat_do
             ("Dashed", LineTypeRef::Named("Dashed".into())),
             ("Center", LineTypeRef::Named("Center".into())),
         ] {
-            if ui.selectable_label(first_lt.as_ref() == Some(&val), lbl).clicked() {
+            if ui
+                .selectable_label(first_lt.as_ref() == Some(&val), lbl)
+                .clicked()
+            {
                 app.history.snapshot(&app.document);
                 for &id in sel {
                     if let Some(e) = app.document.get_mut(id) {
@@ -1838,9 +1976,18 @@ fn appearance_section(ui: &mut egui::Ui, app: &mut AppState, sel: &[eiderflat_do
     });
 
     // ── Layer ─────────────────────────────────────────────────────────────
-    let layer_names: Vec<String> =
-        app.document.layers.layers.iter().map(|l| l.name.clone()).collect();
-    let first_layer = sel.first().and_then(|&id| app.document.get(id)).map(|e| e.layer).unwrap_or(0);
+    let layer_names: Vec<String> = app
+        .document
+        .layers
+        .layers
+        .iter()
+        .map(|l| l.name.clone())
+        .collect();
+    let first_layer = sel
+        .first()
+        .and_then(|&id| app.document.get(id))
+        .map(|e| e.layer)
+        .unwrap_or(0);
     let mixed = sel
         .iter()
         .any(|&id| app.document.get(id).map(|e| e.layer) != Some(first_layer));
@@ -1849,9 +1996,11 @@ fn appearance_section(ui: &mut egui::Ui, app: &mut AppState, sel: &[eiderflat_do
     } else {
         layer_names.get(first_layer).cloned().unwrap_or_default()
     };
-    let swatch = app.document.layers.get(first_layer).map(|l| {
-        egui::Color32::from_rgb(l.color.0, l.color.1, l.color.2)
-    });
+    let swatch = app
+        .document
+        .layers
+        .get(first_layer)
+        .map(|l| egui::Color32::from_rgb(l.color.0, l.color.1, l.color.2));
     appearance_row(ui, "Layer", layer_value, swatch, false, |ui| {
         for (i, name) in layer_names.iter().enumerate() {
             if ui.selectable_label(i == first_layer, name).clicked() {
@@ -1891,7 +2040,12 @@ fn selection_properties(ui: &mut egui::Ui, app: &mut AppState) {
                 .get(layer_idx)
                 .map(|l| l.name.clone())
                 .unwrap_or_default();
-            object_header(ui, kind_label(&kind), &format!("Layer {layer_name}"), kind_icon(&kind));
+            object_header(
+                ui,
+                kind_label(&kind),
+                &format!("Layer {layer_name}"),
+                kind_icon(&kind),
+            );
             edit_entity_geometry(ui, app, id);
             if let Some(e) = app.document.get(id) {
                 measurements(ui, &e.kind);
@@ -1931,10 +2085,11 @@ fn edit_entity_geometry(ui: &mut egui::Ui, app: &mut AppState, id: eiderflat_doc
             if changed {
                 app.history.snapshot(&app.document);
                 if let Some(e) = app.document.get_mut(id)
-                    && let EntityKind::Curve(Curve::Line(ref mut l)) = e.kind {
-                        l.p0 = Point2d::from_f64(p0x, p0y);
-                        l.p1 = Point2d::from_f64(p1x, p1y);
-                    }
+                    && let EntityKind::Curve(Curve::Line(ref mut l)) = e.kind
+                {
+                    l.p0 = Point2d::from_f64(p0x, p0y);
+                    l.p1 = Point2d::from_f64(p1x, p1y);
+                }
             }
         }
         EntityKind::Curve(Curve::Arc(arc)) => {
@@ -1965,14 +2120,15 @@ fn edit_entity_geometry(ui: &mut egui::Ui, app: &mut AppState, id: eiderflat_doc
             if changed {
                 app.history.snapshot(&app.document);
                 if let Some(e) = app.document.get_mut(id)
-                    && let EntityKind::Curve(Curve::Arc(ref mut a)) = e.kind {
-                        a.center = Point2d::from_f64(cx, cy);
-                        a.radius = r.max(0.001);
-                        if !is_circle {
-                            a.start_angle = sa.to_radians();
-                            a.end_angle = ea.to_radians();
-                        }
+                    && let EntityKind::Curve(Curve::Arc(ref mut a)) = e.kind
+                {
+                    a.center = Point2d::from_f64(cx, cy);
+                    a.radius = r.max(0.001);
+                    if !is_circle {
+                        a.start_angle = sa.to_radians();
+                        a.end_angle = ea.to_radians();
                     }
+                }
             }
         }
         EntityKind::Text {
@@ -2020,13 +2176,13 @@ fn edit_entity_geometry(ui: &mut egui::Ui, app: &mut AppState, id: eiderflat_doc
                         rotation: ref mut rot_rad,
                         font: ref mut f,
                     } = e.kind
-                    {
-                        *a = Point2d::from_f64(ax, ay);
-                        *c = txt;
-                        *ht = h.max(0.1);
-                        *rot_rad = rot.to_radians();
-                        *f = chosen_font;
-                    }
+                {
+                    *a = Point2d::from_f64(ax, ay);
+                    *c = txt;
+                    *ht = h.max(0.1);
+                    *rot_rad = rot.to_radians();
+                    *f = chosen_font;
+                }
             }
         }
         EntityKind::Point(pt) => {
@@ -2041,9 +2197,10 @@ fn edit_entity_geometry(ui: &mut egui::Ui, app: &mut AppState, id: eiderflat_doc
             if changed {
                 app.history.snapshot(&app.document);
                 if let Some(e) = app.document.get_mut(id)
-                    && let EntityKind::Point(ref mut p) = e.kind {
-                        *p = Point2d::from_f64(px, py);
-                    }
+                    && let EntityKind::Point(ref mut p) = e.kind
+                {
+                    *p = Point2d::from_f64(px, py);
+                }
             }
         }
         EntityKind::Curve(Curve::Ellipse(el)) => {
@@ -2080,16 +2237,17 @@ fn edit_entity_geometry(ui: &mut egui::Ui, app: &mut AppState, id: eiderflat_doc
             if changed {
                 app.history.snapshot(&app.document);
                 if let Some(e) = app.document.get_mut(id)
-                    && let EntityKind::Curve(Curve::Ellipse(ref mut a)) = e.kind {
-                        a.center = Point2d::from_f64(cx, cy);
-                        a.semi_major = major.max(0.001);
-                        a.semi_minor = minor.max(0.001);
-                        a.rotation = rot.to_radians();
-                        if !is_full {
-                            a.start_angle = sa.to_radians();
-                            a.end_angle = ea.to_radians();
-                        }
+                    && let EntityKind::Curve(Curve::Ellipse(ref mut a)) = e.kind
+                {
+                    a.center = Point2d::from_f64(cx, cy);
+                    a.semi_major = major.max(0.001);
+                    a.semi_minor = minor.max(0.001);
+                    a.rotation = rot.to_radians();
+                    if !is_full {
+                        a.start_angle = sa.to_radians();
+                        a.end_angle = ea.to_radians();
                     }
+                }
             }
         }
         EntityKind::Curve(Curve::Poly(pc)) => {
@@ -2145,9 +2303,10 @@ fn edit_entity_geometry(ui: &mut egui::Ui, app: &mut AppState, id: eiderflat_doc
                         )));
                     }
                     if let Some(e) = app.document.get_mut(id)
-                        && let EntityKind::Curve(Curve::Poly(ref mut p)) = e.kind {
-                            **p = eiderflat_geometry::PolyCurve::new(new_segs);
-                        }
+                        && let EntityKind::Curve(Curve::Poly(ref mut p)) = e.kind
+                    {
+                        **p = eiderflat_geometry::PolyCurve::new(new_segs);
+                    }
                 }
             }
         }
@@ -2157,9 +2316,12 @@ fn edit_entity_geometry(ui: &mut egui::Ui, app: &mut AppState, id: eiderflat_doc
             if hatch_pattern_editor(ui, &mut pat) {
                 app.history.snapshot(&app.document);
                 if let Some(e) = app.document.get_mut(id)
-                    && let EntityKind::Hatch { pattern: ref mut p, .. } = e.kind {
-                        *p = pat;
-                    }
+                    && let EntityKind::Hatch {
+                        pattern: ref mut p, ..
+                    } = e.kind
+                {
+                    *p = pat;
+                }
                 app.hatch_pattern = pat;
             }
         }
@@ -2188,15 +2350,34 @@ fn hatch_pattern_editor(ui: &mut egui::Ui, pattern: &mut eiderflat_document::Hat
         .selected_text(kind)
         .show_ui(ui, |ui| {
             let (a, s) = match *pattern {
-                HP::Lines { angle_deg, spacing } | HP::Cross { angle_deg, spacing } => (angle_deg, spacing),
+                HP::Lines { angle_deg, spacing } | HP::Cross { angle_deg, spacing } => {
+                    (angle_deg, spacing)
+                }
                 HP::Dots { spacing } => (45.0, spacing),
                 HP::Solid => (45.0, 1.0),
             };
             for (label, cand) in [
                 ("Solid", HP::Solid),
-                ("Lines", HP::Lines { angle_deg: a, spacing: s.max(0.1) }),
-                ("Cross-hatch", HP::Cross { angle_deg: a, spacing: s.max(0.1) }),
-                ("Dots", HP::Dots { spacing: s.max(0.1) }),
+                (
+                    "Lines",
+                    HP::Lines {
+                        angle_deg: a,
+                        spacing: s.max(0.1),
+                    },
+                ),
+                (
+                    "Cross-hatch",
+                    HP::Cross {
+                        angle_deg: a,
+                        spacing: s.max(0.1),
+                    },
+                ),
+                (
+                    "Dots",
+                    HP::Dots {
+                        spacing: s.max(0.1),
+                    },
+                ),
             ] {
                 let selected = std::mem::discriminant(pattern) == std::mem::discriminant(&cand);
                 if ui.selectable_label(selected, label).clicked() && !selected {

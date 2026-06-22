@@ -1,5 +1,5 @@
-use std::collections::VecDeque;
 use eiderflat_document::Document;
+use std::collections::VecDeque;
 
 pub struct History {
     past: VecDeque<Document>,
@@ -8,18 +8,32 @@ pub struct History {
 }
 
 impl Default for History {
-    fn default() -> Self { History { past: VecDeque::new(), future: Vec::new(), limit: 200 } }
+    fn default() -> Self {
+        History {
+            past: VecDeque::new(),
+            future: Vec::new(),
+            limit: 200,
+        }
+    }
 }
 
 impl History {
-    pub fn new() -> Self { Self::default() }
+    pub fn new() -> Self {
+        Self::default()
+    }
     pub fn with_limit(limit: usize) -> Self {
-        History { past: VecDeque::new(), future: Vec::new(), limit }
+        History {
+            past: VecDeque::new(),
+            future: Vec::new(),
+            limit,
+        }
     }
 
     pub fn snapshot(&mut self, doc: &Document) {
         self.past.push_back(doc.clone());
-        if self.past.len() > self.limit { self.past.pop_front(); }
+        if self.past.len() > self.limit {
+            self.past.pop_front();
+        }
         self.future.clear();
     }
     pub fn undo(&mut self, doc: &Document) -> Option<Document> {
@@ -32,11 +46,19 @@ impl History {
         self.past.push_back(doc.clone());
         Some(next)
     }
-    pub fn discard_last(&mut self) { self.past.pop_back(); }
+    pub fn discard_last(&mut self) {
+        self.past.pop_back();
+    }
 
-    pub fn can_undo(&self) -> bool { !self.past.is_empty() }
-    pub fn can_redo(&self) -> bool { !self.future.is_empty() }
-    pub fn undo_depth(&self) -> usize { self.past.len() }
+    pub fn can_undo(&self) -> bool {
+        !self.past.is_empty()
+    }
+    pub fn can_redo(&self) -> bool {
+        !self.future.is_empty()
+    }
+    pub fn undo_depth(&self) -> usize {
+        self.past.len()
+    }
 }
 
 #[cfg(test)]
@@ -47,7 +69,9 @@ mod tests {
 
     fn line(x: i64) -> EntityKind {
         EntityKind::Curve(Curve::Line(LineSeg::from_endpoints(
-            Point2d::from_i64(x, 0), Point2d::from_i64(x + 1, 1))))
+            Point2d::from_i64(x, 0),
+            Point2d::from_i64(x + 1, 1),
+        )))
     }
 
     #[test]
@@ -80,10 +104,12 @@ mod tests {
     fn new_edit_clears_redo() {
         let mut doc = Document::new();
         let mut hist = History::new();
-        hist.snapshot(&doc); doc.add(line(0));
+        hist.snapshot(&doc);
+        doc.add(line(0));
         doc = hist.undo(&doc).unwrap();
         assert!(hist.can_redo());
-        hist.snapshot(&doc); doc.add(line(9));
+        hist.snapshot(&doc);
+        doc.add(line(9));
         assert!(!hist.can_redo(), "new edit must clear redo stack");
     }
 
@@ -91,7 +117,10 @@ mod tests {
     fn limit_bounds_growth() {
         let mut doc = Document::new();
         let mut hist = History::with_limit(3);
-        for i in 0..10 { hist.snapshot(&doc); doc.add(line(i)); }
+        for i in 0..10 {
+            hist.snapshot(&doc);
+            doc.add(line(i));
+        }
         assert_eq!(hist.undo_depth(), 3);
     }
 }

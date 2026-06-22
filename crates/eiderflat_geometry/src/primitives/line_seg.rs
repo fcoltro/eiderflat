@@ -1,5 +1,5 @@
-use crate::point::{Point2d, BoundingBox};
 use crate::curve::CurveSegment;
+use crate::point::{BoundingBox, Point2d};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct LineSeg {
@@ -8,7 +8,6 @@ pub struct LineSeg {
 }
 
 impl LineSeg {
-
     pub fn from_endpoints(p0: Point2d, p1: Point2d) -> Self {
         LineSeg { p0, p1 }
     }
@@ -45,13 +44,22 @@ impl LineSeg {
     pub fn split_at_exact(&self, t: f64) -> (LineSeg, LineSeg) {
         let mid = self.evaluate_exact(t);
         (
-            LineSeg { p0: self.p0, p1: mid },
-            LineSeg { p0: mid,     p1: self.p1 },
+            LineSeg {
+                p0: self.p0,
+                p1: mid,
+            },
+            LineSeg {
+                p0: mid,
+                p1: self.p1,
+            },
         )
     }
 
     pub fn reverse(&self) -> LineSeg {
-        LineSeg { p0: self.p1, p1: self.p0 }
+        LineSeg {
+            p0: self.p1,
+            p1: self.p0,
+        }
     }
 
     pub fn offset_exact(&self, dist: f64) -> LineSeg {
@@ -60,14 +68,22 @@ impl LineSeg {
         let scale = if len > 0.0 { dist / len } else { 0.0 };
         let (ox, oy) = (nx * scale, ny * scale);
         LineSeg {
-            p0: Point2d { x: self.p0.x + ox, y: self.p0.y + oy },
-            p1: Point2d { x: self.p1.x + ox, y: self.p1.y + oy },
+            p0: Point2d {
+                x: self.p0.x + ox,
+                y: self.p0.y + oy,
+            },
+            p1: Point2d {
+                x: self.p1.x + ox,
+                y: self.p1.y + oy,
+            },
         }
     }
 }
 
 impl CurveSegment for LineSeg {
-    fn domain(&self) -> (f64, f64) { (0.0, 1.0) }
+    fn domain(&self) -> (f64, f64) {
+        (0.0, 1.0)
+    }
 
     fn evaluate_f64(&self, t: f64) -> (f64, f64) {
         let (x0, y0) = self.p0.to_f64();
@@ -76,7 +92,6 @@ impl CurveSegment for LineSeg {
     }
 
     fn bounding_box(&self) -> BoundingBox {
-        
         let (xmin, xmax) = if self.p0.x <= self.p1.x {
             (self.p0.x, self.p1.x)
         } else {
@@ -97,14 +112,18 @@ impl CurveSegment for LineSeg {
         self.direction()
     }
 
-    fn arc_length(&self) -> f64 { self.length_f64() }
+    fn arc_length(&self) -> f64 {
+        self.length_f64()
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn pt(x: i64, y: i64) -> Point2d { Point2d::from_i64(x, y) }
+    fn pt(x: i64, y: i64) -> Point2d {
+        Point2d::from_i64(x, y)
+    }
 
     #[test]
     fn midpoint_and_split() {

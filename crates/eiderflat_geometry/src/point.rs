@@ -5,10 +5,15 @@ pub struct Point2d {
 }
 
 impl Point2d {
-    pub fn new(x: f64, y: f64) -> Self { Point2d { x, y } }
+    pub fn new(x: f64, y: f64) -> Self {
+        Point2d { x, y }
+    }
 
     pub fn from_i64(x: i64, y: i64) -> Self {
-        Point2d { x: x as f64, y: y as f64 }
+        Point2d {
+            x: x as f64,
+            y: y as f64,
+        }
     }
 
     pub fn from_f64(x: f64, y: f64) -> Self {
@@ -57,7 +62,9 @@ pub struct BoundingBox {
 }
 
 impl BoundingBox {
-    pub fn new(min: Point2d, max: Point2d) -> Self { BoundingBox { min, max } }
+    pub fn new(min: Point2d, max: Point2d) -> Self {
+        BoundingBox { min, max }
+    }
 
     pub fn from_corners(x0: f64, y0: f64, x1: f64, y1: f64) -> Self {
         BoundingBox {
@@ -71,8 +78,10 @@ impl BoundingBox {
     }
 
     pub fn intersects(&self, other: &BoundingBox) -> bool {
-        self.max.x >= other.min.x && self.min.x <= other.max.x &&
-        self.max.y >= other.min.y && self.min.y <= other.max.y
+        self.max.x >= other.min.x
+            && self.min.x <= other.max.x
+            && self.max.y >= other.min.y
+            && self.min.y <= other.max.y
     }
 
     pub fn union(&self, other: &BoundingBox) -> BoundingBox {
@@ -94,7 +103,6 @@ impl std::fmt::Display for BoundingBox {
         write!(f, "[{} → {}]", self.min, self.max)
     }
 }
-
 
 #[cfg(test)]
 mod tests {

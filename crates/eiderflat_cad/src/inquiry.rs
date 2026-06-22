@@ -1,5 +1,5 @@
-use eiderflat_geometry::{Curve, CurveSegment, Point2d, curve_to_curve_distance};
 use eiderflat_document::{Document, EntityId, EntityKind, HatchPattern};
+use eiderflat_geometry::{Curve, CurveSegment, Point2d, curve_to_curve_distance};
 
 fn hatch_pattern_name(p: &HatchPattern) -> &'static str {
     match p {
@@ -47,32 +47,65 @@ pub fn total_length(doc: &Document, ids: &[EntityId]) -> f64 {
 
 pub fn list_entity(doc: &Document, id: EntityId) -> Option<String> {
     let e = doc.get(id)?;
-    let layer_name = doc.layers.get(e.layer).map(|l| l.name.as_str()).unwrap_or("?");
+    let layer_name = doc
+        .layers
+        .get(e.layer)
+        .map(|l| l.name.as_str())
+        .unwrap_or("?");
     let geom = match &e.kind {
-        EntityKind::Curve(Curve::Line(l)) =>
-            format!("LINE  ({},{}) → ({},{})  len={:.4}",
-                l.p0.x, l.p0.y, l.p1.x, l.p1.y, l.length_f64()),
+        EntityKind::Curve(Curve::Line(l)) => format!(
+            "LINE  ({},{}) → ({},{})  len={:.4}",
+            l.p0.x,
+            l.p0.y,
+            l.p1.x,
+            l.p1.y,
+            l.length_f64()
+        ),
         EntityKind::Curve(Curve::Arc(a)) => {
             let span = (a.end_angle - a.start_angle).abs();
-            let kind = if (span - 2.0*std::f64::consts::PI).abs() < 1e-9 { "CIRCLE" } else { "ARC" };
-            format!("{}  center=({},{})  r={}", kind, a.center.x, a.center.y, a.radius)
+            let kind = if (span - 2.0 * std::f64::consts::PI).abs() < 1e-9 {
+                "CIRCLE"
+            } else {
+                "ARC"
+            };
+            format!(
+                "{}  center=({},{})  r={}",
+                kind, a.center.x, a.center.y, a.radius
+            )
         }
-        EntityKind::Curve(Curve::Ellipse(el)) =>
-            format!("ELLIPSE  center=({},{})  a={} b={}", el.center.x, el.center.y, el.semi_major, el.semi_minor),
+        EntityKind::Curve(Curve::Ellipse(el)) => format!(
+            "ELLIPSE  center=({},{})  a={} b={}",
+            el.center.x, el.center.y, el.semi_major, el.semi_minor
+        ),
         EntityKind::Curve(Curve::Bezier(_)) => "SPLINE (cubic Bézier)".to_string(),
-        EntityKind::Curve(Curve::Rational(rb)) =>
-            format!("SPLINE (rational Bézier, degree {}, {} control points)", rb.degree(), rb.points.len()),
-        EntityKind::Curve(Curve::Nurbs(nc)) =>
-            format!("NURBS SPLINE ({} control vertices)", nc.control.len()),
+        EntityKind::Curve(Curve::Rational(rb)) => format!(
+            "SPLINE (rational Bézier, degree {}, {} control points)",
+            rb.degree(),
+            rb.points.len()
+        ),
+        EntityKind::Curve(Curve::Nurbs(nc)) => {
+            format!("NURBS SPLINE ({} control vertices)", nc.control.len())
+        }
         EntityKind::Curve(Curve::Poly(p)) => format!("POLYLINE  {} segments", p.segments.len()),
         EntityKind::Point(p) => format!("POINT  ({},{})", p.x, p.y),
         EntityKind::Text { content, .. } => format!("TEXT  \"{}\"", content),
         EntityKind::XLine { .. } => "XLINE (construction)".to_string(),
         EntityKind::Ray { .. } => "RAY (construction)".to_string(),
         EntityKind::Insert { block, .. } => format!("INSERT  block=\"{}\"", block),
-        EntityKind::Hatch { boundary, holes, fill, pattern } =>
-            format!("HATCH  {} boundary segs, {} island(s)  fill=#{:02x}{:02x}{:02x}  {}",
-                boundary.len(), holes.len(), fill.0, fill.1, fill.2, hatch_pattern_name(pattern)),
+        EntityKind::Hatch {
+            boundary,
+            holes,
+            fill,
+            pattern,
+        } => format!(
+            "HATCH  {} boundary segs, {} island(s)  fill=#{:02x}{:02x}{:02x}  {}",
+            boundary.len(),
+            holes.len(),
+            fill.0,
+            fill.1,
+            fill.2,
+            hatch_pattern_name(pattern)
+        ),
     };
     Some(format!("[{}] layer={}  {}", id.0, layer_name, geom))
 }
@@ -83,11 +116,13 @@ mod tests {
     use crate::draw;
     use eiderflat_geometry::LineSeg;
 
-    fn pt(x: i64, y: i64) -> Point2d { Point2d::from_i64(x, y) }
+    fn pt(x: i64, y: i64) -> Point2d {
+        Point2d::from_i64(x, y)
+    }
 
     #[test]
     fn distance_3_4_5() {
-        let (dsq, d) = distance_points(&pt(0,0), &pt(3,4));
+        let (dsq, d) = distance_points(&pt(0, 0), &pt(3, 4));
         assert!((dsq - 25.0).abs() < 1e-9);
         assert!((d - 5.0).abs() < 1e-9);
     }
@@ -95,7 +130,7 @@ mod tests {
     #[test]
     fn area_of_square() {
         let mut doc = Document::new();
-        let ids = draw::rectangle(&mut doc, &pt(0,0), &pt(4,4));
+        let ids = draw::rectangle(&mut doc, &pt(0, 0), &pt(4, 4));
         let a = area_of_loop(&doc, &ids);
         assert!((a - 16.0).abs() < 1e-6, "area={}", a);
     }
@@ -103,7 +138,7 @@ mod tests {
     #[test]
     fn perimeter_of_rectangle() {
         let mut doc = Document::new();
-        let ids = draw::rectangle(&mut doc, &pt(0,0), &pt(3,2));
+        let ids = draw::rectangle(&mut doc, &pt(0, 0), &pt(3, 2));
         let p = total_length(&doc, &ids);
         assert!((p - 10.0).abs() < 1e-9);
     }
@@ -111,8 +146,8 @@ mod tests {
     #[test]
     fn distance_between_parallel_lines() {
         let mut doc = Document::new();
-        let a = draw::line(&mut doc, pt(0,0), pt(10,0));
-        let b = draw::line(&mut doc, pt(0,3), pt(10,3));
+        let a = draw::line(&mut doc, pt(0, 0), pt(10, 0));
+        let b = draw::line(&mut doc, pt(0, 3), pt(10, 3));
         let d = distance_entities(&doc, a, b).unwrap();
         assert!((d - 3.0).abs() < 1e-6, "d={}", d);
     }
@@ -120,7 +155,10 @@ mod tests {
     #[test]
     fn list_describes_line() {
         let mut doc = Document::new();
-        let id = doc.add(EntityKind::Curve(Curve::Line(LineSeg::from_endpoints(pt(0,0), pt(3,4)))));
+        let id = doc.add(EntityKind::Curve(Curve::Line(LineSeg::from_endpoints(
+            pt(0, 0),
+            pt(3, 4),
+        ))));
         let s = list_entity(&doc, id).unwrap();
         assert!(s.contains("LINE"));
         assert!(s.contains("len=5"));

@@ -24,42 +24,280 @@ struct Entry {
 
 const ENTRIES: &[Entry] = &[
     // ── Tools ──────────────────────────────────────────────────────────────
-    Entry { name: "Select",                hint: "V",      keywords: "pick arrow",                          group: "Tools",  icon: Icon::Select,    action: Action::Cmd("SELECT") },
-    Entry { name: "Line",                  hint: "L",      keywords: "segment draw",                        group: "Tools",  icon: Icon::Line,      action: Action::Cmd("LINE") },
-    Entry { name: "Polyline",              hint: "PL",     keywords: "draw connected",                      group: "Tools",  icon: Icon::Polyline,  action: Action::Cmd("POLYLINE") },
-    Entry { name: "Circle",                hint: "C",      keywords: "draw round",                          group: "Tools",  icon: Icon::Circle,    action: Action::Cmd("CIRCLE") },
-    Entry { name: "Ellipse",               hint: "EL",     keywords: "draw oval",                           group: "Tools",  icon: Icon::Ellipse,   action: Action::Cmd("ELLIPSE") },
-    Entry { name: "Arc (3 points)",        hint: "A",      keywords: "draw curve",                          group: "Tools",  icon: Icon::Arc,       action: Action::Cmd("ARC") },
-    Entry { name: "Rectangle",             hint: "REC",    keywords: "draw box square",                     group: "Tools",  icon: Icon::Rectangle, action: Action::Cmd("RECTANGLE") },
-    Entry { name: "Polygon",               hint: "POL",    keywords: "draw hexagon sides",                  group: "Tools",  icon: Icon::Polygon,   action: Action::Cmd("POLYGON") },
-    Entry { name: "Spline",                hint: "SPL",    keywords: "draw bezier curve",                   group: "Tools",  icon: Icon::Spline,    action: Action::Cmd("SPLINE") },
-    Entry { name: "Text",                  hint: "T",      keywords: "draw label annotate",                 group: "Tools",  icon: Icon::Text,      action: Action::Cmd("TEXT") },
+    Entry {
+        name: "Select",
+        hint: "V",
+        keywords: "pick arrow",
+        group: "Tools",
+        icon: Icon::Select,
+        action: Action::Cmd("SELECT"),
+    },
+    Entry {
+        name: "Line",
+        hint: "L",
+        keywords: "segment draw",
+        group: "Tools",
+        icon: Icon::Line,
+        action: Action::Cmd("LINE"),
+    },
+    Entry {
+        name: "Polyline",
+        hint: "PL",
+        keywords: "draw connected",
+        group: "Tools",
+        icon: Icon::Polyline,
+        action: Action::Cmd("POLYLINE"),
+    },
+    Entry {
+        name: "Circle",
+        hint: "C",
+        keywords: "draw round",
+        group: "Tools",
+        icon: Icon::Circle,
+        action: Action::Cmd("CIRCLE"),
+    },
+    Entry {
+        name: "Ellipse",
+        hint: "EL",
+        keywords: "draw oval",
+        group: "Tools",
+        icon: Icon::Ellipse,
+        action: Action::Cmd("ELLIPSE"),
+    },
+    Entry {
+        name: "Arc (3 points)",
+        hint: "A",
+        keywords: "draw curve",
+        group: "Tools",
+        icon: Icon::Arc,
+        action: Action::Cmd("ARC"),
+    },
+    Entry {
+        name: "Rectangle",
+        hint: "REC",
+        keywords: "draw box square",
+        group: "Tools",
+        icon: Icon::Rectangle,
+        action: Action::Cmd("RECTANGLE"),
+    },
+    Entry {
+        name: "Polygon",
+        hint: "POL",
+        keywords: "draw hexagon sides",
+        group: "Tools",
+        icon: Icon::Polygon,
+        action: Action::Cmd("POLYGON"),
+    },
+    Entry {
+        name: "Spline",
+        hint: "SPL",
+        keywords: "draw bezier curve",
+        group: "Tools",
+        icon: Icon::Spline,
+        action: Action::Cmd("SPLINE"),
+    },
+    Entry {
+        name: "Text",
+        hint: "T",
+        keywords: "draw label annotate",
+        group: "Tools",
+        icon: Icon::Text,
+        action: Action::Cmd("TEXT"),
+    },
     // ── Modify ─────────────────────────────────────────────────────────────
-    Entry { name: "Move",                  hint: "M",      keywords: "modify translate",                    group: "Modify", icon: Icon::Move,      action: Action::Cmd("MOVE") },
-    Entry { name: "Copy",                  hint: "CO",     keywords: "modify duplicate",                    group: "Modify", icon: Icon::Copy,      action: Action::Cmd("COPY") },
-    Entry { name: "Rotate",                hint: "RO",     keywords: "modify turn angle",                   group: "Modify", icon: Icon::Rotate,    action: Action::Cmd("ROTATE") },
-    Entry { name: "Scale",                 hint: "SC",     keywords: "modify resize",                       group: "Modify", icon: Icon::Scale,     action: Action::Cmd("SCALE") },
-    Entry { name: "Mirror",                hint: "MI",     keywords: "modify reflect flip",                 group: "Modify", icon: Icon::Mirror,    action: Action::Cmd("MIRROR") },
-    Entry { name: "Offset",                hint: "O",      keywords: "modify parallel",                     group: "Modify", icon: Icon::Offset,    action: Action::Cmd("OFFSET") },
-    Entry { name: "Trim",                  hint: "TR",     keywords: "modify cut",                          group: "Modify", icon: Icon::Trim,      action: Action::Cmd("TRIM") },
-    Entry { name: "Extend",                hint: "EX",     keywords: "modify lengthen",                     group: "Modify", icon: Icon::Extend,    action: Action::Cmd("EXTEND") },
-    Entry { name: "Fillet",                hint: "F",      keywords: "modify round corner radius",          group: "Modify", icon: Icon::Fillet,    action: Action::Cmd("FILLET") },
-    Entry { name: "Chamfer",               hint: "CHA",    keywords: "modify bevel corner",                 group: "Modify", icon: Icon::Chamfer,   action: Action::Cmd("CHAMFER") },
-    Entry { name: "Stretch",               hint: "S",      keywords: "modify deform window",                group: "Modify", icon: Icon::Stretch,   action: Action::Cmd("STRETCH") },
-    Entry { name: "Disjoint",              hint: "X",      keywords: "explode ungroup separate break apart",group: "Modify", icon: Icon::Explode,   action: Action::Cmd("DISJOINT") },
-    Entry { name: "Join",                  hint: "J",      keywords: "modify merge connect weld combine",   group: "Modify", icon: Icon::Join,      action: Action::Cmd("JOIN") },
-    Entry { name: "Hatch",                 hint: "H",      keywords: "fill region solid boundary area",     group: "Modify", icon: Icon::Hatch,     action: Action::Cmd("HATCH") },
-    Entry { name: "Erase",                 hint: "E",      keywords: "delete remove",                       group: "Modify", icon: Icon::Delete,    action: Action::Cmd("ERASE") },
+    Entry {
+        name: "Move",
+        hint: "M",
+        keywords: "modify translate",
+        group: "Modify",
+        icon: Icon::Move,
+        action: Action::Cmd("MOVE"),
+    },
+    Entry {
+        name: "Copy",
+        hint: "CO",
+        keywords: "modify duplicate",
+        group: "Modify",
+        icon: Icon::Copy,
+        action: Action::Cmd("COPY"),
+    },
+    Entry {
+        name: "Rotate",
+        hint: "RO",
+        keywords: "modify turn angle",
+        group: "Modify",
+        icon: Icon::Rotate,
+        action: Action::Cmd("ROTATE"),
+    },
+    Entry {
+        name: "Scale",
+        hint: "SC",
+        keywords: "modify resize",
+        group: "Modify",
+        icon: Icon::Scale,
+        action: Action::Cmd("SCALE"),
+    },
+    Entry {
+        name: "Mirror",
+        hint: "MI",
+        keywords: "modify reflect flip",
+        group: "Modify",
+        icon: Icon::Mirror,
+        action: Action::Cmd("MIRROR"),
+    },
+    Entry {
+        name: "Offset",
+        hint: "O",
+        keywords: "modify parallel",
+        group: "Modify",
+        icon: Icon::Offset,
+        action: Action::Cmd("OFFSET"),
+    },
+    Entry {
+        name: "Trim",
+        hint: "TR",
+        keywords: "modify cut",
+        group: "Modify",
+        icon: Icon::Trim,
+        action: Action::Cmd("TRIM"),
+    },
+    Entry {
+        name: "Extend",
+        hint: "EX",
+        keywords: "modify lengthen",
+        group: "Modify",
+        icon: Icon::Extend,
+        action: Action::Cmd("EXTEND"),
+    },
+    Entry {
+        name: "Fillet",
+        hint: "F",
+        keywords: "modify round corner radius",
+        group: "Modify",
+        icon: Icon::Fillet,
+        action: Action::Cmd("FILLET"),
+    },
+    Entry {
+        name: "Chamfer",
+        hint: "CHA",
+        keywords: "modify bevel corner",
+        group: "Modify",
+        icon: Icon::Chamfer,
+        action: Action::Cmd("CHAMFER"),
+    },
+    Entry {
+        name: "Stretch",
+        hint: "S",
+        keywords: "modify deform window",
+        group: "Modify",
+        icon: Icon::Stretch,
+        action: Action::Cmd("STRETCH"),
+    },
+    Entry {
+        name: "Disjoint",
+        hint: "X",
+        keywords: "explode ungroup separate break apart",
+        group: "Modify",
+        icon: Icon::Explode,
+        action: Action::Cmd("DISJOINT"),
+    },
+    Entry {
+        name: "Join",
+        hint: "J",
+        keywords: "modify merge connect weld combine",
+        group: "Modify",
+        icon: Icon::Join,
+        action: Action::Cmd("JOIN"),
+    },
+    Entry {
+        name: "Hatch",
+        hint: "H",
+        keywords: "fill region solid boundary area",
+        group: "Modify",
+        icon: Icon::Hatch,
+        action: Action::Cmd("HATCH"),
+    },
+    Entry {
+        name: "Erase",
+        hint: "E",
+        keywords: "delete remove",
+        group: "Modify",
+        icon: Icon::Delete,
+        action: Action::Cmd("ERASE"),
+    },
     // ── View ───────────────────────────────────────────────────────────────
-    Entry { name: "Zoom Extents",          hint: "Z E",    keywords: "fit view all frame",                  group: "View",   icon: Icon::ZoomFit,   action: Action::Cmd("ZOOM E") },
-    Entry { name: "Select All",            hint: "ALL",    keywords: "everything",                          group: "View",   icon: Icon::Select,    action: Action::Cmd("ALL") },
-    Entry { name: "Undo",                  hint: "Ctrl Z", keywords: "back revert",                         group: "View",   icon: Icon::Undo,      action: Action::Cmd("UNDO") },
-    Entry { name: "Redo",                  hint: "Ctrl Y", keywords: "forward again",                       group: "View",   icon: Icon::Redo,      action: Action::Cmd("REDO") },
-    Entry { name: "Toggle Grid",           hint: "F7",     keywords: "view background lines",               group: "View",   icon: Icon::ZoomFit,   action: Action::ToggleGrid },
-    Entry { name: "Toggle Object Snap",    hint: "F9",     keywords: "osnap endpoint midpoint",             group: "View",   icon: Icon::Select,    action: Action::ToggleSnap },
-    Entry { name: "Toggle Ortho",          hint: "F8",     keywords: "horizontal vertical lock",            group: "View",   icon: Icon::Pan,       action: Action::ToggleOrtho },
-    Entry { name: "Toggle Polar Tracking", hint: "",       keywords: "angle 45 guide",                      group: "View",   icon: Icon::Pan,       action: Action::TogglePolar },
-    Entry { name: "Toggle Dynamic Input",  hint: "",       keywords: "dyn hud length angle",                group: "View",   icon: Icon::Pan,       action: Action::ToggleDyn },
+    Entry {
+        name: "Zoom Extents",
+        hint: "Z E",
+        keywords: "fit view all frame",
+        group: "View",
+        icon: Icon::ZoomFit,
+        action: Action::Cmd("ZOOM E"),
+    },
+    Entry {
+        name: "Select All",
+        hint: "ALL",
+        keywords: "everything",
+        group: "View",
+        icon: Icon::Select,
+        action: Action::Cmd("ALL"),
+    },
+    Entry {
+        name: "Undo",
+        hint: "Ctrl Z",
+        keywords: "back revert",
+        group: "View",
+        icon: Icon::Undo,
+        action: Action::Cmd("UNDO"),
+    },
+    Entry {
+        name: "Redo",
+        hint: "Ctrl Y",
+        keywords: "forward again",
+        group: "View",
+        icon: Icon::Redo,
+        action: Action::Cmd("REDO"),
+    },
+    Entry {
+        name: "Toggle Grid",
+        hint: "F7",
+        keywords: "view background lines",
+        group: "View",
+        icon: Icon::ZoomFit,
+        action: Action::ToggleGrid,
+    },
+    Entry {
+        name: "Toggle Object Snap",
+        hint: "F9",
+        keywords: "osnap endpoint midpoint",
+        group: "View",
+        icon: Icon::Select,
+        action: Action::ToggleSnap,
+    },
+    Entry {
+        name: "Toggle Ortho",
+        hint: "F8",
+        keywords: "horizontal vertical lock",
+        group: "View",
+        icon: Icon::Pan,
+        action: Action::ToggleOrtho,
+    },
+    Entry {
+        name: "Toggle Polar Tracking",
+        hint: "",
+        keywords: "angle 45 guide",
+        group: "View",
+        icon: Icon::Pan,
+        action: Action::TogglePolar,
+    },
+    Entry {
+        name: "Toggle Dynamic Input",
+        hint: "",
+        keywords: "dyn hud length angle",
+        group: "View",
+        icon: Icon::Pan,
+        action: Action::ToggleDyn,
+    },
 ];
 
 const GROUP_ORDER: [&str; 3] = ["Tools", "Modify", "View"];
@@ -69,11 +307,21 @@ fn score(entry: &Entry, q: &str) -> Option<u8> {
         return Some(3);
     }
     let name = entry.name.to_ascii_lowercase();
-    if name.starts_with(q) { return Some(0); }
-    if name.split_whitespace().any(|w| w.starts_with(q)) { return Some(1); }
-    if name.contains(q) { return Some(2); }
-    if entry.hint.to_ascii_lowercase() == q { return Some(0); }
-    if entry.keywords.split_whitespace().any(|w| w.starts_with(q)) { return Some(2); }
+    if name.starts_with(q) {
+        return Some(0);
+    }
+    if name.split_whitespace().any(|w| w.starts_with(q)) {
+        return Some(1);
+    }
+    if name.contains(q) {
+        return Some(2);
+    }
+    if entry.hint.to_ascii_lowercase() == q {
+        return Some(0);
+    }
+    if entry.keywords.split_whitespace().any(|w| w.starts_with(q)) {
+        return Some(2);
+    }
     None
 }
 
@@ -82,8 +330,18 @@ fn run_entry(app: &mut AppState, e: &Entry) {
         Action::Cmd(c) => app.run_command(c),
         Action::ToggleGrid => app.grid_on = !app.grid_on,
         Action::ToggleSnap => app.snap_on = !app.snap_on,
-        Action::ToggleOrtho => { app.ortho_on = !app.ortho_on; if app.ortho_on { app.polar_on = false; } }
-        Action::TogglePolar => { app.polar_on = !app.polar_on; if app.polar_on { app.ortho_on = false; } }
+        Action::ToggleOrtho => {
+            app.ortho_on = !app.ortho_on;
+            if app.ortho_on {
+                app.polar_on = false;
+            }
+        }
+        Action::TogglePolar => {
+            app.polar_on = !app.polar_on;
+            if app.polar_on {
+                app.ortho_on = false;
+            }
+        }
         Action::ToggleDyn => app.dyn_on = !app.dyn_on,
     }
 }
@@ -194,8 +452,13 @@ pub(super) fn command_bar(
     let mut open = ctx.data(|d| d.get_temp::<bool>(open_id).unwrap_or(false));
 
     // Ctrl+K / Ctrl+F (or a toolbar/menu request) opens + focuses the palette.
-    let menu_request = ctx.data(|d| d.get_temp::<bool>(egui::Id::new("open_palette")).unwrap_or(false));
-    if menu_request { ctx.data_mut(|d| d.insert_temp(egui::Id::new("open_palette"), false)); }
+    let menu_request = ctx.data(|d| {
+        d.get_temp::<bool>(egui::Id::new("open_palette"))
+            .unwrap_or(false)
+    });
+    if menu_request {
+        ctx.data_mut(|d| d.insert_temp(egui::Id::new("open_palette"), false));
+    }
     let mut focus_request = false;
     let kbd_open = ctx.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, Key::F))
         || ctx.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, Key::K));
@@ -229,8 +492,10 @@ pub(super) fn command_bar(
         }
         v
     } else {
-        let mut scored: Vec<(&Entry, u8)> =
-            ENTRIES.iter().filter_map(|e| score(e, &q).map(|s| (e, s))).collect();
+        let mut scored: Vec<(&Entry, u8)> = ENTRIES
+            .iter()
+            .filter_map(|e| score(e, &q).map(|s| (e, s)))
+            .collect();
         scored.sort_by_key(|&(_, s)| s);
         scored.into_iter().map(|(e, _)| e).collect()
     };
@@ -239,10 +504,12 @@ pub(super) fn command_bar(
     let mut nav = ui_state.palette_nav;
     if focused && !visible.is_empty() {
         if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, Key::ArrowDown)) {
-            index = (index + 1) % visible.len(); nav = true;
+            index = (index + 1) % visible.len();
+            nav = true;
         }
         if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, Key::ArrowUp)) {
-            index = (index + visible.len() - 1) % visible.len(); nav = true;
+            index = (index + visible.len() - 1) % visible.len();
+            nav = true;
         }
     }
 
@@ -256,7 +523,8 @@ pub(super) fn command_bar(
         .order(egui::Order::Tooltip)
         .fixed_pos(screen.min)
         .show(ctx, |ui| {
-            ui.painter().rect_filled(screen, 0.0, egui::Color32::from_black_alpha(140));
+            ui.painter()
+                .rect_filled(screen, 0.0, egui::Color32::from_black_alpha(140));
             ui.allocate_rect(screen, egui::Sense::click())
         });
     if backdrop.inner.clicked() {
@@ -265,7 +533,10 @@ pub(super) fn command_bar(
 
     // ── Centred card. ──────────────────────────────────────────────────────
     let width = 600.0_f32.min(canvas_rect.width() - 48.0);
-    let pos = egui::pos2(canvas_rect.center().x - width / 2.0, screen.top() + screen.height() * 0.13);
+    let pos = egui::pos2(
+        canvas_rect.center().x - width / 2.0,
+        screen.top() + screen.height() * 0.13,
+    );
     egui::Area::new(egui::Id::new("command_palette"))
         .order(egui::Order::Tooltip)
         .fixed_pos(pos)
@@ -280,15 +551,20 @@ pub(super) fn command_bar(
                         .inner_margin(egui::Margin::symmetric(16, 14))
                         .show(ui, |ui| {
                             ui.horizontal(|ui| {
-                                let (r, _) =
-                                    ui.allocate_exact_size(egui::vec2(20.0, 20.0), egui::Sense::hover());
+                                let (r, _) = ui.allocate_exact_size(
+                                    egui::vec2(20.0, 20.0),
+                                    egui::Sense::hover(),
+                                );
                                 ui.painter().circle_stroke(
                                     r.center() - egui::vec2(2.0, 2.0),
                                     6.0,
                                     egui::Stroke::new(1.6, theme::TEXT_DIM),
                                 );
                                 ui.painter().line_segment(
-                                    [r.center() + egui::vec2(2.5, 2.5), r.center() + egui::vec2(7.0, 7.0)],
+                                    [
+                                        r.center() + egui::vec2(2.5, 2.5),
+                                        r.center() + egui::vec2(7.0, 7.0),
+                                    ],
                                     egui::Stroke::new(1.6, theme::TEXT_DIM),
                                 );
                                 let resp = ui.add(
@@ -299,13 +575,21 @@ pub(super) fn command_bar(
                                         .desired_width(f32::INFINITY)
                                         .margin(egui::Margin::ZERO),
                                 );
-                                if focus_request { resp.request_focus(); }
-                                if resp.changed() { index = 0; nav = false; }
+                                if focus_request {
+                                    resp.request_focus();
+                                }
+                                if resp.changed() {
+                                    index = 0;
+                                    nav = false;
+                                }
                                 let enter = (resp.lost_focus() || resp.has_focus())
                                     && ui.input(|i| i.key_pressed(egui::Key::Enter));
                                 if enter {
-                                    if !visible.is_empty() { run_idx = Some(index.min(visible.len() - 1)); }
-                                    else { run_raw = true; }
+                                    if !visible.is_empty() {
+                                        run_idx = Some(index.min(visible.len() - 1));
+                                    } else {
+                                        run_raw = true;
+                                    }
                                 }
                                 keycap(ui, "ESC");
                             });
@@ -325,8 +609,10 @@ pub(super) fn command_bar(
                                         ui.add_space(24.0);
                                         ui.vertical_centered(|ui| {
                                             ui.label(
-                                                egui::RichText::new(format!("No commands match “{q}”"))
-                                                    .color(theme::TEXT_DIM),
+                                                egui::RichText::new(format!(
+                                                    "No commands match “{q}”"
+                                                ))
+                                                .color(theme::TEXT_DIM),
                                             );
                                         });
                                         ui.add_space(24.0);
@@ -346,8 +632,12 @@ pub(super) fn command_bar(
                                         }
                                         let selected = nav && i == index;
                                         let r = command_row(ui, e, selected);
-                                        if r.clicked() { run_idx = Some(i); }
-                                        if r.hovered() { index = i; }
+                                        if r.clicked() {
+                                            run_idx = Some(i);
+                                        }
+                                        if r.hovered() {
+                                            index = i;
+                                        }
                                     }
                                 });
                         });
@@ -359,18 +649,32 @@ pub(super) fn command_bar(
                         .show(ui, |ui| {
                             ui.horizontal(|ui| {
                                 keycap(ui, "↑↓");
-                                ui.label(egui::RichText::new("navigate").size(11.5).color(theme::TEXT_DIM));
+                                ui.label(
+                                    egui::RichText::new("navigate")
+                                        .size(11.5)
+                                        .color(theme::TEXT_DIM),
+                                );
                                 ui.add_space(8.0);
                                 keycap(ui, "↵");
-                                ui.label(egui::RichText::new("select").size(11.5).color(theme::TEXT_DIM));
-                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                    ui.label(
-                                        egui::RichText::new(concat!("eiderFLAT · v", env!("CARGO_PKG_VERSION")))
+                                ui.label(
+                                    egui::RichText::new("select")
+                                        .size(11.5)
+                                        .color(theme::TEXT_DIM),
+                                );
+                                ui.with_layout(
+                                    egui::Layout::right_to_left(egui::Align::Center),
+                                    |ui| {
+                                        ui.label(
+                                            egui::RichText::new(concat!(
+                                                "eiderFLAT · v",
+                                                env!("CARGO_PKG_VERSION")
+                                            ))
                                             .monospace()
                                             .size(11.0)
                                             .color(theme::TEXT_DIM),
-                                    );
-                                });
+                                        );
+                                    },
+                                );
                             });
                         });
                 });
@@ -382,13 +686,15 @@ pub(super) fn command_bar(
             ui_state.command_input.clear();
             ctx.memory_mut(|m| m.surrender_focus(bar_id));
         }
-        index = 0; nav = false;
+        index = 0;
+        nav = false;
         open = false;
     } else if run_raw {
         let text = std::mem::take(&mut ui_state.command_input);
         app.run_command(text.trim());
         ctx.memory_mut(|m| m.surrender_focus(bar_id));
-        index = 0; nav = false;
+        index = 0;
+        nav = false;
         open = false;
     } else if close_requested {
         ctx.memory_mut(|m| m.surrender_focus(bar_id));

@@ -1,10 +1,12 @@
-use eiderflat_ui::AppState;
 use eiderflat_document::EntityKind;
 use eiderflat_geometry::{Curve, LineSeg, Point2d};
+use eiderflat_ui::AppState;
 
 fn line(x0: i64, y0: i64, x1: i64, y1: i64) -> EntityKind {
     EntityKind::Curve(Curve::Line(LineSeg::from_endpoints(
-        Point2d::from_i64(x0, y0), Point2d::from_i64(x1, y1))))
+        Point2d::from_i64(x0, y0),
+        Point2d::from_i64(x1, y1),
+    )))
 }
 
 fn click(a: &mut AppState, wx: f64, wy: f64) {
@@ -27,7 +29,11 @@ fn trim_tool_cuts_picked_span() {
     let before = a.document.len();
     a.run_command("TRIM");
     click(&mut a, 5.0, 0.0);
-    assert_eq!(a.document.len(), before + 1, "trim should split target into two");
+    assert_eq!(
+        a.document.len(),
+        before + 1,
+        "trim should split target into two"
+    );
 }
 
 #[test]
@@ -41,9 +47,16 @@ fn trim_ignores_object_snap_when_picking() {
     a.run_command("TRIM");
     let (sx, sy) = a.view.world_to_screen(3.1, 0.05);
     a.pointer_moved(sx, sy);
-    assert!(a.active_snap.is_none(), "entity-picking tools must not object-snap");
+    assert!(
+        a.active_snap.is_none(),
+        "entity-picking tools must not object-snap"
+    );
     click(&mut a, 5.0, 0.0);
-    assert_eq!(a.document.len(), before + 1, "trim must still cut the picked span");
+    assert_eq!(
+        a.document.len(),
+        before + 1,
+        "trim must still cut the picked span"
+    );
 }
 
 #[test]
@@ -55,7 +68,11 @@ fn offset_tool_creates_parallel_curve() {
     a.run_command("2");
     click(&mut a, 5.0, 0.0);
     click(&mut a, 5.0, 4.0);
-    assert_eq!(a.document.len(), before + 1, "offset should add one parallel curve");
+    assert_eq!(
+        a.document.len(),
+        before + 1,
+        "offset should add one parallel curve"
+    );
 }
 
 #[test]
@@ -68,9 +85,17 @@ fn fillet_tool_adds_arc() {
     a.run_command("2");
     click(&mut a, 5.0, 0.0);
     click(&mut a, 0.0, 5.0);
-    assert_eq!(a.document.len(), before + 1, "fillet adds one arc (lines trimmed in place)");
-    assert!(a.document.iter().any(|e| matches!(&e.kind, EntityKind::Curve(Curve::Arc(_)))),
-        "a fillet arc should exist");
+    assert_eq!(
+        a.document.len(),
+        before + 1,
+        "fillet adds one arc (lines trimmed in place)"
+    );
+    assert!(
+        a.document
+            .iter()
+            .any(|e| matches!(&e.kind, EntityKind::Curve(Curve::Arc(_)))),
+        "a fillet arc should exist"
+    );
 }
 
 #[test]
@@ -82,9 +107,14 @@ fn rotate_tool_turns_selection() {
     click(&mut a, 0.0, 0.0);
     click(&mut a, 0.0, 1.0);
     if let Some(Curve::Line(l)) = a.document.get(id).unwrap().as_curve() {
-        assert!(l.p0.x.abs() < 1e-4 && (l.p0.y - 1.0).abs() < 1e-4,
-            "(1,0) → (0,1), got {:?}", l.p0.to_f64());
-    } else { panic!("expected a line") }
+        assert!(
+            l.p0.x.abs() < 1e-4 && (l.p0.y - 1.0).abs() < 1e-4,
+            "(1,0) → (0,1), got {:?}",
+            l.p0.to_f64()
+        );
+    } else {
+        panic!("expected a line")
+    }
 }
 
 #[test]
@@ -97,7 +127,11 @@ fn mirror_tool_reflects_selection() {
     click(&mut a, 1.0, 0.0);
     if let Some(Curve::Line(l)) = a.document.get(id).unwrap().as_curve() {
         let (x, y) = l.p0.to_f64();
-        assert!((x - 1.0).abs() < 1e-4 && (y + 2.0).abs() < 1e-4, "(1,2) → (1,-2), got ({x},{y})");
-    } else { panic!("expected a line") }
+        assert!(
+            (x - 1.0).abs() < 1e-4 && (y + 2.0).abs() < 1e-4,
+            "(1,2) → (1,-2), got ({x},{y})"
+        );
+    } else {
+        panic!("expected a line")
+    }
 }
-

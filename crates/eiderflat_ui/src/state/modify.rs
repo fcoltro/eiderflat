@@ -1,8 +1,8 @@
 use super::AppState;
-use eiderflat_geometry::Point2d;
-use eiderflat_document::EntityId;
-use eiderflat_cad::pick_at;
 use crate::tools::Tool;
+use eiderflat_cad::pick_at;
+use eiderflat_document::EntityId;
+use eiderflat_geometry::Point2d;
 
 impl AppState {
     pub(crate) fn handle_modify_click(&mut self, p: &Point2d) -> bool {
@@ -16,8 +16,12 @@ impl AppState {
             Tool::Trim => {
                 if let Some(id) = pick(self) {
                     self.history.snapshot(&self.document);
-                    let cutters: Vec<EntityId> = self.document.iter().map(|e| e.id)
-                        .filter(|&i| i != id && i != self.origin_id).collect();
+                    let cutters: Vec<EntityId> = self
+                        .document
+                        .iter()
+                        .map(|e| e.id)
+                        .filter(|&i| i != id && i != self.origin_id)
+                        .collect();
                     edit::trim(&mut self.document, id, &cutters, px, py);
                     self.selection.clear();
                 }
@@ -29,7 +33,9 @@ impl AppState {
             }
             Tool::Extend => {
                 if let Some(id) = pick(self) {
-                    let boundaries: Vec<EntityId> = self.document.iter()
+                    let boundaries: Vec<EntityId> = self
+                        .document
+                        .iter()
                         .map(|e| e.id)
                         .filter(|&i| i != id && i != self.origin_id)
                         .collect();
@@ -44,11 +50,15 @@ impl AppState {
                 match source {
                     None => {
                         if let Some(id) = pick(self) {
-                            self.tool = Tool::Offset { dist, source: Some(id) };
+                            self.tool = Tool::Offset {
+                                dist,
+                                source: Some(id),
+                            };
                         }
                     }
                     Some(src) => {
-                        if let Some(c) = self.document.get(src).and_then(|e| e.as_curve()).cloned() {
+                        if let Some(c) = self.document.get(src).and_then(|e| e.as_curve()).cloned()
+                        {
                             let plus = eiderflat_geometry::offset_curve(&c, dist.abs());
                             let minus = eiderflat_geometry::offset_curve(&c, -dist.abs());
                             let dp = eiderflat_geometry::point_to_curve_distance(&plus, px, py);
@@ -65,13 +75,21 @@ impl AppState {
             Tool::Fillet { radius, first } => {
                 if let Some(id) = pick(self) {
                     match first {
-                        None => self.tool = Tool::Fillet { radius, first: Some(id) },
+                        None => {
+                            self.tool = Tool::Fillet {
+                                radius,
+                                first: Some(id),
+                            }
+                        }
                         Some(a) => {
                             if a != id {
                                 self.history.snapshot(&self.document);
                                 edit::fillet(&mut self.document, a, id, radius, px, py);
                             }
-                            self.tool = Tool::Fillet { radius, first: None };
+                            self.tool = Tool::Fillet {
+                                radius,
+                                first: None,
+                            };
                         }
                     }
                 }
@@ -80,7 +98,12 @@ impl AppState {
             Tool::Chamfer { dist, first } => {
                 if let Some(id) = pick(self) {
                     match first {
-                        None => self.tool = Tool::Chamfer { dist, first: Some(id) },
+                        None => {
+                            self.tool = Tool::Chamfer {
+                                dist,
+                                first: Some(id),
+                            }
+                        }
                         Some(a) => {
                             if a != id {
                                 self.history.snapshot(&self.document);
@@ -96,14 +119,37 @@ impl AppState {
                 match (c1, c2, base) {
                     (None, _, _) => {
                         let ids = if self.selection.is_empty() {
-                            self.document.iter().map(|e| e.id).filter(|&i| i != self.origin_id).collect()
-                        } else { self.selection.clone() };
-                        self.tool = Tool::Stretch { c1: Some(*p), c2: None, base: None, ids };
+                            self.document
+                                .iter()
+                                .map(|e| e.id)
+                                .filter(|&i| i != self.origin_id)
+                                .collect()
+                        } else {
+                            self.selection.clone()
+                        };
+                        self.tool = Tool::Stretch {
+                            c1: Some(*p),
+                            c2: None,
+                            base: None,
+                            ids,
+                        };
                     }
-                    (Some(a), None, _) =>
-                        self.tool = Tool::Stretch { c1: Some(a), c2: Some(*p), base: None, ids },
-                    (Some(a), Some(b), None) =>
-                        self.tool = Tool::Stretch { c1: Some(a), c2: Some(b), base: Some(*p), ids },
+                    (Some(a), None, _) => {
+                        self.tool = Tool::Stretch {
+                            c1: Some(a),
+                            c2: Some(*p),
+                            base: None,
+                            ids,
+                        }
+                    }
+                    (Some(a), Some(b), None) => {
+                        self.tool = Tool::Stretch {
+                            c1: Some(a),
+                            c2: Some(b),
+                            base: Some(*p),
+                            ids,
+                        }
+                    }
                     (Some(a), Some(b), Some(bp)) => {
                         let (ax, ay) = a.to_f64();
                         let (bx, by) = b.to_f64();
@@ -112,7 +158,12 @@ impl AppState {
                         let dy = py - bp.y;
                         self.history.snapshot(&self.document);
                         edit::stretch(&mut self.document, &ids, window, dx, dy);
-                        self.tool = Tool::Stretch { c1: None, c2: None, base: None, ids: vec![] };
+                        self.tool = Tool::Stretch {
+                            c1: None,
+                            c2: None,
+                            base: None,
+                            ids: vec![],
+                        };
                     }
                 }
                 true
@@ -128,14 +179,22 @@ impl AppState {
         let id = pick_at(&self.document, px, py, tol)?;
         match self.tool {
             Tool::Trim => {
-                let cutters: Vec<EntityId> = self.document.iter().map(|e| e.id)
-                    .filter(|&i| i != id).collect();
+                let cutters: Vec<EntityId> = self
+                    .document
+                    .iter()
+                    .map(|e| e.id)
+                    .filter(|&i| i != id)
+                    .collect();
                 edit::trim_preview(&self.document, id, &cutters, px, py)
                     .map(TrimExtendPreview::Remove)
             }
             Tool::Extend => {
-                let boundaries: Vec<EntityId> = self.document.iter()
-                    .map(|e| e.id).filter(|&i| i != id).collect();
+                let boundaries: Vec<EntityId> = self
+                    .document
+                    .iter()
+                    .map(|e| e.id)
+                    .filter(|&i| i != id)
+                    .collect();
                 edit::extend_preview(&self.document, id, &boundaries, px, py)
                     .map(TrimExtendPreview::Extension)
             }

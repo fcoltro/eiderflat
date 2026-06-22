@@ -1,5 +1,5 @@
 use crate::curve::{Curve, CurveSegment};
-use crate::primitives::{LineSeg, CircularArc};
+use crate::primitives::{CircularArc, LineSeg};
 
 #[derive(Clone, Debug)]
 pub struct CurveIntersection {
@@ -9,8 +9,13 @@ pub struct CurveIntersection {
 }
 
 pub fn intersect_line_line(l1: &LineSeg, l2: &LineSeg) -> Option<CurveIntersection> {
-    intersect_segments_f64(l1.p0.to_f64(), l1.p1.to_f64(), l2.p0.to_f64(), l2.p1.to_f64())
-        .map(|(point, t1, t2)| CurveIntersection { point, t1, t2 })
+    intersect_segments_f64(
+        l1.p0.to_f64(),
+        l1.p1.to_f64(),
+        l2.p0.to_f64(),
+        l2.p1.to_f64(),
+    )
+    .map(|(point, t1, t2)| CurveIntersection { point, t1, t2 })
 }
 
 pub fn intersect_line_circle(line: &LineSeg, arc: &CircularArc) -> Vec<CurveIntersection> {
@@ -22,18 +27,26 @@ pub fn intersect_line_circle(line: &LineSeg, arc: &CircularArc) -> Vec<CurveInte
     let (dx, dy) = (bx - ax, by - ay);
     let (fx, fy) = (ax - cx, ay - cy);
     let qa = dx * dx + dy * dy;
-    if qa < 1e-20 { return vec![]; }
+    if qa < 1e-20 {
+        return vec![];
+    }
     let qb = 2.0 * (fx * dx + fy * dy);
     let qc = fx * fx + fy * fy - r * r;
     let disc = qb * qb - 4.0 * qa * qc;
-    if disc < 0.0 { return vec![]; }
+    if disc < 0.0 {
+        return vec![];
+    }
     let sq = disc.sqrt();
     let mut ts = vec![(-qb - sq) / (2.0 * qa)];
-    if sq > 1e-12 { ts.push((-qb + sq) / (2.0 * qa)); }
+    if sq > 1e-12 {
+        ts.push((-qb + sq) / (2.0 * qa));
+    }
 
     let mut results = Vec::new();
     for t in ts {
-        if !(-1e-9..=1.0 + 1e-9).contains(&t) { continue; }
+        if !(-1e-9..=1.0 + 1e-9).contains(&t) {
+            continue;
+        }
         let t1 = t.clamp(0.0, 1.0);
         let (px, py) = (ax + t1 * dx, ay + t1 * dy);
         let angle = (py - cy).atan2(px - cx);
@@ -51,19 +64,29 @@ pub fn intersect_line_circle(line: &LineSeg, arc: &CircularArc) -> Vec<CurveInte
 fn angle_in_arc(angle: f64, start: f64, end: f64) -> bool {
     let pi2 = 2.0 * std::f64::consts::PI;
     let mut a = angle - start;
-    while a < 0.0 { a += pi2; }
+    while a < 0.0 {
+        a += pi2;
+    }
     let mut span = end - start;
-    while span <= 0.0 { span += pi2; }
+    while span <= 0.0 {
+        span += pi2;
+    }
     a <= span + 1e-9
 }
 
 fn angle_on_domain(angle: f64, start: f64, end: f64) -> f64 {
     let pi2 = 2.0 * std::f64::consts::PI;
     let mut a = angle - start;
-    while a < 0.0 { a += pi2; }
-    while a > pi2 { a -= pi2; }
+    while a < 0.0 {
+        a += pi2;
+    }
+    while a > pi2 {
+        a -= pi2;
+    }
     let mut span = end - start;
-    while span <= 0.0 { span += pi2; }
+    while span <= 0.0 {
+        span += pi2;
+    }
     start + a.min(span)
 }
 
@@ -75,7 +98,7 @@ pub fn intersect_circle_circle(c1: &CircularArc, c2: &CircularArc) -> Vec<CurveI
 
     let dx = cx2 - cx1;
     let dy = cy2 - cy1;
-    let d  = (dx * dx + dy * dy).sqrt();
+    let d = (dx * dx + dy * dy).sqrt();
 
     if d < 1e-12 || d > r1 + r2 + 1e-10 || d < (r1 - r2).abs() - 1e-10 {
         return vec![];
@@ -101,8 +124,9 @@ pub fn intersect_circle_circle(c1: &CircularArc, c2: &CircularArc) -> Vec<CurveI
         let angle1 = (py - cy1).atan2(px - cx1);
         let angle2 = (py - cy2).atan2(px - cx2);
 
-        if angle_in_arc(angle1, c1.start_angle, c1.end_angle) &&
-           angle_in_arc(angle2, c2.start_angle, c2.end_angle) {
+        if angle_in_arc(angle1, c1.start_angle, c1.end_angle)
+            && angle_in_arc(angle2, c2.start_angle, c2.end_angle)
+        {
             results.push(CurveIntersection {
                 point: (px, py),
                 t1: angle_on_domain(angle1, c1.start_angle, c1.end_angle),
@@ -114,8 +138,10 @@ pub fn intersect_circle_circle(c1: &CircularArc, c2: &CircularArc) -> Vec<CurveI
 }
 
 fn intersect_segments_f64(
-    pa: (f64, f64), pb: (f64, f64),
-    qa: (f64, f64), qb: (f64, f64),
+    pa: (f64, f64),
+    pb: (f64, f64),
+    qa: (f64, f64),
+    qb: (f64, f64),
 ) -> Option<((f64, f64), f64, f64)> {
     let ux = pb.0 - pa.0;
     let uy = pb.1 - pa.1;
@@ -123,7 +149,9 @@ fn intersect_segments_f64(
     let vy = qb.1 - qa.1;
 
     let denom = ux * vy - uy * vx;
-    if denom.abs() < 1e-12 { return None; }
+    if denom.abs() < 1e-12 {
+        return None;
+    }
 
     let dx = qa.0 - pa.0;
     let dy = qa.1 - pa.1;
@@ -143,10 +171,7 @@ fn intersect_segments_f64(
     }
 }
 
-fn refine_intersection(
-    c1: &Curve, c2: &Curve,
-    t1_init: f64, t2_init: f64,
-) -> CurveIntersection {
+fn refine_intersection(c1: &Curve, c2: &Curve, t1_init: f64, t2_init: f64) -> CurveIntersection {
     let (t0_1, t1_1) = c1.domain();
     let (t0_2, t1_2) = c2.domain();
 
@@ -194,10 +219,21 @@ pub fn intersect_general(c1: &Curve, c2: &Curve) -> Vec<CurveIntersection> {
         for (i, seg) in p.segments.iter().enumerate() {
             let (s0, s1) = seg.domain();
             for h in intersect(seg, c2) {
-                let local = if (s1 - s0).abs() < 1e-12 { 0.0 } else { (h.t1 - s0) / (s1 - s0) };
+                let local = if (s1 - s0).abs() < 1e-12 {
+                    0.0
+                } else {
+                    (h.t1 - s0) / (s1 - s0)
+                };
                 let global = (i as f64 + local.clamp(0.0, 1.0)) / n;
-                if out.iter().all(|o| (o.point.0 - h.point.0).hypot(o.point.1 - h.point.1) >= 1e-5) {
-                    out.push(CurveIntersection { point: h.point, t1: global, t2: h.t2 });
+                if out
+                    .iter()
+                    .all(|o| (o.point.0 - h.point.0).hypot(o.point.1 - h.point.1) >= 1e-5)
+                {
+                    out.push(CurveIntersection {
+                        point: h.point,
+                        t1: global,
+                        t2: h.t2,
+                    });
                 }
             }
         }
@@ -209,10 +245,21 @@ pub fn intersect_general(c1: &Curve, c2: &Curve) -> Vec<CurveIntersection> {
         for (i, seg) in p.segments.iter().enumerate() {
             let (s0, s1) = seg.domain();
             for h in intersect(c1, seg) {
-                let local = if (s1 - s0).abs() < 1e-12 { 0.0 } else { (h.t2 - s0) / (s1 - s0) };
+                let local = if (s1 - s0).abs() < 1e-12 {
+                    0.0
+                } else {
+                    (h.t2 - s0) / (s1 - s0)
+                };
                 let global = (i as f64 + local.clamp(0.0, 1.0)) / n;
-                if out.iter().all(|o| (o.point.0 - h.point.0).hypot(o.point.1 - h.point.1) >= 1e-5) {
-                    out.push(CurveIntersection { point: h.point, t1: h.t1, t2: global });
+                if out
+                    .iter()
+                    .all(|o| (o.point.0 - h.point.0).hypot(o.point.1 - h.point.1) >= 1e-5)
+                {
+                    out.push(CurveIntersection {
+                        point: h.point,
+                        t1: h.t1,
+                        t2: global,
+                    });
                 }
             }
         }
@@ -272,21 +319,20 @@ pub fn intersect_general(c1: &Curve, c2: &Curve) -> Vec<CurveIntersection> {
 
 pub fn intersect(c1: &Curve, c2: &Curve) -> Vec<CurveIntersection> {
     match (c1, c2) {
-        (Curve::Line(l1), Curve::Line(l2)) =>
-            intersect_line_line(l1, l2).into_iter().collect(),
-        (Curve::Line(l), Curve::Arc(a)) =>
-            intersect_line_circle(l, a),
-        (Curve::Arc(a), Curve::Line(l)) =>
-            intersect_line_circle(l, a).into_iter()
-                .map(|h| CurveIntersection { point: h.point, t1: h.t2, t2: h.t1 })
-                .collect(),
-        (Curve::Arc(a1), Curve::Arc(a2)) =>
-            intersect_circle_circle(a1, a2),
-        _ =>
-            intersect_general(c1, c2),
+        (Curve::Line(l1), Curve::Line(l2)) => intersect_line_line(l1, l2).into_iter().collect(),
+        (Curve::Line(l), Curve::Arc(a)) => intersect_line_circle(l, a),
+        (Curve::Arc(a), Curve::Line(l)) => intersect_line_circle(l, a)
+            .into_iter()
+            .map(|h| CurveIntersection {
+                point: h.point,
+                t1: h.t2,
+                t2: h.t1,
+            })
+            .collect(),
+        (Curve::Arc(a1), Curve::Arc(a2)) => intersect_circle_circle(a1, a2),
+        _ => intersect_general(c1, c2),
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -294,26 +340,39 @@ mod tests {
     use crate::point::Point2d;
     use crate::primitives::LineSeg;
 
-    fn pt(x: i64, y: i64) -> Point2d { Point2d::from_i64(x, y) }
+    fn pt(x: i64, y: i64) -> Point2d {
+        Point2d::from_i64(x, y)
+    }
 
     #[test]
     fn arc_first_dispatch_returns_arc_param_in_t1() {
         use crate::primitives::CircularArc;
         let arc = Curve::Arc(CircularArc::new(
-            pt(0, 0), 5.0, 0.0, 1.5 * std::f64::consts::PI));
+            pt(0, 0),
+            5.0,
+            0.0,
+            1.5 * std::f64::consts::PI,
+        ));
         let x = -5.0 / 2f64.sqrt();
         let line = Curve::Line(LineSeg::from_endpoints(
-            Point2d::from_f64(x, -6.0), Point2d::from_f64(x, 0.0)));
+            Point2d::from_f64(x, -6.0),
+            Point2d::from_f64(x, 0.0),
+        ));
         {
             let hits = intersect(&arc, &line);
             assert_eq!(hits.len(), 1);
             let h = &hits[0];
             let expected = 1.25 * std::f64::consts::PI;
-            assert!((h.t1 - expected).abs() < 1e-6,
-                "t1 must be the arc angle 5π/4, got {}", h.t1);
+            assert!(
+                (h.t1 - expected).abs() < 1e-6,
+                "t1 must be the arc angle 5π/4, got {}",
+                h.t1
+            );
             let (ex, ey) = arc.evaluate_f64(h.t1);
-            assert!((ex - h.point.0).abs() < 1e-6 && (ey - h.point.1).abs() < 1e-6,
-                "evaluating the arc at t1 must reproduce the hit point");
+            assert!(
+                (ex - h.point.0).abs() < 1e-6 && (ey - h.point.1).abs() < 1e-6,
+                "evaluating the arc at t1 must reproduce the hit point"
+            );
         }
     }
 
@@ -326,7 +385,9 @@ mod tests {
             let x1 = 0.25 * (i + 1) as f64;
             let y0 = if i % 2 == 0 { -2.0 } else { 2.0 };
             segs.push(Curve::Line(LineSeg::from_endpoints(
-                Point2d::from_f64(x0, y0), Point2d::from_f64(x1, -y0))));
+                Point2d::from_f64(x0, y0),
+                Point2d::from_f64(x1, -y0),
+            )));
         }
         let poly = Curve::Poly(Box::new(PolyCurve::new(segs)));
         let line = Curve::Line(LineSeg::from_endpoints(pt(0, 0), pt(10, 0)));
@@ -334,15 +395,17 @@ mod tests {
         assert_eq!(hits.len(), 40, "every zigzag crossing must be found");
         for h in &hits {
             let (x, y) = poly.evaluate_f64(h.t2);
-            assert!((x - h.point.0).abs() < 1e-6 && (y - h.point.1).abs() < 1e-6,
-                "poly param t2 must reproduce the hit point");
+            assert!(
+                (x - h.point.0).abs() < 1e-6 && (y - h.point.1).abs() < 1e-6,
+                "poly param t2 must reproduce the hit point"
+            );
         }
     }
 
     #[test]
     fn line_line_crossing() {
-        let l1 = LineSeg::from_endpoints(pt(0,0), pt(4,4));
-        let l2 = LineSeg::from_endpoints(pt(0,4), pt(4,0));
+        let l1 = LineSeg::from_endpoints(pt(0, 0), pt(4, 4));
+        let l2 = LineSeg::from_endpoints(pt(0, 4), pt(4, 0));
         let hit = intersect_line_line(&l1, &l2).unwrap();
         assert!((hit.point.0 - 2.0).abs() < 1e-9);
         assert!((hit.point.1 - 2.0).abs() < 1e-9);
@@ -350,32 +413,33 @@ mod tests {
 
     #[test]
     fn line_line_parallel() {
-        let l1 = LineSeg::from_endpoints(pt(0,0), pt(2,0));
-        let l2 = LineSeg::from_endpoints(pt(0,1), pt(2,1));
+        let l1 = LineSeg::from_endpoints(pt(0, 0), pt(2, 0));
+        let l2 = LineSeg::from_endpoints(pt(0, 1), pt(2, 1));
         assert!(intersect_line_line(&l1, &l2).is_none());
     }
 
     #[test]
     fn line_circle_two_points() {
-        let line = LineSeg::from_endpoints(
-            Point2d::from_f64(-10.0, 0.0),
-            Point2d::from_f64(10.0, 0.0),
-        );
-        let arc = CircularArc::new(pt(0,0), 5.0, -std::f64::consts::PI, std::f64::consts::PI);
+        let line =
+            LineSeg::from_endpoints(Point2d::from_f64(-10.0, 0.0), Point2d::from_f64(10.0, 0.0));
+        let arc = CircularArc::new(pt(0, 0), 5.0, -std::f64::consts::PI, std::f64::consts::PI);
         let hits = intersect_line_circle(&line, &arc);
-        assert_eq!(hits.len(), 2, "Expected 2 intersections, got {}", hits.len());
+        assert_eq!(
+            hits.len(),
+            2,
+            "Expected 2 intersections, got {}",
+            hits.len()
+        );
         let mut xs: Vec<f64> = hits.iter().map(|h| h.point.0).collect();
-        xs.sort_by(|a,b| a.partial_cmp(b).unwrap());
+        xs.sort_by(|a, b| a.partial_cmp(b).unwrap());
         assert!((xs[0] + 5.0).abs() < 1e-4);
         assert!((xs[1] - 5.0).abs() < 1e-4);
     }
 
     #[test]
     fn circle_circle_two_circles() {
-        let c1 = CircularArc::new(pt(0,0), 2.0,
-            -std::f64::consts::PI, std::f64::consts::PI);
-        let c2 = CircularArc::new(pt(2,0), 2.0,
-            -std::f64::consts::PI, std::f64::consts::PI);
+        let c1 = CircularArc::new(pt(0, 0), 2.0, -std::f64::consts::PI, std::f64::consts::PI);
+        let c2 = CircularArc::new(pt(2, 0), 2.0, -std::f64::consts::PI, std::f64::consts::PI);
         let hits = intersect_circle_circle(&c1, &c2);
         assert_eq!(hits.len(), 2, "Expected 2 intersections, got {:?}", hits);
         for h in &hits {
@@ -386,13 +450,16 @@ mod tests {
 
     #[test]
     fn line_circle_intersect_shifted_center() {
-        let line = LineSeg::from_endpoints(
-            Point2d::from_f64(-10.0, 4.0),
-            Point2d::from_f64(10.0, 4.0),
-        );
-        let arc = CircularArc::new(pt(3,4), 5.0, -std::f64::consts::PI, std::f64::consts::PI);
+        let line =
+            LineSeg::from_endpoints(Point2d::from_f64(-10.0, 4.0), Point2d::from_f64(10.0, 4.0));
+        let arc = CircularArc::new(pt(3, 4), 5.0, -std::f64::consts::PI, std::f64::consts::PI);
         let hits = intersect_line_circle(&line, &arc);
-        assert_eq!(hits.len(), 2, "Expected 2 intersections, got {}", hits.len());
+        assert_eq!(
+            hits.len(),
+            2,
+            "Expected 2 intersections, got {}",
+            hits.len()
+        );
         let mut pts: Vec<(f64, f64)> = hits.iter().map(|h| h.point).collect();
         pts.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
         assert!((pts[0].0 - -2.0).abs() < 1e-4);
@@ -404,21 +471,45 @@ mod tests {
     #[test]
     fn line_circle_exact_tangent_is_single_point() {
         let line = LineSeg::from_endpoints(pt(-8, 5), pt(8, 5));
-        let arc = CircularArc::new(pt(0,0), 5.0, -std::f64::consts::PI, std::f64::consts::PI);
+        let arc = CircularArc::new(pt(0, 0), 5.0, -std::f64::consts::PI, std::f64::consts::PI);
         let hits = intersect_line_circle(&line, &arc);
-        assert_eq!(hits.len(), 1, "exact tangent should be a single touch point");
-        assert!((hits[0].point.0).abs() < 1e-9, "x≈0, got {}", hits[0].point.0);
-        assert!((hits[0].point.1 - 5.0).abs() < 1e-9, "y≈5, got {}", hits[0].point.1);
+        assert_eq!(
+            hits.len(),
+            1,
+            "exact tangent should be a single touch point"
+        );
+        assert!(
+            (hits[0].point.0).abs() < 1e-9,
+            "x≈0, got {}",
+            hits[0].point.0
+        );
+        assert!(
+            (hits[0].point.1 - 5.0).abs() < 1e-9,
+            "y≈5, got {}",
+            hits[0].point.1
+        );
     }
 
     #[test]
     fn line_circle_exact_vertical_tangent_is_exact_point() {
         let line = LineSeg::from_endpoints(pt(5, -8), pt(5, 8));
-        let arc = CircularArc::new(pt(0,0), 5.0, -std::f64::consts::PI, std::f64::consts::PI);
+        let arc = CircularArc::new(pt(0, 0), 5.0, -std::f64::consts::PI, std::f64::consts::PI);
         let hits = intersect_line_circle(&line, &arc);
-        assert_eq!(hits.len(), 1, "vertical tangent should be a single touch point");
-        assert!((hits[0].point.0 - 5.0).abs() < 1e-12, "x≈5, got {}", hits[0].point.0);
-        assert!((hits[0].point.1).abs() < 1e-12, "y≈0, got {}", hits[0].point.1);
+        assert_eq!(
+            hits.len(),
+            1,
+            "vertical tangent should be a single touch point"
+        );
+        assert!(
+            (hits[0].point.0 - 5.0).abs() < 1e-12,
+            "x≈5, got {}",
+            hits[0].point.0
+        );
+        assert!(
+            (hits[0].point.1).abs() < 1e-12,
+            "y≈0, got {}",
+            hits[0].point.1
+        );
     }
 
     #[test]
@@ -429,7 +520,12 @@ mod tests {
         let e2 = Curve::Ellipse(EllipticalArc::axis_aligned(pt(0, 0), 1.0, 2.0, 0.0, tau));
 
         let hits = intersect(&e1, &e2);
-        assert_eq!(hits.len(), 4, "two crossing ellipses meet in 4 points, got {}", hits.len());
+        assert_eq!(
+            hits.len(),
+            4,
+            "two crossing ellipses meet in 4 points, got {}",
+            hits.len()
+        );
 
         let expect = 2.0 / 5f64.sqrt();
         for h in &hits {
@@ -440,5 +536,3 @@ mod tests {
         }
     }
 }
-
-

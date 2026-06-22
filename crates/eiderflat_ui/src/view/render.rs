@@ -1,9 +1,9 @@
-use egui::{pos2, vec2, Color32, Stroke};
-use eiderflat_document::{Color, EntityId, EntityKind};
-use eiderflat_geometry::{Curve, CurveSegment, Point2d};
 use super::tessellate::draw_curve;
 use crate::state::AppState;
 use crate::tools::Tool;
+use egui::{Color32, Stroke, pos2, vec2};
+use eiderflat_document::{Color, EntityId, EntityKind};
+use eiderflat_geometry::{Curve, CurveSegment, Point2d};
 
 pub(super) fn tool_prompt(tool: &Tool) -> String {
     match tool {
@@ -87,7 +87,10 @@ pub(super) fn tool_prompt(tool: &Tool) -> String {
             if pts.is_empty() {
                 "Specify first control point".into()
             } else {
-                format!("Specify next control vertex ({} placed) — Enter/right-click finishes, C closes", pts.len())
+                format!(
+                    "Specify next control vertex ({} placed) — Enter/right-click finishes, C closes",
+                    pts.len()
+                )
             }
         }
         Tool::Polyline { pts } => {
@@ -648,14 +651,28 @@ pub(super) fn draw_corner_preview(
                 {
                     draw_trimmed_edge(painter, &g.edge_a, g.corner, sol.ta, to_screen, stroke);
                     draw_trimmed_edge(painter, &g.edge_b, g.corner, sol.tb, to_screen, stroke);
-                    draw_arc_short(painter, sol.center, ca.size, sol.ta, sol.tb, to_screen, stroke);
+                    draw_arc_short(
+                        painter, sol.center, ca.size, sol.ta, sol.tb, to_screen, stroke,
+                    );
                 }
             }
             crate::state::CornerKind::Chamfer => {
-                let far_a = (g.corner.0 + g.dir_a.0 * g.len_a, g.corner.1 + g.dir_a.1 * g.len_a);
-                let far_b = (g.corner.0 + g.dir_b.0 * g.len_b, g.corner.1 + g.dir_b.1 * g.len_b);
-                let p1 = (g.corner.0 + g.dir_a.0 * ca.size, g.corner.1 + g.dir_a.1 * ca.size);
-                let p2 = (g.corner.0 + g.dir_b.0 * ca.size, g.corner.1 + g.dir_b.1 * ca.size);
+                let far_a = (
+                    g.corner.0 + g.dir_a.0 * g.len_a,
+                    g.corner.1 + g.dir_a.1 * g.len_a,
+                );
+                let far_b = (
+                    g.corner.0 + g.dir_b.0 * g.len_b,
+                    g.corner.1 + g.dir_b.1 * g.len_b,
+                );
+                let p1 = (
+                    g.corner.0 + g.dir_a.0 * ca.size,
+                    g.corner.1 + g.dir_a.1 * ca.size,
+                );
+                let p2 = (
+                    g.corner.0 + g.dir_b.0 * ca.size,
+                    g.corner.1 + g.dir_b.1 * ca.size,
+                );
                 painter.line_segment(seg(far_a, p1), stroke);
                 painter.line_segment(seg(far_b, p2), stroke);
                 painter.line_segment(seg(p1, p2), stroke);
@@ -690,13 +707,30 @@ fn draw_trimmed_edge(
     match *edge {
         CornerEdge::Line { p0, p1 } => {
             let far = if sq(p0) > sq(p1) { p0 } else { p1 };
-            painter.line_segment([to_screen(far.0, far.1), to_screen(trim_pt.0, trim_pt.1)], stroke);
+            painter.line_segment(
+                [to_screen(far.0, far.1), to_screen(trim_pt.0, trim_pt.1)],
+                stroke,
+            );
         }
-        CornerEdge::Arc { cx, cy, r, start, end } => {
+        CornerEdge::Arc {
+            cx,
+            cy,
+            r,
+            start,
+            end,
+        } => {
             let sp = (cx + r * start.cos(), cy + r * start.sin());
             let ep = (cx + r * end.cos(), cy + r * end.sin());
             let far_angle = if sq(sp) > sq(ep) { start } else { end };
-            draw_arc_short(painter, (cx, cy), r, polar(cx, cy, r, far_angle), trim_pt, to_screen, stroke);
+            draw_arc_short(
+                painter,
+                (cx, cy),
+                r,
+                polar(cx, cy, r, far_angle),
+                trim_pt,
+                to_screen,
+                stroke,
+            );
         }
     }
 }
@@ -717,8 +751,12 @@ fn draw_arc_short(
     let a0 = (a.1 - center.1).atan2(a.0 - center.0);
     let a1 = (b.1 - center.1).atan2(b.0 - center.0);
     let mut d = a1 - a0;
-    while d > std::f64::consts::PI { d -= std::f64::consts::TAU; }
-    while d < -std::f64::consts::PI { d += std::f64::consts::TAU; }
+    while d > std::f64::consts::PI {
+        d -= std::f64::consts::TAU;
+    }
+    while d < -std::f64::consts::PI {
+        d += std::f64::consts::TAU;
+    }
     let n = 28;
     let pts: Vec<_> = (0..=n)
         .map(|i| {

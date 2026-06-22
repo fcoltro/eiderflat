@@ -1,10 +1,12 @@
 pub mod dxf;
-pub mod svg;
 pub mod native;
+pub mod svg;
 
-pub use dxf::{import_dxf, export_dxf};
-pub use svg::{import_svg, export_svg};
-pub use native::{save as save_native, load as load_native, to_string as to_e2d, from_string as from_e2d};
+pub use dxf::{export_dxf, import_dxf};
+pub use native::{
+    from_string as from_e2d, load as load_native, save as save_native, to_string as to_e2d,
+};
+pub use svg::{export_svg, import_svg};
 
 use eiderflat_geometry::{Curve, CurveSegment, Point2d, tessellate_curve};
 

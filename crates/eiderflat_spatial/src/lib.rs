@@ -1,4 +1,4 @@
-pub mod quadtree;
 pub mod morton;
-pub use quadtree::{Quadtree, CellClass, QuadNode};
+pub mod quadtree;
 pub use morton::morton_code;
+pub use quadtree::{CellClass, QuadNode, Quadtree};

@@ -1,5 +1,5 @@
-use crate::point::{Point2d, BoundingBox};
 use crate::curve::CurveSegment;
+use crate::point::{BoundingBox, Point2d};
 
 #[derive(Clone, Copy, Debug)]
 pub struct EllipticalArc {
@@ -12,7 +12,6 @@ pub struct EllipticalArc {
 }
 
 impl EllipticalArc {
-
     pub fn new(
         center: Point2d,
         semi_major: f64,
@@ -21,7 +20,14 @@ impl EllipticalArc {
         start_angle: f64,
         end_angle: f64,
     ) -> Self {
-        EllipticalArc { center, semi_major, semi_minor, rotation, start_angle, end_angle }
+        EllipticalArc {
+            center,
+            semi_major,
+            semi_minor,
+            rotation,
+            start_angle,
+            end_angle,
+        }
     }
 
     pub fn axis_aligned(
@@ -32,8 +38,12 @@ impl EllipticalArc {
         end_angle: f64,
     ) -> Self {
         EllipticalArc {
-            center, semi_major, semi_minor,
-            rotation: 0.0, start_angle, end_angle,
+            center,
+            semi_major,
+            semi_minor,
+            rotation: 0.0,
+            start_angle,
+            end_angle,
         }
     }
 
@@ -57,14 +67,17 @@ impl EllipticalArc {
 
     pub fn included_angle(&self) -> f64 {
         let mut a = self.end_angle - self.start_angle;
-        while a <= 0.0 { a += 2.0 * std::f64::consts::PI; }
+        while a <= 0.0 {
+            a += 2.0 * std::f64::consts::PI;
+        }
         a
     }
 }
 
 impl CurveSegment for EllipticalArc {
-
-    fn domain(&self) -> (f64, f64) { (self.start_angle, self.end_angle) }
+    fn domain(&self) -> (f64, f64) {
+        (self.start_angle, self.end_angle)
+    }
 
     fn evaluate_f64(&self, t: f64) -> (f64, f64) {
         let (cx, cy) = self.center.to_f64();
@@ -88,8 +101,10 @@ impl CurveSegment for EllipticalArc {
         for i in 0..=steps {
             let t = t0 + (t1 - t0) * i as f64 / steps as f64;
             let (x, y) = self.evaluate_f64(t);
-            xmin = xmin.min(x); xmax = xmax.max(x);
-            ymin = ymin.min(y); ymax = ymax.max(y);
+            xmin = xmin.min(x);
+            xmax = xmax.max(x);
+            ymin = ymin.min(y);
+            ymax = ymax.max(y);
         }
         BoundingBox::from_corners(xmin, ymin, xmax, ymax)
     }
@@ -99,7 +114,7 @@ impl CurveSegment for EllipticalArc {
         let b = self.semi_minor;
         let phi = self.rotation;
         let du = -a * t.sin();
-        let dv =  b * t.cos();
+        let dv = b * t.cos();
         let dx = du * phi.cos() - dv * phi.sin();
         let dy = du * phi.sin() + dv * phi.cos();
         (dx, dy)
@@ -126,8 +141,11 @@ mod tests {
     #[test]
     fn foci_axis_aligned() {
         let ell = EllipticalArc::axis_aligned(
-            Point2d::from_i64(0, 0), 5.0, 4.0,
-            0.0, 2.0 * std::f64::consts::PI,
+            Point2d::from_i64(0, 0),
+            5.0,
+            4.0,
+            0.0,
+            2.0 * std::f64::consts::PI,
         );
         let ((f1x, f1y), (f2x, f2y)) = ell.foci();
         assert!((f1x.abs() - 3.0).abs() < 1e-8);
@@ -139,8 +157,11 @@ mod tests {
     #[test]
     fn eccentricity() {
         let circle = EllipticalArc::axis_aligned(
-            Point2d::from_i64(0, 0), 5.0, 5.0,
-            0.0, 2.0 * std::f64::consts::PI,
+            Point2d::from_i64(0, 0),
+            5.0,
+            5.0,
+            0.0,
+            2.0 * std::f64::consts::PI,
         );
         assert!(circle.eccentricity().abs() < 1e-10);
     }
@@ -150,8 +171,11 @@ mod tests {
         // Malformed ellipse (semi_minor > semi_major): the radicand goes
         // negative, so foci() must clamp to 0 and stay finite, not return NaN.
         let ell = EllipticalArc::axis_aligned(
-            Point2d::from_i64(0, 0), 4.0, 5.0,
-            0.0, 2.0 * std::f64::consts::PI,
+            Point2d::from_i64(0, 0),
+            4.0,
+            5.0,
+            0.0,
+            2.0 * std::f64::consts::PI,
         );
         let ((f1x, f1y), (f2x, f2y)) = ell.foci();
         assert!(f1x.is_finite() && f1y.is_finite() && f2x.is_finite() && f2y.is_finite());

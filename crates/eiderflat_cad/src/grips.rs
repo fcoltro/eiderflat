@@ -1,5 +1,7 @@
-use eiderflat_geometry::{Curve, CircularArc, CurveSegment, EllipticalArc, LineSeg, NurbsCurve, PolyCurve, Point2d};
 use eiderflat_document::EntityKind;
+use eiderflat_geometry::{
+    CircularArc, Curve, CurveSegment, EllipticalArc, LineSeg, NurbsCurve, Point2d, PolyCurve,
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum GripRole {
@@ -66,31 +68,40 @@ pub fn grips_for(kind: &EntityKind) -> Vec<Grip> {
                 Grip::new(GripRole::AxisMinor, ellipse_axis_point(el, false)),
             ]
         }
-        EntityKind::Curve(Curve::Poly(poly)) => {
-            match polyline_vertices(poly) {
-                Some(vs) => vs.into_iter().enumerate()
-                    .map(|(i, v)| Grip::new(GripRole::Vertex(i), v))
-                    .collect(),
-                None => poly_edit_points(poly).into_iter().enumerate()
-                    .map(|(i, ep)| Grip::new(GripRole::PolyPoint(i), ep.pos))
-                    .collect(),
-            }
-        }
+        EntityKind::Curve(Curve::Poly(poly)) => match polyline_vertices(poly) {
+            Some(vs) => vs
+                .into_iter()
+                .enumerate()
+                .map(|(i, v)| Grip::new(GripRole::Vertex(i), v))
+                .collect(),
+            None => poly_edit_points(poly)
+                .into_iter()
+                .enumerate()
+                .map(|(i, ep)| Grip::new(GripRole::PolyPoint(i), ep.pos))
+                .collect(),
+        },
         EntityKind::Curve(Curve::Bezier(b)) => vec![
             Grip::new(GripRole::Vertex(0), b.p0),
             Grip::new(GripRole::Vertex(1), b.p1),
             Grip::new(GripRole::Vertex(2), b.p2),
             Grip::new(GripRole::Vertex(3), b.p3),
         ],
-        EntityKind::Curve(Curve::Nurbs(nc)) => {
-            nc.control.iter().enumerate()
-                .map(|(i, p)| Grip::new(GripRole::Vertex(i), *p))
-                .collect()
-        }
+        EntityKind::Curve(Curve::Nurbs(nc)) => nc
+            .control
+            .iter()
+            .enumerate()
+            .map(|(i, p)| Grip::new(GripRole::Vertex(i), *p))
+            .collect(),
         EntityKind::Point(p) => vec![Grip::new(GripRole::Endpoint(0), *p)],
-        EntityKind::Text { anchor, height, rotation, .. } => {
+        EntityKind::Text {
+            anchor,
+            height,
+            rotation,
+            ..
+        } => {
             let h = height.max(1e-6) * 1.5;
-            let rot = Point2d::from_f64(anchor.x + h * rotation.cos(), anchor.y + h * rotation.sin());
+            let rot =
+                Point2d::from_f64(anchor.x + h * rotation.cos(), anchor.y + h * rotation.sin());
             vec![
                 Grip::new(GripRole::Endpoint(0), *anchor),
                 Grip::new(GripRole::Rotation, rot),
@@ -140,10 +151,7 @@ pub fn apply_grip(start: &EntityKind, grip: &Grip, to: Point2d) -> EntityKind {
             EntityKind::Curve(Curve::Line(LineSeg::from_endpoints(l.p0, to)))
         }
         (EntityKind::Curve(Curve::Arc(arc)), GripRole::Center) => {
-            EntityKind::Curve(Curve::Arc(CircularArc {
-                center: to,
-                ..*arc
-            }))
+            EntityKind::Curve(Curve::Arc(CircularArc { center: to, ..*arc }))
         }
         (EntityKind::Curve(Curve::Arc(arc)), GripRole::Radius) => {
             let r = arc.center.dist_f64(&to).max(MIN_RADIUS);
@@ -162,11 +170,17 @@ pub fn apply_grip(start: &EntityKind, grip: &Grip, to: Point2d) -> EntityKind {
         }
         (EntityKind::Curve(Curve::Ellipse(el)), GripRole::AxisMajor) => {
             let r = el.center.dist_f64(&to).max(MIN_RADIUS);
-            EntityKind::Curve(Curve::Ellipse(EllipticalArc { semi_major: r, ..*el }))
+            EntityKind::Curve(Curve::Ellipse(EllipticalArc {
+                semi_major: r,
+                ..*el
+            }))
         }
         (EntityKind::Curve(Curve::Ellipse(el)), GripRole::AxisMinor) => {
             let r = el.center.dist_f64(&to).max(MIN_RADIUS);
-            EntityKind::Curve(Curve::Ellipse(EllipticalArc { semi_minor: r, ..*el }))
+            EntityKind::Curve(Curve::Ellipse(EllipticalArc {
+                semi_minor: r,
+                ..*el
+            }))
         }
         (EntityKind::Curve(Curve::Poly(poly)), GripRole::Vertex(k)) => {
             match move_polyline_vertex(poly, k, to) {
@@ -204,7 +218,10 @@ pub fn apply_grip(start: &EntityKind, grip: &Grip, to: Point2d) -> EntityKind {
             let mut control = nc.control.clone();
             if k < control.len() {
                 control[k] = to;
-                EntityKind::Curve(Curve::Nurbs(NurbsCurve { control, weights: nc.weights.clone() }))
+                EntityKind::Curve(Curve::Nurbs(NurbsCurve {
+                    control,
+                    weights: nc.weights.clone(),
+                }))
             } else {
                 start.clone()
             }
@@ -212,12 +229,40 @@ pub fn apply_grip(start: &EntityKind, grip: &Grip, to: Point2d) -> EntityKind {
 
         (EntityKind::Point(_), GripRole::Endpoint(_)) => EntityKind::Point(to),
 
-        (EntityKind::Text { content, height, rotation, font, .. }, GripRole::Endpoint(0)) => {
-            EntityKind::Text { anchor: to, content: content.clone(), height: *height, rotation: *rotation, font: font.clone() }
-        }
-        (EntityKind::Text { anchor, content, height, font, .. }, GripRole::Rotation) => {
+        (
+            EntityKind::Text {
+                content,
+                height,
+                rotation,
+                font,
+                ..
+            },
+            GripRole::Endpoint(0),
+        ) => EntityKind::Text {
+            anchor: to,
+            content: content.clone(),
+            height: *height,
+            rotation: *rotation,
+            font: font.clone(),
+        },
+        (
+            EntityKind::Text {
+                anchor,
+                content,
+                height,
+                font,
+                ..
+            },
+            GripRole::Rotation,
+        ) => {
             let r = (to.y - anchor.y).atan2(to.x - anchor.x);
-            EntityKind::Text { anchor: *anchor, content: content.clone(), height: *height, rotation: r, font: font.clone() }
+            EntityKind::Text {
+                anchor: *anchor,
+                content: content.clone(),
+                height: *height,
+                rotation: r,
+                font: font.clone(),
+            }
         }
 
         _ => start.clone(),
@@ -240,18 +285,32 @@ fn poly_edit_points(poly: &PolyCurve) -> Vec<EditPoint> {
                 let (t0, t1) = other.domain();
                 let a = other.evaluate_f64(t0);
                 let c = other.evaluate_f64(t1);
-                (Point2d::from_f64(a.0, a.1), Point2d::from_f64(c.0, c.1), 1, vec![])
+                (
+                    Point2d::from_f64(a.0, a.1),
+                    Point2d::from_f64(c.0, c.1),
+                    1,
+                    vec![],
+                )
             }
         };
         match last_node {
             Some(idx) => pts[idx].writes.push((s, 0)),
-            None => pts.push(EditPoint { pos: start, writes: vec![(s, 0)] }),
+            None => pts.push(EditPoint {
+                pos: start,
+                writes: vec![(s, 0)],
+            }),
         }
         for (ci, p) in mids {
-            pts.push(EditPoint { pos: p, writes: vec![(s, ci)] });
+            pts.push(EditPoint {
+                pos: p,
+                writes: vec![(s, ci)],
+            });
         }
         // End anchor.
-        pts.push(EditPoint { pos: end, writes: vec![(s, end_ctrl)] });
+        pts.push(EditPoint {
+            pos: end,
+            writes: vec![(s, end_ctrl)],
+        });
         last_node = Some(pts.len() - 1);
     }
     if pts.len() >= 2 {
@@ -268,7 +327,11 @@ fn poly_edit_points(poly: &PolyCurve) -> Vec<EditPoint> {
 fn set_poly_ctrl(seg: &mut Curve, ci: u8, to: Point2d) {
     match seg {
         Curve::Line(l) => {
-            if ci == 0 { l.p0 = to; } else { l.p1 = to; }
+            if ci == 0 {
+                l.p0 = to;
+            } else {
+                l.p1 = to;
+            }
         }
         Curve::Bezier(b) => match ci {
             0 => b.p0 = to,
@@ -291,7 +354,8 @@ fn move_polyline_vertex(poly: &PolyCurve, k: usize, to: Point2d) -> Option<PolyC
         return None;
     }
     verts[k] = to;
-    let segments = verts.windows(2)
+    let segments = verts
+        .windows(2)
         .map(|w| Curve::Line(LineSeg::from_endpoints(w[0], w[1])))
         .collect();
     Some(PolyCurve::new(segments))
@@ -299,7 +363,12 @@ fn move_polyline_vertex(poly: &PolyCurve, k: usize, to: Point2d) -> Option<PolyC
 
 const MIN_RADIUS: f64 = 1e-6;
 
-pub fn apply_grip_value(start: &EntityKind, grip: &Grip, value: f64, cursor: Point2d) -> EntityKind {
+pub fn apply_grip_value(
+    start: &EntityKind,
+    grip: &Grip,
+    value: f64,
+    cursor: Point2d,
+) -> EntityKind {
     match (start, grip.role) {
         (EntityKind::Curve(Curve::Line(l)), GripRole::Endpoint(0)) => {
             let p = along(l.p1, cursor, l.p0, value);
@@ -310,29 +379,51 @@ pub fn apply_grip_value(start: &EntityKind, grip: &Grip, value: f64, cursor: Poi
             EntityKind::Curve(Curve::Line(LineSeg::from_endpoints(l.p0, p)))
         }
         (EntityKind::Curve(Curve::Arc(arc)), GripRole::Radius) => {
-            EntityKind::Curve(Curve::Arc(CircularArc { radius: value.max(MIN_RADIUS), ..*arc }))
+            EntityKind::Curve(Curve::Arc(CircularArc {
+                radius: value.max(MIN_RADIUS),
+                ..*arc
+            }))
         }
         (EntityKind::Curve(Curve::Arc(arc)), GripRole::Center) => {
             let c = along(arc.center, cursor, arc.center, value);
             EntityKind::Curve(Curve::Arc(CircularArc { center: c, ..*arc }))
         }
-        (EntityKind::Curve(Curve::Arc(arc)), GripRole::AngleStart) => {
-            EntityKind::Curve(Curve::Arc(with_angles(arc, value.to_radians(), arc.end_angle)))
-        }
-        (EntityKind::Curve(Curve::Arc(arc)), GripRole::AngleEnd) => {
-            EntityKind::Curve(Curve::Arc(with_angles(arc, arc.start_angle, value.to_radians())))
-        }
+        (EntityKind::Curve(Curve::Arc(arc)), GripRole::AngleStart) => EntityKind::Curve(
+            Curve::Arc(with_angles(arc, value.to_radians(), arc.end_angle)),
+        ),
+        (EntityKind::Curve(Curve::Arc(arc)), GripRole::AngleEnd) => EntityKind::Curve(Curve::Arc(
+            with_angles(arc, arc.start_angle, value.to_radians()),
+        )),
 
         (EntityKind::Curve(Curve::Ellipse(el)), GripRole::AxisMajor) => {
-            EntityKind::Curve(Curve::Ellipse(EllipticalArc { semi_major: value.max(MIN_RADIUS), ..*el }))
+            EntityKind::Curve(Curve::Ellipse(EllipticalArc {
+                semi_major: value.max(MIN_RADIUS),
+                ..*el
+            }))
         }
         (EntityKind::Curve(Curve::Ellipse(el)), GripRole::AxisMinor) => {
-            EntityKind::Curve(Curve::Ellipse(EllipticalArc { semi_minor: value.max(MIN_RADIUS), ..*el }))
+            EntityKind::Curve(Curve::Ellipse(EllipticalArc {
+                semi_minor: value.max(MIN_RADIUS),
+                ..*el
+            }))
         }
 
-        (EntityKind::Text { anchor, content, height, font, .. }, GripRole::Rotation) => {
-            EntityKind::Text { anchor: *anchor, content: content.clone(), height: *height, rotation: value.to_radians(), font: font.clone() }
-        }
+        (
+            EntityKind::Text {
+                anchor,
+                content,
+                height,
+                font,
+                ..
+            },
+            GripRole::Rotation,
+        ) => EntityKind::Text {
+            anchor: *anchor,
+            content: content.clone(),
+            height: *height,
+            rotation: value.to_radians(),
+            font: font.clone(),
+        },
 
         _ => start.clone(),
     }
@@ -560,18 +651,31 @@ mod tests {
         assert_eq!(g.len(), 2);
         assert_eq!(g[0].role, GripRole::Endpoint(0));
         assert_eq!(g[1].role, GripRole::Rotation);
-        if let EntityKind::Text { anchor, .. } = apply_grip(&start, &g[0], Point2d::from_f64(5.0, 5.0)) {
+        if let EntityKind::Text { anchor, .. } =
+            apply_grip(&start, &g[0], Point2d::from_f64(5.0, 5.0))
+        {
             assert_eq!(anchor, Point2d::from_f64(5.0, 5.0));
-        } else { panic!("expected text"); }
-        if let EntityKind::Text { rotation, .. } = apply_grip(&start, &g[1], Point2d::from_f64(0.0, 3.0)) {
+        } else {
+            panic!("expected text");
+        }
+        if let EntityKind::Text { rotation, .. } =
+            apply_grip(&start, &g[1], Point2d::from_f64(0.0, 3.0))
+        {
             assert!((rotation - std::f64::consts::FRAC_PI_2).abs() < 1e-9);
-        } else { panic!("expected text"); }
+        } else {
+            panic!("expected text");
+        }
     }
 
     #[test]
     fn ellipse_center_and_axis_grips() {
         let start = EntityKind::Curve(Curve::Ellipse(EllipticalArc::new(
-            Point2d::from_f64(0.0, 0.0), 5.0, 3.0, 0.0, 0.0, 2.0 * PI,
+            Point2d::from_f64(0.0, 0.0),
+            5.0,
+            3.0,
+            0.0,
+            0.0,
+            2.0 * PI,
         )));
         let g = grips_for(&start);
         assert_eq!(g.len(), 3);
@@ -580,31 +684,45 @@ mod tests {
         assert_eq!(g[2].role, GripRole::AxisMinor);
         assert!((g[1].world.dist_f64(&Point2d::from_f64(5.0, 0.0))).abs() < 1e-9);
         assert!((g[2].world.dist_f64(&Point2d::from_f64(0.0, 3.0))).abs() < 1e-9);
-        if let EntityKind::Curve(Curve::Ellipse(e)) = apply_grip(&start, &g[1], Point2d::from_f64(9.0, 0.0)) {
+        if let EntityKind::Curve(Curve::Ellipse(e)) =
+            apply_grip(&start, &g[1], Point2d::from_f64(9.0, 0.0))
+        {
             assert!((e.semi_major - 9.0).abs() < 1e-9);
             assert!((e.semi_minor - 3.0).abs() < 1e-9);
             assert_eq!(e.center, Point2d::from_f64(0.0, 0.0));
-        } else { panic!("expected ellipse"); }
+        } else {
+            panic!("expected ellipse");
+        }
     }
 
     #[test]
     fn polyline_vertex_grips_move_one_vertex() {
         let poly = PolyCurve::new(vec![
-            Curve::Line(LineSeg::from_endpoints(Point2d::from_f64(0.0, 0.0), Point2d::from_f64(1.0, 0.0))),
-            Curve::Line(LineSeg::from_endpoints(Point2d::from_f64(1.0, 0.0), Point2d::from_f64(2.0, 0.0))),
+            Curve::Line(LineSeg::from_endpoints(
+                Point2d::from_f64(0.0, 0.0),
+                Point2d::from_f64(1.0, 0.0),
+            )),
+            Curve::Line(LineSeg::from_endpoints(
+                Point2d::from_f64(1.0, 0.0),
+                Point2d::from_f64(2.0, 0.0),
+            )),
         ]);
         let start = EntityKind::Curve(Curve::Poly(Box::new(poly)));
         let g = grips_for(&start);
         assert_eq!(g.len(), 3);
         assert!(matches!(g[1].role, GripRole::Vertex(1)));
-        if let EntityKind::Curve(Curve::Poly(p)) = apply_grip(&start, &g[1], Point2d::from_f64(1.0, 5.0)) {
+        if let EntityKind::Curve(Curve::Poly(p)) =
+            apply_grip(&start, &g[1], Point2d::from_f64(1.0, 5.0))
+        {
             let l0 = p.segments[0].as_line().unwrap();
             let l1 = p.segments[1].as_line().unwrap();
             assert_eq!(l0.p1, Point2d::from_f64(1.0, 5.0));
             assert_eq!(l1.p0, Point2d::from_f64(1.0, 5.0));
             assert_eq!(l0.p0, Point2d::from_f64(0.0, 0.0));
             assert_eq!(l1.p1, Point2d::from_f64(2.0, 0.0));
-        } else { panic!("expected polyline"); }
+        } else {
+            panic!("expected polyline");
+        }
     }
 
     #[test]
@@ -619,11 +737,15 @@ mod tests {
         let g = grips_for(&start);
         assert_eq!(g.len(), 3);
         assert!(matches!(g[1].role, GripRole::Vertex(1)));
-        if let EntityKind::Curve(Curve::Nurbs(n)) = apply_grip(&start, &g[1], Point2d::from_f64(1.0, 9.0)) {
+        if let EntityKind::Curve(Curve::Nurbs(n)) =
+            apply_grip(&start, &g[1], Point2d::from_f64(1.0, 9.0))
+        {
             assert_eq!(n.control[1], Point2d::from_f64(1.0, 9.0));
             assert_eq!(n.control[0], Point2d::from_f64(0.0, 0.0));
             assert_eq!(n.weights, vec![1.0, 1.0, 1.0]);
-        } else { panic!("expected a spline"); }
+        } else {
+            panic!("expected a spline");
+        }
     }
 
     #[test]

@@ -1,8 +1,10 @@
-use eiderflat_cad::{apply_grip, best_snap, edit, grips_for, pick_at, Grip, SnapPoint, SnapSettings};
+use eiderflat_cad::{
+    Grip, SnapPoint, SnapSettings, apply_grip, best_snap, edit, grips_for, pick_at,
+};
 use eiderflat_document::{Document, EntityId, EntityKind, Layer};
 use eiderflat_geometry::{Curve, Point2d};
 
-use crate::command::{parse_command, parse_coordinate, Command, CoordInput};
+use crate::command::{Command, CoordInput, parse_command, parse_coordinate};
 use crate::history::History;
 use crate::tools::{Tool, ToolEvent};
 use crate::view_transform::ViewTransform;
@@ -11,7 +13,7 @@ mod modify;
 pub use modify::TrimExtendPreview;
 mod contextual;
 
-pub use contextual::{fillet_arc, CornerAction, CornerGeom, CornerKind};
+pub use contextual::{CornerAction, CornerGeom, CornerKind, fillet_arc};
 
 pub struct AppState {
     pub document: Document,
@@ -150,11 +152,7 @@ impl AppState {
                 let dy = wy - ry;
                 let angle_rad = if dx.abs() >= dy.abs() {
                     self.cursor_world = (wx, ry);
-                    if wx >= rx {
-                        0.0
-                    } else {
-                        std::f64::consts::PI
-                    }
+                    if wx >= rx { 0.0 } else { std::f64::consts::PI }
                 } else {
                     self.cursor_world = (rx, wy);
                     if wy >= ry {
@@ -263,10 +261,11 @@ impl AppState {
                 let mut moved = Vec::new();
                 for id in ids {
                     if id != self.origin_id
-                        && let Some(e) = self.document.get_mut(id) {
-                            e.transform(&t);
-                            moved.push(id);
-                        }
+                        && let Some(e) = self.document.get_mut(id)
+                    {
+                        e.transform(&t);
+                        moved.push(id);
+                    }
                 }
                 self.selection = moved;
                 self.tool = Tool::Select;
@@ -276,10 +275,11 @@ impl AppState {
                 let mut new_ids = Vec::new();
                 for id in ids {
                     if id != self.origin_id
-                        && let Some(e) = self.document.get(id) {
-                            let copy = e.transformed(&t);
-                            new_ids.push(self.document.add_entity(copy));
-                        }
+                        && let Some(e) = self.document.get(id)
+                    {
+                        let copy = e.transformed(&t);
+                        new_ids.push(self.document.add_entity(copy));
+                    }
                 }
                 self.selection = new_ids;
                 self.tool = Tool::Select;
@@ -340,66 +340,69 @@ impl AppState {
 
         if let Tool::Polygon { center: None, .. } = self.tool
             && let Ok(n) = trimmed.parse::<usize>()
-                && n >= 3 {
-                    self.tool = Tool::Polygon {
-                        center: None,
-                        sides: Some(n),
+            && n >= 3
+        {
+            self.tool = Tool::Polygon {
+                center: None,
+                sides: Some(n),
+            };
+            self.command_log.push(trimmed.to_string());
+            return;
+        }
+
+        if let Ok(v) = trimmed.parse::<f64>()
+            && v > 0.0
+        {
+            match &self.tool {
+                Tool::Offset { source, .. } => {
+                    self.tool = Tool::Offset {
+                        dist: v,
+                        source: *source,
                     };
                     self.command_log.push(trimmed.to_string());
                     return;
                 }
-
-        if let Ok(v) = trimmed.parse::<f64>()
-            && v > 0.0 {
-                match &self.tool {
-                    Tool::Offset { source, .. } => {
-                        self.tool = Tool::Offset {
-                            dist: v,
-                            source: *source,
-                        };
-                        self.command_log.push(trimmed.to_string());
-                        return;
-                    }
-                    Tool::Fillet { first, .. } => {
-                        self.tool = Tool::Fillet {
-                            radius: v,
-                            first: *first,
-                        };
-                        self.command_log.push(trimmed.to_string());
-                        return;
-                    }
-                    Tool::Chamfer { first, .. } => {
-                        self.tool = Tool::Chamfer {
-                            dist: v,
-                            first: *first,
-                        };
-                        self.command_log.push(trimmed.to_string());
-                        return;
-                    }
-                    _ => {}
+                Tool::Fillet { first, .. } => {
+                    self.tool = Tool::Fillet {
+                        radius: v,
+                        first: *first,
+                    };
+                    self.command_log.push(trimmed.to_string());
+                    return;
                 }
+                Tool::Chamfer { first, .. } => {
+                    self.tool = Tool::Chamfer {
+                        dist: v,
+                        first: *first,
+                    };
+                    self.command_log.push(trimmed.to_string());
+                    return;
+                }
+                _ => {}
             }
+        }
 
         if let Ok(dist) = trimmed.parse::<f64>()
-            && let Some(ref_pt) = self.tool.reference_point() {
-                let (rx, ry) = ref_pt.to_f64();
-                let (cx, cy) = self.cursor_world;
-                let dx = cx - rx;
-                let dy = cy - ry;
-                let len = (dx * dx + dy * dy).sqrt();
-                let (ux, uy) = if len > 1e-9 {
-                    (dx / len, dy / len)
-                } else if let Some((_, angle_rad)) = self.interaction.active_guide {
-                    (angle_rad.cos(), angle_rad.sin())
-                } else {
-                    (1.0, 0.0)
-                };
-                let target_pt = Point2d::from_f64(rx + dist * ux, ry + dist * uy);
-                let ev = self.tool.on_point(target_pt);
-                self.apply_tool_event(ev);
-                self.command_log.push(trimmed.to_string());
-                return;
-            }
+            && let Some(ref_pt) = self.tool.reference_point()
+        {
+            let (rx, ry) = ref_pt.to_f64();
+            let (cx, cy) = self.cursor_world;
+            let dx = cx - rx;
+            let dy = cy - ry;
+            let len = (dx * dx + dy * dy).sqrt();
+            let (ux, uy) = if len > 1e-9 {
+                (dx / len, dy / len)
+            } else if let Some((_, angle_rad)) = self.interaction.active_guide {
+                (angle_rad.cos(), angle_rad.sin())
+            } else {
+                (1.0, 0.0)
+            };
+            let target_pt = Point2d::from_f64(rx + dist * ux, ry + dist * uy);
+            let ev = self.tool.on_point(target_pt);
+            self.apply_tool_event(ev);
+            self.command_log.push(trimmed.to_string());
+            return;
+        }
 
         if let Some(coord) = parse_coordinate(trimmed) {
             let (rx, ry) = self
@@ -674,7 +677,13 @@ impl AppState {
         self.history.snapshot(&self.document);
     }
 
-    pub fn commit_text_edit(&mut self, id: EntityId, content: String, font: Option<String>, size: f64) {
+    pub fn commit_text_edit(
+        &mut self,
+        id: EntityId,
+        content: String,
+        font: Option<String>,
+        size: f64,
+    ) {
         let size = size.max(0.1);
         let changed = matches!(self.document.get(id).map(|e| &e.kind),
             Some(EntityKind::Text { content: c, font: f, height: h, .. })
@@ -683,8 +692,12 @@ impl AppState {
             return;
         }
         self.history.snapshot(&self.document);
-        if let Some(EntityKind::Text { content: c, font: f, height: h, .. }) =
-            self.document.get_mut(id).map(|e| &mut e.kind)
+        if let Some(EntityKind::Text {
+            content: c,
+            font: f,
+            height: h,
+            ..
+        }) = self.document.get_mut(id).map(|e| &mut e.kind)
         {
             *c = content;
             *f = font.clone();
@@ -698,7 +711,12 @@ impl AppState {
             .selection
             .iter()
             .copied()
-            .filter(|&id| matches!(self.document.get(id).map(|e| &e.kind), Some(EntityKind::Text { .. })))
+            .filter(|&id| {
+                matches!(
+                    self.document.get(id).map(|e| &e.kind),
+                    Some(EntityKind::Text { .. })
+                )
+            })
             .collect();
         if texts.is_empty() {
             return;
@@ -708,15 +726,30 @@ impl AppState {
         for id in texts {
             let info = match self.document.get(id) {
                 Some(e) => match &e.kind {
-                    EntityKind::Text { content, font, height, anchor, rotation } => {
-                        Some((content.clone(), font.clone(), *height, *anchor, *rotation, e.layer, e.color.clone()))
-                    }
+                    EntityKind::Text {
+                        content,
+                        font,
+                        height,
+                        anchor,
+                        rotation,
+                    } => Some((
+                        content.clone(),
+                        font.clone(),
+                        *height,
+                        *anchor,
+                        *rotation,
+                        e.layer,
+                        e.color.clone(),
+                    )),
                     _ => None,
                 },
                 None => None,
             };
-            let Some((content, font, height, anchor, rotation, layer, color)) = info else { continue };
-            let curves = crate::fonts::outline_text(&content, font.as_deref(), height, anchor, rotation);
+            let Some((content, font, height, anchor, rotation, layer, color)) = info else {
+                continue;
+            };
+            let curves =
+                crate::fonts::outline_text(&content, font.as_deref(), height, anchor, rotation);
             if curves.is_empty() {
                 continue;
             }
@@ -738,9 +771,10 @@ impl AppState {
     pub fn set_nurbs_control(&mut self, id: EntityId, index: usize, p: Point2d) {
         if let Some(e) = self.document.get_mut(id)
             && let EntityKind::Curve(Curve::Nurbs(nc)) = &mut e.kind
-                && index < nc.control.len() {
-                    nc.control[index] = p;
-                }
+            && index < nc.control.len()
+        {
+            nc.control[index] = p;
+        }
     }
 
     pub fn adjust_nurbs_weight(&mut self, id: EntityId, index: usize, factor: f64) -> bool {
@@ -820,17 +854,16 @@ impl AppState {
             .and_then(|e| e.to_str())
             .unwrap_or("")
             .to_ascii_lowercase();
-        let result =
-            match ext.as_str() {
-                "dxf" => std::fs::write(&path, eiderflat_io::export_dxf(&save_doc))
-                    .map_err(|e| e.to_string()),
-                "svg" => std::fs::write(&path, eiderflat_io::export_svg(&save_doc))
-                    .map_err(|e| e.to_string()),
-                "dwg" => Err("eiderFLAT can't write DWG (proprietary binary). \
+        let result = match ext.as_str() {
+            "dxf" => std::fs::write(&path, eiderflat_io::export_dxf(&save_doc))
+                .map_err(|e| e.to_string()),
+            "svg" => std::fs::write(&path, eiderflat_io::export_svg(&save_doc))
+                .map_err(|e| e.to_string()),
+            "dwg" => Err("eiderFLAT can't write DWG (proprietary binary). \
                           Save as DXF for CAD interchange."
-                    .to_string()),
-                _ => eiderflat_io::save_native(&save_doc, &path).map_err(|e| e.to_string()),
-            };
+                .to_string()),
+            _ => eiderflat_io::save_native(&save_doc, &path).map_err(|e| e.to_string()),
+        };
         match result {
             Ok(()) => {
                 self.current_file_path = Some(path);
@@ -899,13 +932,14 @@ impl AppState {
         let mut bbox: Option<eiderflat_geometry::BoundingBox> = None;
         for &id in &self.selection {
             if let Some(e) = self.document.get(id)
-                && let Some(b) = e.bounding_box() {
-                    bbox = Some(if let Some(existing) = bbox {
-                        existing.union(&b)
-                    } else {
-                        b
-                    });
-                }
+                && let Some(b) = e.bounding_box()
+            {
+                bbox = Some(if let Some(existing) = bbox {
+                    existing.union(&b)
+                } else {
+                    b
+                });
+            }
         }
 
         if let Some(bbox_start) = bbox {

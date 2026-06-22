@@ -1,7 +1,7 @@
+use super::AppState;
 use eiderflat_cad::edit::CornerEdge;
 use eiderflat_document::{EntityId, EntityKind};
 use eiderflat_geometry::{Curve, CurveSegment};
-use super::AppState;
 
 #[derive(Clone, Copy, Debug)]
 pub struct CornerGeom {
@@ -19,7 +19,10 @@ pub struct CornerGeom {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum CornerKind { Fillet, Chamfer }
+pub enum CornerKind {
+    Fillet,
+    Chamfer,
+}
 
 #[derive(Clone, Copy, Debug)]
 pub struct CornerAction {
@@ -50,8 +53,10 @@ impl CornerGeom {
 fn poly_uniform_max_size(group: &[CornerGeom], kind: CornerKind) -> f64 {
     use std::collections::HashMap;
     // Index the corners by their leading segment so neighbours can be paired up.
-    let by_seg: HashMap<usize, &CornerGeom> =
-        group.iter().filter_map(|c| c.poly_seg.map(|i| (i, c))).collect();
+    let by_seg: HashMap<usize, &CornerGeom> = group
+        .iter()
+        .filter_map(|c| c.poly_seg.map(|i| (i, c)))
+        .collect();
     let mut segs: Vec<usize> = by_seg.keys().copied().collect();
     segs.sort_unstable();
 
@@ -69,7 +74,11 @@ fn poly_uniform_max_size(group: &[CornerGeom], kind: CornerKind) -> f64 {
             CornerKind::Fillet => {
                 let cot = |g: &CornerGeom| 1.0 / (g.interior_angle() * 0.5).tan();
                 let denom = cot(c) + cot(next);
-                if denom > 1e-9 { l / denom } else { f64::INFINITY }
+                if denom > 1e-9 {
+                    l / denom
+                } else {
+                    f64::INFINITY
+                }
             }
         };
         cap = cap.min(bound);
@@ -92,8 +101,11 @@ pub fn fillet_arc(corner: Pt, da: Pt, db: Pt, r: f64) -> Option<(Pt, Pt, Pt)> {
     let p2 = (corner.0 + db.0 * t, corner.1 + db.1 * t);
     let (mut bx, mut by) = (da.0 + db.0, da.1 + db.1);
     let bl = (bx * bx + by * by).sqrt();
-    if bl < 1e-9 { return None; }
-    bx /= bl; by /= bl;
+    if bl < 1e-9 {
+        return None;
+    }
+    bx /= bl;
+    by /= bl;
     let d = r / s;
     Some((p1, p2, (corner.0 + bx * d, corner.1 + by * d)))
 }
@@ -106,28 +118,57 @@ struct EndInfo {
 }
 
 fn curve_ends(app: &AppState, id: EntityId) -> Vec<EndInfo> {
-    let kind = match app.document.get(id) { Some(e) => &e.kind, None => return vec![] };
+    let kind = match app.document.get(id) {
+        Some(e) => &e.kind,
+        None => return vec![],
+    };
     match kind {
         EntityKind::Curve(Curve::Line(l)) => {
             let (p0, p1) = (l.p0.to_f64(), l.p1.to_f64());
             let (dx, dy) = (p1.0 - p0.0, p1.1 - p0.1);
             let len = (dx * dx + dy * dy).sqrt();
-            if len < 1e-9 { return vec![]; }
+            if len < 1e-9 {
+                return vec![];
+            }
             let d = (dx / len, dy / len);
             vec![
-                EndInfo { pos: p0, dir: d, len, is_line: true },
-                EndInfo { pos: p1, dir: (-d.0, -d.1), len, is_line: true },
+                EndInfo {
+                    pos: p0,
+                    dir: d,
+                    len,
+                    is_line: true,
+                },
+                EndInfo {
+                    pos: p1,
+                    dir: (-d.0, -d.1),
+                    len,
+                    is_line: true,
+                },
             ]
         }
         EntityKind::Curve(Curve::Arc(a)) => {
             let sweep = a.included_angle();
-            if sweep >= std::f64::consts::TAU - 1e-6 { return vec![]; }
+            if sweep >= std::f64::consts::TAU - 1e-6 {
+                return vec![];
+            }
             let len = a.radius * sweep;
-            if len < 1e-9 { return vec![]; }
+            if len < 1e-9 {
+                return vec![];
+            }
             let (t0, t1) = (a.start_angle, a.end_angle);
             vec![
-                EndInfo { pos: a.start_point(), dir: (-t0.sin(), t0.cos()), len, is_line: false },
-                EndInfo { pos: a.end_point(),   dir: (t1.sin(), -t1.cos()), len, is_line: false },
+                EndInfo {
+                    pos: a.start_point(),
+                    dir: (-t0.sin(), t0.cos()),
+                    len,
+                    is_line: false,
+                },
+                EndInfo {
+                    pos: a.end_point(),
+                    dir: (t1.sin(), -t1.cos()),
+                    len,
+                    is_line: false,
+                },
             ]
         }
         _ => vec![],
@@ -146,9 +187,19 @@ fn edge_dir_len(edge: &CornerEdge, vertex: (f64, f64)) -> ((f64, f64), f64) {
             let far = if sq(p0) > sq(p1) { p0 } else { p1 };
             let (dx, dy) = (far.0 - vertex.0, far.1 - vertex.1);
             let len = (dx * dx + dy * dy).sqrt();
-            if len < 1e-9 { ((1.0, 0.0), 0.0) } else { ((dx / len, dy / len), len) }
+            if len < 1e-9 {
+                ((1.0, 0.0), 0.0)
+            } else {
+                ((dx / len, dy / len), len)
+            }
         }
-        CornerEdge::Arc { cx, cy, r, start, end } => {
+        CornerEdge::Arc {
+            cx,
+            cy,
+            r,
+            start,
+            end,
+        } => {
             let sp = (cx + r * start.cos(), cy + r * start.sin());
             let ep = (cx + r * end.cos(), cy + r * end.sin());
             let len = r * (end - start).abs();
@@ -169,11 +220,15 @@ impl AppState {
             if let Some(Curve::Poly(pc)) = self.document.get(id).and_then(|e| e.as_curve()) {
                 self.poly_corners(id, pc, &mut out);
             }
-            if out.len() > 64 { return out; }
+            if out.len() > 64 {
+                return out;
+            }
         }
 
         if (2..=24).contains(&self.selection.len()) {
-            let ends: Vec<(EntityId, CornerEdge, Vec<EndInfo>)> = self.selection.iter()
+            let ends: Vec<(EntityId, CornerEdge, Vec<EndInfo>)> = self
+                .selection
+                .iter()
                 .filter_map(|&id| {
                     let edge = CornerEdge::from_curve(self.document.get(id)?.as_curve()?)?;
                     Some((id, edge, curve_ends(self, id)))
@@ -186,16 +241,25 @@ impl AppState {
                     let (b, edge_b, eb) = &ends[j];
                     for fa in ea {
                         for fb in eb {
-                            if (fa.pos.0 - fb.pos.0).hypot(fa.pos.1 - fb.pos.1) >= tol { continue; }
+                            if (fa.pos.0 - fb.pos.0).hypot(fa.pos.1 - fb.pos.1) >= tol {
+                                continue;
+                            }
                             let cos = fa.dir.0 * fb.dir.0 + fa.dir.1 * fb.dir.1;
-                            if cos.abs() > 0.999 { continue; }
+                            if cos.abs() > 0.999 {
+                                continue;
+                            }
                             out.push(CornerGeom {
-                                a: *a, b: *b, poly_seg: None,
+                                a: *a,
+                                b: *b,
+                                poly_seg: None,
                                 corner: fa.pos,
-                                dir_a: fa.dir, len_a: fa.len,
-                                dir_b: fb.dir, len_b: fb.len,
+                                dir_a: fa.dir,
+                                len_a: fa.len,
+                                dir_b: fb.dir,
+                                len_b: fb.len,
                                 chamfer_ok: fa.is_line && fb.is_line,
-                                edge_a: *edge_a, edge_b: *edge_b,
+                                edge_a: *edge_a,
+                                edge_b: *edge_b,
                             });
                         }
                     }
@@ -205,9 +269,16 @@ impl AppState {
         out
     }
 
-    fn poly_corners(&self, id: EntityId, pc: &eiderflat_geometry::PolyCurve, out: &mut Vec<CornerGeom>) {
+    fn poly_corners(
+        &self,
+        id: EntityId,
+        pc: &eiderflat_geometry::PolyCurve,
+        out: &mut Vec<CornerGeom>,
+    ) {
         let n = pc.segments.len();
-        if n < 2 { return; }
+        if n < 2 {
+            return;
+        }
         let first = seg_point(&pc.segments[0], false);
         let last = seg_point(&pc.segments[n - 1], true);
         let closed = (first.0 - last.0).hypot(first.1 - last.1) < 1e-6;
@@ -227,13 +298,21 @@ impl AppState {
             let (dir_a, len_a) = edge_dir_len(&edge_a, corner);
             let (dir_b, len_b) = edge_dir_len(&edge_b, corner);
             let cos = dir_a.0 * dir_b.0 + dir_a.1 * dir_b.1;
-            if cos.abs() > 0.999 { continue; }
+            if cos.abs() > 0.999 {
+                continue;
+            }
             out.push(CornerGeom {
-                a: id, b: id, poly_seg: Some(i),
+                a: id,
+                b: id,
+                poly_seg: Some(i),
                 corner,
-                dir_a, len_a, dir_b, len_b,
+                dir_a,
+                len_a,
+                dir_b,
+                len_b,
                 chamfer_ok: edge_a.is_line() && edge_b.is_line(),
-                edge_a, edge_b,
+                edge_a,
+                edge_b,
             });
         }
     }
@@ -270,7 +349,11 @@ impl AppState {
     pub fn begin_corner_action(&mut self, geom: CornerGeom) {
         let cap = self.corner_group_cap(&geom, CornerKind::Fillet);
         let size = (cap * 0.3).max(1e-3);
-        self.interaction.corner_action = Some(CornerAction { geom, kind: CornerKind::Fillet, size });
+        self.interaction.corner_action = Some(CornerAction {
+            geom,
+            kind: CornerKind::Fillet,
+            size,
+        });
     }
 
     pub fn update_corner_drag(&mut self) {
@@ -329,7 +412,12 @@ impl AppState {
                 match kind {
                     CornerKind::Fillet => {
                         eiderflat_cad::edit::fillet(
-                            &mut self.document, c.a, c.b, size, c.corner.0, c.corner.1,
+                            &mut self.document,
+                            c.a,
+                            c.b,
+                            size,
+                            c.corner.0,
+                            c.corner.1,
                         );
                     }
                     CornerKind::Chamfer => {

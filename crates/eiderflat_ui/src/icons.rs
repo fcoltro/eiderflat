@@ -1,4 +1,4 @@
-use egui::{pos2, vec2, Color32, Pos2, Rect, Response, Sense, Stroke, Ui, Vec2};
+use egui::{Color32, Pos2, Rect, Response, Sense, Stroke, Ui, Vec2, pos2, vec2};
 use std::collections::HashMap;
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Icon {
@@ -104,11 +104,18 @@ fn svg_texture(
     w: u32,
     h: u32,
 ) -> Option<egui::TextureHandle> {
-    let key = (icon as u8, fg.to_array(), accent.to_array(), w as u16, h as u16);
+    let key = (
+        icon as u8,
+        fg.to_array(),
+        accent.to_array(),
+        w as u16,
+        h as u16,
+    );
     let id = egui::Id::new("eiderflat_svg_icon_cache");
-    if let Some(tex) =
-        ctx.data(|d| d.get_temp::<SvgIconCache>(id).and_then(|c| c.0.get(&key).cloned()))
-    {
+    if let Some(tex) = ctx.data(|d| {
+        d.get_temp::<SvgIconCache>(id)
+            .and_then(|c| c.0.get(&key).cloned())
+    }) {
         return Some(tex);
     }
 
@@ -121,8 +128,7 @@ fn svg_texture(
     let transform = resvg::tiny_skia::Transform::from_scale(scale, scale).post_translate(tx, ty);
     resvg::render(&tree, transform, &mut pixmap.as_mut());
 
-    let image =
-        egui::ColorImage::from_rgba_premultiplied([w as usize, h as usize], pixmap.data());
+    let image = egui::ColorImage::from_rgba_premultiplied([w as usize, h as usize], pixmap.data());
     let tex = ctx.load_texture(
         format!("svg_icon_{}", icon as u8),
         image,
@@ -136,7 +142,13 @@ fn svg_texture(
     Some(tex)
 }
 
-pub fn paint_icon(painter: &egui::Painter, ctx: &egui::Context, icon: Icon, rect: Rect, fg: Color32) {
+pub fn paint_icon(
+    painter: &egui::Painter,
+    ctx: &egui::Context,
+    icon: Icon,
+    rect: Rect,
+    fg: Color32,
+) {
     let ppp = ctx.pixels_per_point();
     let w = (rect.width() * ppp).round().max(1.0) as u32;
     let h = (rect.height() * ppp).round().max(1.0) as u32;
@@ -176,9 +188,17 @@ pub fn app_icon() -> egui::IconData {
                     px[2] = (px[2] as u32 * 255 / a).min(255) as u8;
                 }
             }
-            egui::IconData { rgba, width: SIZE, height: SIZE }
+            egui::IconData {
+                rgba,
+                width: SIZE,
+                height: SIZE,
+            }
         }
-        None => egui::IconData { rgba: vec![0; 4], width: 1, height: 1 },
+        None => egui::IconData {
+            rgba: vec![0; 4],
+            width: 1,
+            height: 1,
+        },
     }
 }
 
@@ -189,8 +209,10 @@ pub fn logo_texture(ctx: &egui::Context) -> Option<egui::TextureHandle> {
     }
     let svg = include_str!("../assets/logotype/logotype.svg");
     let pixmap = rasterize_svg(svg, 768, 419)?;
-    let image =
-        egui::ColorImage::from_rgba_premultiplied([pixmap.width() as usize, pixmap.height() as usize], pixmap.data());
+    let image = egui::ColorImage::from_rgba_premultiplied(
+        [pixmap.width() as usize, pixmap.height() as usize],
+        pixmap.data(),
+    );
     let tex = ctx.load_texture("eiderflat_logo", image, egui::TextureOptions::LINEAR);
     ctx.data_mut(|d| d.insert_temp(id, tex.clone()));
     Some(tex)

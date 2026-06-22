@@ -1,7 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use eiderflat_geometry::{intersect, CircularArc, Curve, LineSeg, Point2d};
-use eiderflat_ui::{draw_ui, egui, AppState, UiState};
+use eiderflat_geometry::{CircularArc, Curve, LineSeg, Point2d, intersect};
+use eiderflat_ui::{AppState, UiState, draw_ui, egui};
 
 fn main() {
     // Capture any panic to the log file (the console may flash and close).

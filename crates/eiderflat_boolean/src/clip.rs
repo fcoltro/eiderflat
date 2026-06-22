@@ -174,7 +174,6 @@ fn mark_entries(
     op: BoolOp,
     is_subject: bool,
 ) {
-
     let flip = match op {
         BoolOp::Intersection => false,
         BoolOp::Union => true,
