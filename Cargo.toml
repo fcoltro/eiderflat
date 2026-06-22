@@ -1,0 +1,12 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/eiderflat_geometry",
+    "crates/eiderflat_spatial",
+    "crates/eiderflat_boolean",
+    "crates/eiderflat_document",
+    "crates/eiderflat_cad",
+    "crates/eiderflat_io",
+    "crates/eiderflat_ui",
+    "apps/eiderflat_app",
+]

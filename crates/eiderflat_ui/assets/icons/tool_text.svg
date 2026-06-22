@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Layer_1" xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 32 32">
+  <defs>
+    <style>
+      .st0 {
+        fill: none;
+        stroke: #000;
+        stroke-miterlimit: 5;
+        stroke-width: 3px;
+      }
+    </style>
+  </defs>
+  <path class="st0" d="M5.33,26.67h21.33"/>
+  <path class="st0" d="M8,21.33L16,5.33l8,16"/>
+  <path class="st0" d="M10.67,16h10.67"/>
+</svg>

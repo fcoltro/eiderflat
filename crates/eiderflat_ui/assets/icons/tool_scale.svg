@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Layer_1" xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 32 32">
+  <defs>
+    <style>
+      .st0 {
+        stroke: red;
+      }
+
+      .st0, .st1 {
+        fill: none;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        stroke-width: 3px;
+      }
+
+      .st1 {
+        stroke: #000;
+      }
+    </style>
+  </defs>
+  <path class="st1" d="M16,6.77h-7.18c-1.13,0-2.05.92-2.05,2.05v14.36c0,1.13.92,2.05,2.05,2.05h14.36c1.13,0,2.05-.92,2.05-2.05v-7.18"/>
+  <path class="st0" d="M18.05,19.08h-5.13v-5.13"/>
+  <path class="st0" d="M20.1,6.77h5.13v5.13"/>
+  <path class="st0" d="M25.23,6.77l-12.3,12.3"/>
+</svg>

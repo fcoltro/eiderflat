@@ -1,0 +1,13 @@
+# Rust build artifacts
+/target/
+**/target/
+
+# Claude Code / local tooling metadata
+/.claude/
+
+# Editor / OS noise
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db

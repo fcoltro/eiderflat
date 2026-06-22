@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Layer_1" xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 32 32">
+  <defs>
+    <style>
+      .st0 {
+        stroke: red;
+      }
+
+      .st0, .st1 {
+        fill: none;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        stroke-width: 3px;
+      }
+
+      .st1 {
+        stroke: #000;
+      }
+    </style>
+  </defs>
+  <path class="st0" d="M7.52,22.09c2.98-6.41,8.16-11.58,14.57-14.57"/>
+  <path class="st1" d="M24.48,12.66c-5.2,2.43-9.39,6.62-11.82,11.82"/>
+</svg>

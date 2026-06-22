@@ -1,0 +1,1607 @@
+use eiderflat_cad::{apply_grip, best_snap, edit, grips_for, pick_at, Grip, SnapPoint, SnapSettings};
+use eiderflat_document::{Document, EntityId, EntityKind, Layer};
+use eiderflat_geometry::{Curve, Point2d};
+
+use crate::command::{parse_command, parse_coordinate, Command, CoordInput};
+use crate::history::History;
+use crate::tools::{Tool, ToolEvent};
+use crate::view_transform::ViewTransform;
+
+mod modify;
+pub use modify::TrimExtendPreview;
+mod contextual;
+
+pub use contextual::{fillet_arc, CornerAction, CornerGeom, CornerKind};
+
+pub struct AppState {
+    pub document: Document,
+    pub view: ViewTransform,
+    pub tool: Tool,
+    pub selection: Vec<EntityId>,
+    pub snap: SnapSettings,
+    pub snap_on: bool,
+    pub grid_on: bool,
+    pub grid_snap_on: bool,
+    pub ortho_on: bool,
+    pub polar_on: bool,
+    pub dyn_on: bool,
+    pub last_command: Option<String>,
+    pub history: History,
+    pub command_log: Vec<String>,
+    pub cursor_world: (f64, f64),
+    pub active_snap: Option<SnapPoint>,
+    pub click_count: u32,
+    pub origin_id: EntityId,
+    pub interaction: InteractionState,
+    pub current_file_path: Option<std::path::PathBuf>,
+    pub text_font: Option<String>,
+    pub hatch_pattern: eiderflat_document::HatchPattern,
+    pub saved_depth: usize,
+    pub zoom_target: Option<(f64, f64, f64)>,
+}
+
+#[derive(Default)]
+pub struct InteractionState {
+    pub grip_drag: Option<GripDrag>,
+    pub bbox_drag: Option<BboxDrag>,
+    pub corner_action: Option<CornerAction>,
+    pub active_guide: Option<((f64, f64), f64)>,
+}
+
+#[derive(Clone, Debug)]
+pub struct GripDrag {
+    pub entity_id: EntityId,
+    pub grip: Grip,
+    pub start_kind: EntityKind,
+}
+
+#[derive(Clone, Debug)]
+pub struct BboxDrag {
+    pub handle: BboxHandle,
+    pub bbox_start: eiderflat_geometry::BoundingBox,
+    pub cursor_start: (f64, f64),
+    pub originals: Vec<(EntityId, EntityKind)>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum BboxHandle {
+    Body,
+    CornerNW,
+    CornerNE,
+    CornerSW,
+    CornerSE,
+    RotateNW,
+    RotateNE,
+    RotateSW,
+    RotateSE,
+}
+
+/// Seed a fresh document with the usual CAD layer set (layer "0" already exists
+/// as the default drawing layer; we add the common companions on top).
+fn seed_default_layers(doc: &mut eiderflat_document::Document) {
+    use eiderflat_document::Layer;
+    for layer in [
+        Layer::new("Dimensions").with_color(245, 185, 74),
+        Layer::new("Centerlines").with_color(232, 134, 108),
+        Layer::new("Construction").with_color(169, 140, 255),
+        Layer::new("Hidden").with_color(150, 160, 178),
+    ] {
+        doc.layers.add(layer);
+    }
+}
+
+impl AppState {
+    pub fn new(canvas_w: f64, canvas_h: f64) -> Self {
+        let mut document = Document::new();
+        seed_default_layers(&mut document);
+        let origin_id = document.add(EntityKind::Point(Point2d::from_i64(0, 0)));
+
+        AppState {
+            document,
+            view: ViewTransform::new(canvas_w, canvas_h),
+            tool: Tool::Select,
+            selection: Vec::new(),
+            snap: SnapSettings::default(),
+            snap_on: true,
+            grid_on: true,
+            grid_snap_on: false,
+            ortho_on: false,
+            polar_on: true,
+            dyn_on: true,
+            last_command: None,
+            history: History::new(),
+            command_log: Vec::new(),
+            cursor_world: (0.0, 0.0),
+            active_snap: None,
+            click_count: 0,
+            origin_id,
+            interaction: InteractionState::default(),
+
+            current_file_path: None,
+            text_font: None,
+            hatch_pattern: eiderflat_document::HatchPattern::Solid,
+            saved_depth: 0,
+            zoom_target: None,
+        }
+    }
+
+    pub fn pointer_moved(&mut self, sx: f64, sy: f64) {
+        let (wx, wy) = self.view.screen_to_world(sx, sy);
+
+        self.active_snap = if self.snap_on && self.tool.wants_point_snap() {
+            let mut s = self.snap.clone();
+            s.tolerance = self.view.pixel_world_size() * 12.0;
+            let ref_pt = self.tool.reference_point().map(|p| p.to_f64());
+            best_snap(&self.document, (wx, wy), &s, ref_pt)
+        } else {
+            None
+        };
+
+        self.interaction.active_guide = None;
+
+        if let Some(ref sp) = self.active_snap {
+            self.cursor_world = sp.pos;
+        } else if self.grid_snap_on && self.tool.wants_point_snap() {
+            self.cursor_world = self.view.snap_to_grid(wx, wy);
+        } else if self.ortho_on {
+            if let Some(ref_pt) = self.tool.reference_point() {
+                let (rx, ry) = ref_pt.to_f64();
+                let dx = wx - rx;
+                let dy = wy - ry;
+                let angle_rad = if dx.abs() >= dy.abs() {
+                    self.cursor_world = (wx, ry);
+                    if wx >= rx {
+                        0.0
+                    } else {
+                        std::f64::consts::PI
+                    }
+                } else {
+                    self.cursor_world = (rx, wy);
+                    if wy >= ry {
+                        std::f64::consts::FRAC_PI_2
+                    } else {
+                        -std::f64::consts::FRAC_PI_2
+                    }
+                };
+                self.interaction.active_guide = Some(((rx, ry), angle_rad));
+            } else {
+                self.cursor_world = (wx, wy);
+            }
+        } else {
+            if let Some(ref_pt) = self.tool.reference_point() {
+                let (rx, ry) = ref_pt.to_f64();
+                let dx = wx - rx;
+                let dy = wy - ry;
+                let dist = (dx * dx + dy * dy).sqrt();
+                if self.polar_on && dist > 1e-4 {
+                    let angle_rad = dy.atan2(dx);
+                    let angle_deg = angle_rad.to_degrees();
+                    let angle_deg_wrapped = if angle_deg < 0.0 {
+                        angle_deg + 360.0
+                    } else {
+                        angle_deg
+                    };
+                    let nearest_45 = (angle_deg_wrapped / 45.0).round() * 45.0;
+                    let diff = (angle_deg_wrapped - nearest_45).abs();
+                    let diff = diff.min(360.0 - diff);
+
+                    if diff <= 3.0 {
+                        let snapped_rad = nearest_45.to_radians();
+                        self.cursor_world =
+                            (rx + dist * snapped_rad.cos(), ry + dist * snapped_rad.sin());
+                        self.interaction.active_guide = Some(((rx, ry), snapped_rad));
+                    } else {
+                        self.cursor_world = (wx, wy);
+                    }
+                } else {
+                    self.cursor_world = (wx, wy);
+                }
+            } else {
+                self.cursor_world = (wx, wy);
+            }
+        }
+    }
+
+    pub fn resolved_point(&self) -> Point2d {
+        match &self.active_snap {
+            Some(sp) => Point2d::from_f64(sp.pos.0, sp.pos.1),
+            None => Point2d::from_f64(self.cursor_world.0, self.cursor_world.1),
+        }
+    }
+
+    pub fn canvas_click(&mut self, sx: f64, sy: f64) {
+        self.click_count = self.click_count.wrapping_add(1);
+        self.pointer_moved(sx, sy);
+        let p = self.resolved_point();
+
+        if self.handle_modify_click(&p) {
+            return;
+        }
+
+        if let Tool::Text { anchor, height } = &self.tool {
+            let height = *height;
+            let need_anchor = anchor.is_none();
+            if need_anchor {
+                self.tool = Tool::Text {
+                    anchor: Some(p),
+                    height,
+                };
+            }
+            return;
+        }
+
+        if matches!(self.tool, Tool::Select) {
+            if let Some(id) = pick_at(&self.document, p.x, p.y, self.view.pixel_world_size() * 6.0)
+            {
+                self.toggle_selection(id);
+            } else {
+                self.selection.clear();
+            }
+            return;
+        }
+
+        let ev = self.tool.on_point(p);
+        self.apply_tool_event(ev);
+    }
+
+    pub fn place_tool_point(&mut self, p: Point2d) {
+        let ev = self.tool.on_point(p);
+        self.apply_tool_event(ev);
+    }
+
+    fn apply_tool_event(&mut self, ev: ToolEvent) {
+        match ev {
+            ToolEvent::Pending => {}
+            ToolEvent::Create(kinds) => {
+                self.history.snapshot(&self.document);
+                for k in kinds {
+                    self.document.add(k);
+                }
+            }
+            ToolEvent::Transform { ids, t } => {
+                self.history.snapshot(&self.document);
+                let mut moved = Vec::new();
+                for id in ids {
+                    if id != self.origin_id {
+                        if let Some(e) = self.document.get_mut(id) {
+                            e.transform(&t);
+                            moved.push(id);
+                        }
+                    }
+                }
+                self.selection = moved;
+                self.tool = Tool::Select;
+            }
+            ToolEvent::CopyOf { ids, t } => {
+                self.history.snapshot(&self.document);
+                let mut new_ids = Vec::new();
+                for id in ids {
+                    if id != self.origin_id {
+                        if let Some(e) = self.document.get(id) {
+                            let copy = e.transformed(&t);
+                            new_ids.push(self.document.add_entity(copy));
+                        }
+                    }
+                }
+                self.selection = new_ids;
+                self.tool = Tool::Select;
+            }
+        }
+    }
+
+    fn toggle_selection(&mut self, id: EntityId) {
+        if id == self.origin_id {
+            return;
+        }
+        if let Some(pos) = self.selection.iter().position(|&s| s == id) {
+            self.selection.remove(pos);
+        } else {
+            self.selection.push(id);
+        }
+    }
+
+    pub fn run_command(&mut self, text: &str) {
+        let trimmed = text.trim();
+
+        if let Tool::Text {
+            anchor: Some(p),
+            height,
+        } = self.tool.clone()
+        {
+            if !trimmed.is_empty() {
+                self.history.snapshot(&self.document);
+                self.document.add(EntityKind::Text {
+                    anchor: p,
+                    content: trimmed.replace("\\n", "\n"),
+                    height,
+                    rotation: 0.0,
+                    font: self.text_font.clone(),
+                });
+            }
+            self.tool = Tool::Select;
+            self.command_log.push(trimmed.to_string());
+            return;
+        }
+
+        if matches!(self.tool, Tool::Polyline { .. } | Tool::Spline { .. }) {
+            if trimmed.is_empty() {
+                let ev = self.tool.commit();
+                self.apply_tool_event(ev);
+                self.tool = Tool::Select;
+                return;
+            }
+            let upper = trimmed.to_ascii_uppercase();
+            if upper == "C" || upper == "CLOSE" {
+                let ev = self.tool.close_and_commit();
+                self.apply_tool_event(ev);
+                self.tool = Tool::Select;
+                self.command_log.push(trimmed.to_string());
+                return;
+            }
+        }
+
+        if let Tool::Polygon { center: None, .. } = self.tool {
+            if let Ok(n) = trimmed.parse::<usize>() {
+                if n >= 3 {
+                    self.tool = Tool::Polygon {
+                        center: None,
+                        sides: Some(n),
+                    };
+                    self.command_log.push(trimmed.to_string());
+                    return;
+                }
+            }
+        }
+
+        if let Ok(v) = trimmed.parse::<f64>() {
+            if v > 0.0 {
+                match &self.tool {
+                    Tool::Offset { source, .. } => {
+                        self.tool = Tool::Offset {
+                            dist: v,
+                            source: *source,
+                        };
+                        self.command_log.push(trimmed.to_string());
+                        return;
+                    }
+                    Tool::Fillet { first, .. } => {
+                        self.tool = Tool::Fillet {
+                            radius: v,
+                            first: *first,
+                        };
+                        self.command_log.push(trimmed.to_string());
+                        return;
+                    }
+                    Tool::Chamfer { first, .. } => {
+                        self.tool = Tool::Chamfer {
+                            dist: v,
+                            first: *first,
+                        };
+                        self.command_log.push(trimmed.to_string());
+                        return;
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        if let Ok(dist) = trimmed.parse::<f64>() {
+            if let Some(ref_pt) = self.tool.reference_point() {
+                let (rx, ry) = ref_pt.to_f64();
+                let (cx, cy) = self.cursor_world;
+                let dx = cx - rx;
+                let dy = cy - ry;
+                let len = (dx * dx + dy * dy).sqrt();
+                let (ux, uy) = if len > 1e-9 {
+                    (dx / len, dy / len)
+                } else if let Some((_, angle_rad)) = self.interaction.active_guide {
+                    (angle_rad.cos(), angle_rad.sin())
+                } else {
+                    (1.0, 0.0)
+                };
+                let target_pt = Point2d::from_f64(rx + dist * ux, ry + dist * uy);
+                let ev = self.tool.on_point(target_pt);
+                self.apply_tool_event(ev);
+                self.command_log.push(trimmed.to_string());
+                return;
+            }
+        }
+
+        if let Some(coord) = parse_coordinate(trimmed) {
+            let (rx, ry) = self
+                .tool
+                .reference_point()
+                .map(|p| p.to_f64())
+                .unwrap_or((0.0, 0.0));
+            let (x, y) = match coord {
+                CoordInput::Absolute(x, y) => (x, y),
+                CoordInput::Relative(dx, dy) => (rx + dx, ry + dy),
+                CoordInput::PolarAbsolute { dist, angle_deg } => {
+                    let a = angle_deg.to_radians();
+                    (dist * a.cos(), dist * a.sin())
+                }
+                CoordInput::PolarRelative { dist, angle_deg } => {
+                    let a = angle_deg.to_radians();
+                    (rx + dist * a.cos(), ry + dist * a.sin())
+                }
+            };
+            let ev = self.tool.on_point(Point2d::from_f64(x, y));
+            self.apply_tool_event(ev);
+            self.command_log.push(trimmed.to_string());
+            return;
+        }
+
+        let cmd = parse_command(text);
+        self.command_log.push(text.trim().to_string());
+        if !matches!(cmd, Command::Cancel | Command::Unknown(_)) {
+            self.last_command = Some(trimmed.to_string());
+        }
+        self.execute(cmd);
+    }
+
+    pub fn repeat_last_command(&mut self) {
+        if let Some(cmd) = self.last_command.clone() {
+            self.run_command(&cmd);
+        }
+    }
+
+    pub fn execute(&mut self, cmd: Command) {
+        match cmd {
+            Command::Activate(mut tool) => {
+                match &mut tool {
+                    Tool::Move { ids, .. }
+                    | Tool::Copy { ids, .. }
+                    | Tool::Rotate { ids, .. }
+                    | Tool::Scale { ids, .. }
+                    | Tool::Mirror { ids, .. }
+                    | Tool::Stretch { ids, .. } => *ids = self.selection.clone(),
+                    _ => {}
+                }
+                self.tool = tool;
+            }
+            Command::Cancel => {
+                self.tool.reset();
+                if matches!(self.tool, Tool::Select) {
+                    self.selection.clear();
+                }
+                self.tool = Tool::Select;
+            }
+            Command::Undo => self.undo(),
+            Command::Redo => self.redo(),
+            Command::Erase => self.erase_selection(),
+            Command::Explode => self.explode_selection(),
+            Command::Join => self.join_selection(),
+            Command::Hatch => {
+                if self.selection.is_empty() {
+                    self.tool = Tool::Hatch;
+                } else {
+                    self.hatch_selection();
+                }
+            }
+            Command::SelectAll => {
+                self.selection = self
+                    .document
+                    .iter()
+                    .map(|e| e.id)
+                    .filter(|&id| id != self.origin_id)
+                    .collect();
+            }
+            Command::ZoomExtents => self.zoom_extents(),
+            Command::ZoomScale(s) => {
+                self.view.zoom = s.clamp(1e-9, 1e12);
+            }
+            Command::LayerSet(name) => {
+                self.document.layers.set_current(&name);
+            }
+            Command::LayerNew(name) => {
+                let idx = self.document.layers.add(Layer::new(name));
+                self.document.layers.current = idx;
+            }
+            Command::Unknown(_) => {}
+        }
+    }
+
+    pub fn undo(&mut self) {
+        if let Some(prev) = self.history.undo(&self.document) {
+            self.document = prev;
+            self.selection.clear();
+        }
+    }
+
+    pub fn redo(&mut self) {
+        if let Some(next) = self.history.redo(&self.document) {
+            self.document = next;
+            self.selection.clear();
+        }
+    }
+
+    pub fn erase_selection(&mut self) {
+        if self.selection.is_empty() {
+            return;
+        }
+        self.history.snapshot(&self.document);
+        for id in std::mem::take(&mut self.selection) {
+            if id != self.origin_id {
+                self.document.remove(id);
+            }
+        }
+    }
+
+    pub fn explode_selection(&mut self) {
+        if self.selection.is_empty() {
+            return;
+        }
+        self.history.snapshot(&self.document);
+        let ids: Vec<_> = std::mem::take(&mut self.selection)
+            .into_iter()
+            .filter(|&id| id != self.origin_id)
+            .collect();
+        let new_ids = edit::explode(&mut self.document, &ids);
+        let survived: Vec<_> = ids
+            .into_iter()
+            .filter(|&id| self.document.get(id).is_some())
+            .collect();
+        self.selection = survived.into_iter().chain(new_ids).collect();
+    }
+
+    pub fn hatch_selection(&mut self) {
+        if self.selection.is_empty() {
+            return;
+        }
+        let fill = self.document.layers.current_layer().color;
+        let loops: Vec<Vec<Curve>> = self
+            .selection
+            .iter()
+            .filter(|&&id| id != self.origin_id)
+            .filter_map(|&id| self.document.get(id).and_then(eiderflat_cad::boundary_loop))
+            .collect();
+        if loops.is_empty() {
+            self.command_log.push(
+                "HATCH: select a closed boundary, or run HATCH and click inside an area".into(),
+            );
+            return;
+        }
+        self.history.snapshot(&self.document);
+        self.selection = loops
+            .into_iter()
+            .map(|b| {
+                self.document.add(EntityKind::Hatch {
+                    boundary: b,
+                    holes: Vec::new(),
+                    fill,
+                    pattern: self.hatch_pattern,
+                })
+            })
+            .collect();
+    }
+
+    pub fn hatch_at_point(&mut self, x: f64, y: f64) -> bool {
+        let (boundary, holes) = match eiderflat_cad::trace_pick_region(&self.document, x, y) {
+            Some(r) => r,
+            None => {
+                self.command_log
+                    .push("HATCH: no enclosed area found at that point".into());
+                return false;
+            }
+        };
+        let fill = self.document.layers.current_layer().color;
+        self.history.snapshot(&self.document);
+        let id = self.document.add(EntityKind::Hatch {
+            boundary,
+            holes,
+            fill,
+            pattern: self.hatch_pattern,
+        });
+        self.selection = vec![id];
+        true
+    }
+
+    pub fn join_selection(&mut self) {
+        if self.selection.is_empty() {
+            return;
+        }
+        self.history.snapshot(&self.document);
+        let ids: Vec<_> = std::mem::take(&mut self.selection)
+            .into_iter()
+            .filter(|&id| id != self.origin_id)
+            .collect();
+        let new_ids = edit::join(&mut self.document, &ids);
+        if new_ids.is_empty() {
+            self.selection = ids;
+            self.history.discard_last();
+            return;
+        }
+        let survived: Vec<_> = ids
+            .into_iter()
+            .filter(|&id| self.document.get(id).is_some())
+            .collect();
+        self.selection = survived.into_iter().chain(new_ids).collect();
+    }
+
+    pub fn zoom_extents(&mut self) {
+        if let Some(bb) = self.document.extents() {
+            let (x0, y0) = bb.min.to_f64();
+            let (x1, y1) = bb.max.to_f64();
+            let mut target = self.view.clone();
+            target.zoom_to_bounds(x0, y0, x1, y1);
+            self.zoom_target = Some((target.center.0, target.center.1, target.zoom));
+        }
+    }
+
+    pub fn tick_zoom_anim(&mut self) -> bool {
+        let Some((tx, ty, tz)) = self.zoom_target else {
+            return false;
+        };
+        let k = 0.25;
+        self.view.center.0 += (tx - self.view.center.0) * k;
+        self.view.center.1 += (ty - self.view.center.1) * k;
+        self.view.zoom = (self.view.zoom.ln() + (tz.ln() - self.view.zoom.ln()) * k).exp();
+        let dc = (tx - self.view.center.0).hypot(ty - self.view.center.1) * self.view.zoom;
+        let dz = (tz / self.view.zoom).ln().abs();
+        if dc < 0.5 && dz < 2e-3 {
+            self.view.center = (tx, ty);
+            self.view.zoom = tz;
+            self.zoom_target = None;
+            return false;
+        }
+        true
+    }
+
+    pub fn add_entity(&mut self, kind: EntityKind) -> EntityId {
+        self.history.snapshot(&self.document);
+        self.document.add(kind)
+    }
+
+    pub fn selected_nurbs(&self) -> Option<(EntityId, Vec<Point2d>, Vec<f64>)> {
+        if self.selection.len() != 1 {
+            return None;
+        }
+        let id = self.selection[0];
+        if let EntityKind::Curve(Curve::Nurbs(nc)) = &self.document.get(id)?.kind {
+            Some((id, nc.control.clone(), nc.weights.clone()))
+        } else {
+            None
+        }
+    }
+
+    pub fn selected_nurbs_all(&self) -> Vec<(EntityId, Vec<Point2d>, Vec<f64>)> {
+        self.selection
+            .iter()
+            .filter_map(|&id| match &self.document.get(id)?.kind {
+                EntityKind::Curve(Curve::Nurbs(nc)) => {
+                    Some((id, nc.control.clone(), nc.weights.clone()))
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
+    pub fn begin_edit(&mut self) {
+        self.history.snapshot(&self.document);
+    }
+
+    pub fn commit_text_edit(&mut self, id: EntityId, content: String, font: Option<String>, size: f64) {
+        let size = size.max(0.1);
+        let changed = matches!(self.document.get(id).map(|e| &e.kind),
+            Some(EntityKind::Text { content: c, font: f, height: h, .. })
+                if *c != content || *f != font || (*h - size).abs() > 1e-9);
+        if !changed {
+            return;
+        }
+        self.history.snapshot(&self.document);
+        if let Some(EntityKind::Text { content: c, font: f, height: h, .. }) =
+            self.document.get_mut(id).map(|e| &mut e.kind)
+        {
+            *c = content;
+            *f = font.clone();
+            *h = size;
+        }
+        self.text_font = font;
+    }
+
+    pub fn outline_text_selection(&mut self) {
+        let texts: Vec<EntityId> = self
+            .selection
+            .iter()
+            .copied()
+            .filter(|&id| matches!(self.document.get(id).map(|e| &e.kind), Some(EntityKind::Text { .. })))
+            .collect();
+        if texts.is_empty() {
+            return;
+        }
+        self.history.snapshot(&self.document);
+        let mut new_ids = Vec::new();
+        for id in texts {
+            let info = match self.document.get(id) {
+                Some(e) => match &e.kind {
+                    EntityKind::Text { content, font, height, anchor, rotation } => {
+                        Some((content.clone(), font.clone(), *height, *anchor, *rotation, e.layer, e.color.clone()))
+                    }
+                    _ => None,
+                },
+                None => None,
+            };
+            let Some((content, font, height, anchor, rotation, layer, color)) = info else { continue };
+            let curves = crate::fonts::outline_text(&content, font.as_deref(), height, anchor, rotation);
+            if curves.is_empty() {
+                continue;
+            }
+
+            for c in curves {
+                let cid = self.document.add_on_layer(EntityKind::Curve(c), layer);
+                if let Some(e) = self.document.get_mut(cid) {
+                    e.color = color.clone();
+                }
+                new_ids.push(cid);
+            }
+            self.document.remove(id);
+        }
+        if !new_ids.is_empty() {
+            self.selection = new_ids;
+        }
+    }
+
+    pub fn set_nurbs_control(&mut self, id: EntityId, index: usize, p: Point2d) {
+        if let Some(e) = self.document.get_mut(id) {
+            if let EntityKind::Curve(Curve::Nurbs(nc)) = &mut e.kind {
+                if index < nc.control.len() {
+                    nc.control[index] = p;
+                }
+            }
+        }
+    }
+
+    pub fn adjust_nurbs_weight(&mut self, id: EntityId, index: usize, factor: f64) -> bool {
+        let ok = matches!(self.document.get(id).map(|e| &e.kind),
+            Some(EntityKind::Curve(Curve::Nurbs(nc))) if index < nc.weights.len());
+        if !ok {
+            return false;
+        }
+        self.history.snapshot(&self.document);
+        if let Some(EntityKind::Curve(Curve::Nurbs(nc))) =
+            self.document.get_mut(id).map(|e| &mut e.kind)
+        {
+            nc.weights[index] = (nc.weights[index] * factor).clamp(0.05, 20.0);
+        }
+        true
+    }
+
+    pub fn new_document(&mut self) {
+        self.document = Document::new();
+        seed_default_layers(&mut self.document);
+        self.origin_id = self
+            .document
+            .add(EntityKind::Point(Point2d::from_i64(0, 0)));
+        self.selection.clear();
+        self.history = History::new();
+        self.tool = Tool::Select;
+        self.current_file_path = None;
+        self.saved_depth = 0;
+    }
+
+    pub fn open_file(&mut self, path: std::path::PathBuf) {
+        let ext = path
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("")
+            .to_ascii_lowercase();
+        let result = match ext.as_str() {
+            "dxf" => std::fs::read_to_string(&path)
+                .map(|t| eiderflat_io::import_dxf(&t))
+                .map_err(|e| e.to_string()),
+            "svg" => std::fs::read_to_string(&path)
+                .map(|t| eiderflat_io::import_svg(&t))
+                .map_err(|e| e.to_string()),
+            "dwg" => Err("DWG is a proprietary binary format eiderFLAT can't read. \
+                          Re-export it as DXF from your CAD app, then open the .dxf."
+                .to_string()),
+            _ => eiderflat_io::load_native(&path).map_err(|e| e.to_string()),
+        };
+        match result {
+            Ok(mut doc) => {
+                let origin_id = doc.add(EntityKind::Point(Point2d::from_i64(0, 0)));
+                self.document = doc;
+                self.origin_id = origin_id;
+                self.selection.clear();
+                self.history = History::new();
+                self.tool = Tool::Select;
+                self.current_file_path = Some(path);
+                self.saved_depth = 0;
+            }
+            Err(e) => self.command_log.push(format!("Cannot open: {e}")),
+        }
+    }
+
+    pub fn save_file(&mut self) -> bool {
+        if let Some(path) = self.current_file_path.clone() {
+            self.save_file_to(path)
+        } else {
+            false
+        }
+    }
+
+    pub fn save_file_to(&mut self, path: std::path::PathBuf) -> bool {
+        let mut save_doc = self.document.clone();
+        save_doc.remove(self.origin_id);
+        let ext = path
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("")
+            .to_ascii_lowercase();
+        let result =
+            match ext.as_str() {
+                "dxf" => std::fs::write(&path, eiderflat_io::export_dxf(&save_doc))
+                    .map_err(|e| e.to_string()),
+                "svg" => std::fs::write(&path, eiderflat_io::export_svg(&save_doc))
+                    .map_err(|e| e.to_string()),
+                "dwg" => Err("eiderFLAT can't write DWG (proprietary binary). \
+                          Save as DXF for CAD interchange."
+                    .to_string()),
+                _ => eiderflat_io::save_native(&save_doc, &path).map_err(|e| e.to_string()),
+            };
+        match result {
+            Ok(()) => {
+                self.current_file_path = Some(path);
+                self.saved_depth = self.history.undo_depth();
+                true
+            }
+            Err(e) => {
+                self.command_log.push(format!("Save failed: {e}"));
+                false
+            }
+        }
+    }
+
+    pub fn is_dirty(&self) -> bool {
+        self.history.undo_depth() != self.saved_depth
+    }
+
+    pub fn window_title(&self) -> String {
+        let name = self
+            .current_file_path
+            .as_ref()
+            .and_then(|p| p.file_name())
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "Untitled".to_string());
+        let star = if self.is_dirty() { "*" } else { "" };
+        format!("eiderFLAT — {name}{star}")
+    }
+
+    /// Bare document name (with a trailing `*` when dirty) for the top-bar pill.
+    pub fn document_label(&self) -> String {
+        let name = self
+            .current_file_path
+            .as_ref()
+            .and_then(|p| p.file_name())
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "Untitled".to_string());
+        let star = if self.is_dirty() { "*" } else { "" };
+        format!("{name}{star}")
+    }
+
+    pub fn coord_readout(&self) -> String {
+        format!("{:.4}, {:.4}", self.cursor_world.0, self.cursor_world.1)
+    }
+
+    pub fn current_layer_name(&self) -> &str {
+        &self.document.layers.current_layer().name
+    }
+
+    pub fn units_label(&self) -> &'static str {
+        match self.document.settings.units.short_name() {
+            "" => "none",
+            s => s,
+        }
+    }
+
+    pub fn sync_zoom_limits(&mut self) {
+        let (mn, mx) = self.document.settings.units.visible_range();
+        self.view.set_visible_range(mn, mx);
+    }
+
+    pub fn begin_bbox_drag(&mut self, handle: BboxHandle, cursor: (f64, f64)) {
+        if self.selection.is_empty() {
+            return;
+        }
+
+        let mut bbox: Option<eiderflat_geometry::BoundingBox> = None;
+        for &id in &self.selection {
+            if let Some(e) = self.document.get(id) {
+                if let Some(b) = e.bounding_box() {
+                    bbox = Some(if let Some(existing) = bbox {
+                        existing.union(&b)
+                    } else {
+                        b
+                    });
+                }
+            }
+        }
+
+        if let Some(bbox_start) = bbox {
+            let originals: Vec<(EntityId, EntityKind)> = self
+                .selection
+                .iter()
+                .filter_map(|&id| self.document.get(id).map(|e| (id, e.kind.clone())))
+                .collect();
+            self.interaction.bbox_drag = Some(BboxDrag {
+                handle,
+                bbox_start,
+                cursor_start: cursor,
+                originals,
+            });
+            self.history.snapshot(&self.document);
+        }
+    }
+
+    pub fn end_bbox_drag(&mut self) {
+        self.interaction.bbox_drag = None;
+    }
+
+    pub fn apply_bbox_drag_transform(&mut self, cursor: (f64, f64)) {
+        let Some(drag) = self.interaction.bbox_drag.as_ref() else {
+            return;
+        };
+        let ids: Vec<_> = self.selection.clone();
+
+        for (id, kind) in &drag.originals {
+            if let Some(e) = self.document.get_mut(*id) {
+                e.kind = kind.clone();
+            }
+        }
+
+        let (cx, cy) = cursor;
+        let (sx, sy) = drag.cursor_start;
+        let (dx, dy) = (cx - sx, cy - sy);
+
+        let bbox = drag.bbox_start;
+        let (bx0, by0) = (bbox.min.x, bbox.min.y);
+        let (bx1, by1) = (bbox.max.x, bbox.max.y);
+
+        match drag.handle {
+            BboxHandle::Body => {
+                edit::move_by(&mut self.document, &ids, dx, dy);
+            }
+            BboxHandle::CornerNW => {
+                self.scale_bbox_from_opposite(&ids, bbox, cursor, (bx1, by1));
+            }
+            BboxHandle::CornerNE => {
+                self.scale_bbox_from_opposite(&ids, bbox, cursor, (bx0, by1));
+            }
+            BboxHandle::CornerSW => {
+                self.scale_bbox_from_opposite(&ids, bbox, cursor, (bx1, by0));
+            }
+            BboxHandle::CornerSE => {
+                self.scale_bbox_from_opposite(&ids, bbox, cursor, (bx0, by0));
+            }
+            BboxHandle::RotateNW
+            | BboxHandle::RotateNE
+            | BboxHandle::RotateSW
+            | BboxHandle::RotateSE => {
+                let center = Point2d::from_f64((bx0 + bx1) / 2.0, (by0 + by1) / 2.0);
+                let angle_start = (sy - center.y).atan2(sx - center.x);
+                let angle_current = (cy - center.y).atan2(cx - center.x);
+                let angle = angle_current - angle_start;
+
+                if angle.abs() > 1e-9 {
+                    edit::rotate(&mut self.document, &ids, &center, angle);
+                }
+            }
+        }
+    }
+
+    fn scale_bbox_from_opposite(
+        &mut self,
+        ids: &[EntityId],
+        bbox: eiderflat_geometry::BoundingBox,
+        cursor: (f64, f64),
+        opposite: (f64, f64),
+    ) {
+        let (cx, cy) = cursor;
+        let (ox, oy) = opposite;
+        let w = (cx - ox).abs();
+        let h = (cy - oy).abs();
+        let orig_w = (bbox.max.x - bbox.min.x).abs();
+        let orig_h = (bbox.max.y - bbox.min.y).abs();
+
+        if orig_w > 1e-9 && orig_h > 1e-9 {
+            let sx = w / orig_w;
+            let sy = h / orig_h;
+            let s = sx.max(sy);
+
+            if (s - 1.0).abs() > 1e-6 {
+                let base = Point2d::from_f64(ox, oy);
+                edit::scale(&mut self.document, ids, &base, s);
+            }
+        }
+    }
+
+    pub fn begin_grip_drag(&mut self, id: EntityId, grip: Grip) {
+        if let Some(e) = self.document.get(id) {
+            self.history.snapshot(&self.document);
+            self.interaction.grip_drag = Some(GripDrag {
+                entity_id: id,
+                grip,
+                start_kind: e.kind.clone(),
+            });
+        }
+    }
+
+    pub fn apply_grip_drag(&mut self, cursor: (f64, f64)) {
+        let Some(drag) = self.interaction.grip_drag.as_ref() else {
+            return;
+        };
+        let to = Point2d::from_f64(cursor.0, cursor.1);
+        let edited = apply_grip(&drag.start_kind, &drag.grip, to);
+        let id = drag.entity_id;
+        if let Some(e) = self.document.get_mut(id) {
+            e.kind = edited;
+        }
+    }
+
+    pub fn end_grip_drag(&mut self) {
+        self.interaction.grip_drag = None;
+    }
+
+    pub fn cancel_grip_drag(&mut self) {
+        if let Some(drag) = self.interaction.grip_drag.take() {
+            if let Some(e) = self.document.get_mut(drag.entity_id) {
+                e.kind = drag.start_kind;
+            }
+            self.history.discard_last();
+        }
+    }
+
+    pub fn grip_editing(&self) -> bool {
+        self.interaction.grip_drag.is_some()
+    }
+
+    pub fn grip_role(&self) -> Option<eiderflat_cad::GripRole> {
+        self.interaction.grip_drag.as_ref().map(|d| d.grip.role)
+    }
+
+    pub fn commit_grip_value(&mut self, value: f64) {
+        let Some(drag) = self.interaction.grip_drag.as_ref() else {
+            return;
+        };
+        let to = Point2d::from_f64(self.cursor_world.0, self.cursor_world.1);
+        let edited = eiderflat_cad::apply_grip_value(&drag.start_kind, &drag.grip, value, to);
+        let id = drag.entity_id;
+        if let Some(e) = self.document.get_mut(id) {
+            e.kind = edited;
+        }
+        self.interaction.grip_drag = None;
+    }
+
+    pub fn selection_grips(&self) -> Vec<(EntityId, Grip)> {
+        if !matches!(self.tool, Tool::Select) || self.interaction.corner_action.is_some() {
+            return Vec::new();
+        }
+        let mut out = Vec::new();
+        for &id in &self.selection {
+            if let Some(e) = self.document.get(id) {
+                for g in grips_for(&e.kind) {
+                    out.push((id, g));
+                }
+            }
+        }
+        out
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use eiderflat_geometry::{Curve, LineSeg};
+
+    fn pt(x: i64, y: i64) -> Point2d {
+        Point2d::from_i64(x, y)
+    }
+
+    fn app() -> AppState {
+        AppState::new(800.0, 600.0)
+    }
+
+    #[test]
+    fn save_open_dispatches_by_extension() {
+        for ext in ["e2d", "dxf", "svg"] {
+            let mut a = app();
+            a.document
+                .add(EntityKind::Curve(Curve::Line(LineSeg::from_endpoints(
+                    pt(0, 0),
+                    pt(10, 5),
+                ))));
+            a.document.add(EntityKind::Curve(Curve::Arc(
+                eiderflat_geometry::CircularArc::new(pt(3, 4), 5.0, 0.0, std::f64::consts::TAU),
+            )));
+            let want = a.document.iter().filter(|e| e.id != a.origin_id).count();
+
+            let path = std::env::temp_dir()
+                .join(format!("e2d_io_test_{}_{ext}.{ext}", std::process::id()));
+            assert!(a.save_file_to(path.clone()), "save .{ext} should succeed");
+
+            let mut b = app();
+            b.open_file(path.clone());
+            let got = b.document.iter().filter(|e| e.id != b.origin_id).count();
+            assert_eq!(
+                got, want,
+                ".{ext} round-trip lost entities: {want} -> {got}"
+            );
+            let _ = std::fs::remove_file(path);
+        }
+    }
+
+    #[test]
+    fn line_command_then_two_clicks_creates_segment() {
+        let mut a = app();
+        a.run_command("LINE");
+        assert_eq!(a.tool.name(), "LINE");
+        let (s1x, s1y) = a.view.world_to_screen(0.0, 0.0);
+        let (s2x, s2y) = a.view.world_to_screen(5.0, 0.0);
+        a.snap_on = false;
+        a.canvas_click(s1x, s1y);
+        assert_eq!(a.document.len(), 1);
+        a.canvas_click(s2x, s2y);
+        assert_eq!(a.document.len(), 2);
+    }
+
+    #[test]
+    fn undo_redo_through_state() {
+        let mut a = app();
+        a.add_entity(EntityKind::Curve(Curve::Line(LineSeg::from_endpoints(
+            pt(0, 0),
+            pt(1, 1),
+        ))));
+        assert_eq!(a.document.len(), 2);
+        a.undo();
+        assert_eq!(a.document.len(), 1);
+        a.redo();
+        assert_eq!(a.document.len(), 2);
+    }
+
+    #[test]
+    fn erase_removes_selection() {
+        let mut a = app();
+        let id = a.add_entity(EntityKind::Curve(Curve::Line(LineSeg::from_endpoints(
+            pt(0, 0),
+            pt(2, 2),
+        ))));
+        a.selection = vec![id];
+        a.run_command("ERASE");
+        assert_eq!(a.document.len(), 1);
+    }
+
+    #[test]
+    fn select_all_then_erase() {
+        let mut a = app();
+        a.add_entity(EntityKind::Curve(Curve::Line(LineSeg::from_endpoints(
+            pt(0, 0),
+            pt(1, 0),
+        ))));
+        a.add_entity(EntityKind::Curve(Curve::Line(LineSeg::from_endpoints(
+            pt(0, 0),
+            pt(0, 1),
+        ))));
+        a.run_command("ALL");
+        assert_eq!(a.selection.len(), 2);
+        a.run_command("ERASE");
+        assert_eq!(a.document.len(), 1);
+    }
+
+    #[test]
+    fn layer_commands() {
+        let mut a = app();
+        a.run_command("LAYER NEW walls");
+        assert_eq!(a.current_layer_name(), "walls");
+        a.run_command("LAYER SET 0");
+        assert_eq!(a.current_layer_name(), "0");
+    }
+
+    #[test]
+    fn move_command_uses_selection() {
+        let mut a = app();
+        let id = a.add_entity(EntityKind::Curve(Curve::Line(LineSeg::from_endpoints(
+            pt(0, 0),
+            pt(2, 0),
+        ))));
+        a.selection = vec![id];
+        a.run_command("MOVE");
+        a.snap_on = false;
+        let (b1x, b1y) = a.view.world_to_screen(0.0, 0.0);
+        let (b2x, b2y) = a.view.world_to_screen(10.0, 5.0);
+        a.canvas_click(b1x, b1y);
+        a.canvas_click(b2x, b2y);
+        if let Some(Curve::Line(l)) = a.document.get(id).unwrap().as_curve() {
+            assert!((l.p0.x - 10.0).abs() < 1e-4);
+            assert!((l.p0.y - 5.0).abs() < 1e-4);
+        } else {
+            panic!()
+        }
+    }
+
+    #[test]
+    fn zoom_extents_frames_geometry() {
+        let mut a = app();
+        a.add_entity(EntityKind::Curve(Curve::Line(LineSeg::from_endpoints(
+            pt(0, 0),
+            pt(100, 80),
+        ))));
+        a.run_command("ZOOM E");
+        for _ in 0..200 {
+            if !a.tick_zoom_anim() {
+                break;
+            }
+        }
+        let (x0, y0, x1, y1) = a.view.visible_bounds();
+        assert!(x0 <= 0.0 && x1 >= 100.0 && y0 <= 0.0 && y1 >= 80.0);
+    }
+
+    #[test]
+    fn coord_readout_tracks_cursor() {
+        let mut a = app();
+        let (sx, sy) = a.view.world_to_screen(3.0, 7.0);
+        a.pointer_moved(sx, sy);
+        let r = a.coord_readout();
+        assert!(r.starts_with("3.0000, 7.0000"));
+    }
+
+    #[test]
+    fn perpendicular_snapping_uses_tool_reference_point() {
+        let mut a = app();
+        a.add_entity(EntityKind::Curve(Curve::Line(LineSeg::from_endpoints(
+            pt(0, 0),
+            pt(10, 0),
+        ))));
+        a.snap.enabled = vec![eiderflat_cad::SnapKind::Perpendicular];
+        a.snap_on = true;
+
+        a.run_command("LINE");
+
+        let (s1x, s1y) = a.view.world_to_screen(3.0, 5.0);
+        a.canvas_click(s1x, s1y);
+
+        let (s2x, s2y) = a.view.world_to_screen(3.1, 0.1);
+        a.pointer_moved(s2x, s2y);
+
+        assert!(a.active_snap.is_some());
+        let sp = a.active_snap.as_ref().unwrap();
+        assert_eq!(sp.kind, eiderflat_cad::SnapKind::Perpendicular);
+        assert!((sp.pos.0 - 3.0).abs() < 1e-4);
+        assert!(sp.pos.1.abs() < 1e-4);
+    }
+
+    #[test]
+    fn grid_snap_locks_cursor_to_grid_intersection() {
+        let mut a = app();
+        a.snap_on = false;
+        a.grid_snap_on = true;
+        a.run_command("LINE");
+
+        let g = a.view.grid_spacing();
+        let (sx, sy) = a.view.world_to_screen(2.0 * g + g * 0.2, -g - g * 0.1);
+        a.pointer_moved(sx, sy);
+        assert!(
+            (a.cursor_world.0 - 2.0 * g).abs() < 1e-6,
+            "x={}",
+            a.cursor_world.0
+        );
+        assert!(
+            (a.cursor_world.1 - (-g)).abs() < 1e-6,
+            "y={}",
+            a.cursor_world.1
+        );
+    }
+
+    #[test]
+    fn ortho_mode_constrains_cursor_to_axis() {
+        let mut a = app();
+        a.snap_on = false;
+        a.ortho_on = true;
+
+        a.run_command("LINE");
+        let (s1x, s1y) = a.view.world_to_screen(0.0, 0.0);
+        a.canvas_click(s1x, s1y);
+
+        let (s2x, s2y) = a.view.world_to_screen(8.0, 3.0);
+        a.pointer_moved(s2x, s2y);
+        assert!((a.cursor_world.0 - 8.0).abs() < 1e-4);
+        assert!(a.cursor_world.1.abs() < 1e-4);
+
+        let (s3x, s3y) = a.view.world_to_screen(2.0, 9.0);
+        a.pointer_moved(s3x, s3y);
+        assert!(a.cursor_world.0.abs() < 1e-4);
+        assert!((a.cursor_world.1 - 9.0).abs() < 1e-4);
+    }
+
+    #[test]
+    fn perpendicular_snapping_triggers_anywhere_near_line() {
+        let mut a = app();
+        a.add_entity(EntityKind::Curve(Curve::Line(LineSeg::from_endpoints(
+            pt(0, 0),
+            pt(10, 0),
+        ))));
+        a.snap.enabled = vec![eiderflat_cad::SnapKind::Perpendicular];
+        a.snap_on = true;
+
+        a.run_command("LINE");
+        let (s1x, s1y) = a.view.world_to_screen(5.0, 5.0);
+        a.canvas_click(s1x, s1y);
+
+        let (s2x, s2y) = a.view.world_to_screen(5.3, 0.1);
+        a.pointer_moved(s2x, s2y);
+
+        assert!(a.active_snap.is_some());
+        let sp = a.active_snap.as_ref().unwrap();
+        assert_eq!(sp.kind, eiderflat_cad::SnapKind::Perpendicular);
+        assert!((sp.pos.0 - 5.0).abs() < 1e-4);
+        assert!(sp.pos.1.abs() < 1e-4);
+    }
+
+    #[test]
+    fn direct_distance_entry_projects_along_cursor() {
+        let mut a = app();
+        a.snap_on = false;
+        a.run_command("LINE");
+
+        let (s1x, s1y) = a.view.world_to_screen(0.0, 0.0);
+        a.canvas_click(s1x, s1y);
+
+        let (s2x, s2y) = a.view.world_to_screen(3.0, 4.0);
+        a.pointer_moved(s2x, s2y);
+
+        // Enter a distance of 10.0
+        a.run_command("10.0");
+
+        assert_eq!(a.document.len(), 2);
+        let first = a.document.iter().find(|e| e.id != a.origin_id).unwrap();
+        if let EntityKind::Curve(Curve::Line(l)) = &first.kind {
+            assert!((l.p0.x - 0.0).abs() < 1e-4);
+            assert!((l.p0.y - 0.0).abs() < 1e-4);
+            assert!((l.p1.x - 6.0).abs() < 1e-4);
+            assert!((l.p1.y - 8.0).abs() < 1e-4);
+        } else {
+            panic!("expected line");
+        }
+    }
+
+    #[test]
+    fn typed_coordinates_build_a_line() {
+        let mut a = app();
+        a.snap_on = false;
+        a.run_command("LINE");
+        a.run_command("0,0");
+        a.run_command("@10,0");
+
+        assert_eq!(a.document.len(), 2);
+        let line = a.document.iter().find(|e| e.id != a.origin_id).unwrap();
+        if let EntityKind::Curve(Curve::Line(l)) = &line.kind {
+            assert!((l.p0.x).abs() < 1e-9 && (l.p0.y).abs() < 1e-9);
+            assert!((l.p1.x - 10.0).abs() < 1e-9 && (l.p1.y).abs() < 1e-9);
+        } else {
+            panic!("expected line");
+        }
+    }
+
+    #[test]
+    fn relative_polar_coordinate_places_point() {
+        let mut a = app();
+        a.snap_on = false;
+        a.run_command("LINE");
+        a.run_command("0,0");
+        a.run_command("@5<90");
+
+        let line = a.document.iter().find(|e| e.id != a.origin_id).unwrap();
+        if let EntityKind::Curve(Curve::Line(l)) = &line.kind {
+            assert!((l.p1.x).abs() < 1e-6, "x should be ~0, got {}", l.p1.x);
+            assert!(
+                (l.p1.y - 5.0).abs() < 1e-6,
+                "y should be ~5, got {}",
+                l.p1.y
+            );
+        } else {
+            panic!("expected line");
+        }
+    }
+
+    #[test]
+    fn right_click_repeat_reactivates_last_command() {
+        let mut a = app();
+        a.run_command("CIRCLE");
+        assert!(matches!(a.tool, Tool::Circle { .. }));
+        assert_eq!(a.last_command.as_deref(), Some("CIRCLE"));
+        a.run_command("");
+        assert!(matches!(a.tool, Tool::Select));
+        a.repeat_last_command();
+        assert!(matches!(a.tool, Tool::Circle { .. }));
+    }
+
+    #[test]
+    fn polygon_command_allows_side_update() {
+        let mut a = app();
+        a.run_command("POLYGON");
+        assert!(matches!(
+            a.tool,
+            Tool::Polygon {
+                center: None,
+                sides: None
+            }
+        ));
+
+        a.run_command("6");
+        assert!(matches!(
+            a.tool,
+            Tool::Polygon {
+                center: None,
+                sides: Some(6)
+            }
+        ));
+
+        let (s1x, s1y) = a.view.world_to_screen(0.0, 0.0);
+        a.canvas_click(s1x, s1y);
+
+        let (s2x, s2y) = a.view.world_to_screen(10.0, 0.0);
+        a.canvas_click(s2x, s2y);
+
+        assert_eq!(a.document.len(), 2);
+    }
+
+    #[test]
+    fn polyline_command_commits_on_empty_command() {
+        let mut a = app();
+        a.run_command("PL");
+        assert!(matches!(a.tool, Tool::Polyline { .. }));
+
+        let (s1x, s1y) = a.view.world_to_screen(0.0, 0.0);
+        a.canvas_click(s1x, s1y);
+        let (s2x, s2y) = a.view.world_to_screen(5.0, 5.0);
+        a.canvas_click(s2x, s2y);
+        let (s3x, s3y) = a.view.world_to_screen(10.0, 0.0);
+        a.canvas_click(s3x, s3y);
+
+        a.run_command("");
+        assert!(matches!(a.tool, Tool::Select));
+        assert_eq!(a.document.len(), 2);
+    }
+
+    #[test]
+    fn cv_spline_command_commits_to_nurbs() {
+        let mut a = app();
+        a.run_command("SPLINE");
+        assert!(matches!(a.tool, Tool::Spline { .. }));
+
+        for (wx, wy) in [(0.0, 0.0), (5.0, 8.0), (10.0, -4.0), (15.0, 0.0)] {
+            let (sx, sy) = a.view.world_to_screen(wx, wy);
+            a.canvas_click(sx, sy);
+        }
+        a.run_command("");
+        assert!(matches!(a.tool, Tool::Select));
+        assert_eq!(a.document.len(), 2);
+
+        let entity = a.document.iter().find(|e| e.id != a.origin_id).unwrap();
+        match &entity.kind {
+            EntityKind::Curve(Curve::Nurbs(nc)) => assert_eq!(nc.control.len(), 4),
+            other => panic!("expected a NURBS curve, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn nurbs_grip_edit_moves_control_and_weight() {
+        let mut a = app();
+        let nc = eiderflat_geometry::NurbsCurve::uniform(vec![
+            Point2d::from_i64(0, 0),
+            Point2d::from_i64(2, 4),
+            Point2d::from_i64(6, 4),
+            Point2d::from_i64(8, 0),
+            Point2d::from_i64(10, 4),
+        ]);
+        let id = a.add_entity(EntityKind::Curve(Curve::Nurbs(nc)));
+        a.selection = vec![id];
+
+        let (sid, control, weights) = a.selected_nurbs().expect("a NURBS is selected");
+        assert_eq!(sid, id);
+        assert_eq!(control.len(), 5);
+        assert!(weights.iter().all(|&w| w == 1.0));
+
+        a.begin_edit();
+        a.set_nurbs_control(id, 2, Point2d::from_f64(6.0, 9.0));
+        let weight_at = |a: &AppState, i: usize| {
+            if let EntityKind::Curve(Curve::Nurbs(nc)) = &a.document.get(id).unwrap().kind {
+                (nc.control[i], nc.weights[i])
+            } else {
+                panic!("expected NURBS")
+            }
+        };
+        assert_eq!(weight_at(&a, 2).0, Point2d::from_f64(6.0, 9.0));
+        assert!(a.adjust_nurbs_weight(id, 2, 5.0));
+        assert!((weight_at(&a, 2).1 - 5.0).abs() < 1e-9);
+        a.adjust_nurbs_weight(id, 2, 100.0);
+        assert!(weight_at(&a, 2).1 <= 20.0 + 1e-9);
+        a.undo();
+        assert!(
+            (weight_at(&a, 2).1 - 5.0).abs() < 1e-9,
+            "undo restores the prior weight"
+        );
+    }
+
+    #[test]
+    fn polyline_command_closes_on_c_command() {
+        let mut a = app();
+        a.run_command("PL");
+
+        let (s1x, s1y) = a.view.world_to_screen(0.0, 0.0);
+        a.canvas_click(s1x, s1y);
+        let (s2x, s2y) = a.view.world_to_screen(5.0, 5.0);
+        a.canvas_click(s2x, s2y);
+        let (s3x, s3y) = a.view.world_to_screen(10.0, 0.0);
+        a.canvas_click(s3x, s3y);
+
+        a.run_command("c");
+        assert!(matches!(a.tool, Tool::Select));
+        assert_eq!(a.document.len(), 2);
+
+        let entity = a.document.iter().find(|e| e.id != a.origin_id).unwrap();
+        if let EntityKind::Curve(Curve::Poly(poly)) = &entity.kind {
+            assert_eq!(poly.segments.len(), 3);
+        } else {
+            panic!("expected PolyCurve");
+        }
+    }
+
+    #[test]
+    fn fixed_origin_test() {
+        let mut a = app();
+        if let Some(EntityKind::Point(p)) = a.document.get(a.origin_id).map(|e| &e.kind) {
+            assert_eq!(p.to_f64(), (0.0, 0.0));
+        } else {
+            panic!("expected origin point");
+        }
+
+        a.toggle_selection(a.origin_id);
+        assert!(!a.selection.contains(&a.origin_id));
+
+        a.selection = vec![a.origin_id];
+        a.erase_selection();
+        assert!(a.document.get(a.origin_id).is_some());
+
+        let t = eiderflat_geometry::Transform2d::translation(10.0, 10.0);
+        let ev = ToolEvent::Transform {
+            ids: vec![a.origin_id],
+            t,
+        };
+        a.apply_tool_event(ev);
+        if let Some(EntityKind::Point(p)) = a.document.get(a.origin_id).map(|e| &e.kind) {
+            assert_eq!(p.to_f64(), (0.0, 0.0));
+        } else {
+            panic!("expected origin point");
+        }
+    }
+
+    #[test]
+    fn text_tool_places_text_entity() {
+        let mut a = app();
+        a.run_command("TEXT");
+        assert!(matches!(a.tool, Tool::Text { anchor: None, .. }));
+        let (sx, sy) = a.view.world_to_screen(2.0, 3.0);
+        a.canvas_click(sx, sy);
+        assert!(matches!(
+            a.tool,
+            Tool::Text {
+                anchor: Some(_),
+                ..
+            }
+        ));
+        a.run_command("Hello\\nWorld");
+        assert!(matches!(a.tool, Tool::Select));
+        let content = a
+            .document
+            .iter()
+            .find_map(|e| match &e.kind {
+                EntityKind::Text { content, .. } => Some(content.clone()),
+                _ => None,
+            })
+            .expect("a Text entity should be created");
+        assert_eq!(
+            content, "Hello\nWorld",
+            "single unified tool handles multi-line via \\n"
+        );
+    }
+}

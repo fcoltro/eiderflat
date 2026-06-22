@@ -1,0 +1,10 @@
+[package]
+publish = false
+name = "eiderflat_boolean"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+
+[dependencies]
+eiderflat_geometry = { path = "../eiderflat_geometry" }
+robust = "1"

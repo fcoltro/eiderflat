@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Layer_1" xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 32 32">
+  <defs>
+    <style>
+      .st0 {
+        fill: red;
+      }
+
+      .st1 {
+        stroke: red;
+      }
+
+      .st1, .st2 {
+        fill: none;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        stroke-width: 3px;
+      }
+
+      .st2 {
+        stroke: #000;
+      }
+    </style>
+  </defs>
+  <path class="st1" d="M17.65,25c-5.88,0-10.65-4.77-10.65-10.65"/>
+  <path class="st2" d="M25,25h-7.35"/>
+  <circle class="st0" cx="18" cy="14" r="2"/>
+  <path class="st2" d="M7,14.35v-7.35"/>
+</svg>

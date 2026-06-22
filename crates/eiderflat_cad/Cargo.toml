@@ -1,0 +1,11 @@
+[package]
+publish = false
+name = "eiderflat_cad"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+
+[dependencies]
+eiderflat_geometry = { path = "../eiderflat_geometry" }
+eiderflat_document = { path = "../eiderflat_document" }
+eiderflat_boolean = { path = "../eiderflat_boolean" }
