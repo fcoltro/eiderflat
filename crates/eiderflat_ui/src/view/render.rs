@@ -170,14 +170,57 @@ pub(super) fn draw_grid(
     rect: egui::Rect,
     to_screen: &impl Fn(f64, f64) -> egui::Pos2,
 ) {
+    // Subtle background gradient: a faint lift toward the top, fading into the
+    // flat canvas colour at the bottom (mirrors the reference mockup).
+    {
+        let top = Color32::from_rgb(17, 21, 29);
+        let bot = crate::theme::CANVAS_BG;
+        let mut mesh = egui::epaint::Mesh::default();
+        mesh.colored_vertex(rect.left_top(), top);
+        mesh.colored_vertex(rect.right_top(), top);
+        mesh.colored_vertex(rect.right_bottom(), bot);
+        mesh.colored_vertex(rect.left_bottom(), bot);
+        mesh.add_triangle(0, 1, 2);
+        mesh.add_triangle(0, 2, 3);
+        painter.add(egui::Shape::mesh(mesh));
+    }
+
     let major = app.view.grid_spacing();
     if !(major.is_finite() && major > 0.0) {
         return;
     }
     let (x0, y0, x1, y1) = app.view.visible_bounds();
-    let dot = Color32::from_rgb(58, 58, 60);
-    let axis_dot = Color32::from_rgb(92, 92, 96);
-    let axis = Stroke::new(1.0, Color32::from_rgb(70, 70, 74));
+    // Continuous grid lines (replacing the old dot grid). Every fifth line is
+    // emphasised; the world axes are brighter still.
+    let minor = Stroke::new(1.0, Color32::from_rgb(24, 28, 36));
+    let major_line = Stroke::new(1.0, Color32::from_rgb(33, 39, 49));
+    let axis = Stroke::new(1.0, Color32::from_rgb(58, 66, 80));
+
+    // Index of the first/over-the-edge grid line, so we can tag every 5th one.
+    let ix0 = (x0 / major).floor() as i64;
+    let iy0 = (y0 / major).floor() as i64;
+
+    let mut i = ix0;
+    let mut gx = ix0 as f64 * major;
+    while gx <= x1 {
+        let sx = to_screen(gx, y0).x;
+        let stroke = if i % 5 == 0 { major_line } else { minor };
+        painter.line_segment([pos2(sx, rect.top()), pos2(sx, rect.bottom())], stroke);
+        i += 1;
+        gx += major;
+    }
+
+    let mut j = iy0;
+    let mut gy = iy0 as f64 * major;
+    while gy <= y1 {
+        let sy = to_screen(x0, gy).y;
+        let stroke = if j % 5 == 0 { major_line } else { minor };
+        painter.line_segment([pos2(rect.left(), sy), pos2(rect.right(), sy)], stroke);
+        j += 1;
+        gy += major;
+    }
+
+    // World axes on top of the grid.
     if x0 <= 0.0 && x1 >= 0.0 {
         let a = to_screen(0.0, y0);
         painter.line_segment([pos2(a.x, rect.top()), pos2(a.x, rect.bottom())], axis);
@@ -185,22 +228,6 @@ pub(super) fn draw_grid(
     if y0 <= 0.0 && y1 >= 0.0 {
         let a = to_screen(x0, 0.0);
         painter.line_segment([pos2(rect.left(), a.y), pos2(rect.right(), a.y)], axis);
-    }
-    let mut gx = (x0 / major).floor() * major;
-    while gx <= x1 {
-        let on_x_axis = gx.abs() < major * 0.5;
-        let mut gy = (y0 / major).floor() * major;
-        while gy <= y1 {
-            let on_axis = on_x_axis || gy.abs() < major * 0.5;
-            let p = to_screen(gx, gy);
-            if on_axis {
-                painter.circle_filled(p, 1.5, axis_dot);
-            } else {
-                painter.circle_filled(p, 1.1, dot);
-            }
-            gy += major;
-        }
-        gx += major;
     }
 }
 
@@ -235,27 +262,39 @@ pub(super) fn draw_scale_bar(painter: &egui::Painter, app: &AppState, rect: egui
     let x1 = rect.right() - margin;
     let x0 = x1 - bar_px;
     let cap = 5.0;
-    let bar = Stroke::new(2.0, Color32::from_rgb(210, 220, 235));
-    let shadow = Stroke::new(3.5, Color32::from_rgba_unmultiplied(0, 0, 0, 160));
+    // Blue scale bar with a soft dark shadow so it stays legible over drawings.
+    let bar = Stroke::new(2.0, crate::theme::ACCENT);
+    let shadow = Stroke::new(3.5, Color32::from_rgba_unmultiplied(0, 0, 0, 150));
     for s in [shadow, bar] {
         painter.line_segment([pos2(x0, y), pos2(x1, y)], s);
         painter.line_segment([pos2(x0, y - cap), pos2(x0, y + cap)], s);
         painter.line_segment([pos2(x1, y - cap), pos2(x1, y + cap)], s);
     }
+    // Value sits in a darker rounded chip, centred above the bar.
     let tx = (x0 + x1) / 2.0;
-    painter.text(
-        pos2(tx + 1.0, y - cap - 2.0 + 1.0),
-        egui::Align2::CENTER_BOTTOM,
-        &label,
+    let galley = painter.layout_no_wrap(
+        label.clone(),
         egui::FontId::monospace(12.0),
-        Color32::from_rgba_unmultiplied(0, 0, 0, 180),
+        crate::theme::TEXT,
+    );
+    let pad = vec2(8.0, 3.0);
+    let chip = egui::Rect::from_center_size(
+        pos2(tx, y - cap - 2.0 - galley.size().y / 2.0 - pad.y),
+        galley.size() + pad * 2.0,
+    );
+    painter.rect(
+        chip,
+        7.0,
+        crate::theme::PANEL_GLASS,
+        Stroke::new(1.0, crate::theme::OUTLINE),
+        egui::StrokeKind::Inside,
     );
     painter.text(
-        pos2(tx, y - cap - 2.0),
-        egui::Align2::CENTER_BOTTOM,
+        chip.center(),
+        egui::Align2::CENTER_CENTER,
         &label,
         egui::FontId::monospace(12.0),
-        Color32::from_rgb(220, 230, 245),
+        crate::theme::ACCENT_BRIGHT,
     );
 }
 pub(super) fn format_distance(d: f64) -> String {

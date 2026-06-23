@@ -1,5 +1,5 @@
 use eiderflat_cad::{
-    Grip, SnapPoint, SnapSettings, apply_grip, best_snap, edit, grips_for, pick_at,
+    Grip, SnapPoint, SnapSettings, apply_grip, best_snap, edit, find_snaps, grips_for, pick_at,
 };
 use eiderflat_document::{Document, EntityId, EntityKind, Layer};
 use eiderflat_geometry::{Curve, Point2d};
@@ -130,11 +130,23 @@ impl AppState {
     pub fn pointer_moved(&mut self, sx: f64, sy: f64) {
         let (wx, wy) = self.view.screen_to_world(sx, sy);
 
-        self.active_snap = if self.snap_on && self.tool.wants_point_snap() {
+        // While dragging a grip the active tool is `Select` (which normally
+        // wants no snapping), but the user still expects the grip to snap onto
+        // other entities — so treat grip editing as a snapping context too.
+        let dragged_entity = self.interaction.grip_drag.as_ref().map(|d| d.entity_id);
+        let allow_snap = self.tool.wants_point_snap() || dragged_entity.is_some();
+
+        self.active_snap = if self.snap_on && allow_snap {
             let mut s = self.snap.clone();
             s.tolerance = self.view.pixel_world_size() * 12.0;
             let ref_pt = self.tool.reference_point().map(|p| p.to_f64());
-            best_snap(&self.document, (wx, wy), &s, ref_pt)
+            match dragged_entity {
+                // Skip the entity being edited so a grip never snaps to itself.
+                Some(ex) => find_snaps(&self.document, (wx, wy), &s, ref_pt)
+                    .into_iter()
+                    .find(|sp| sp.entity != ex),
+                None => best_snap(&self.document, (wx, wy), &s, ref_pt),
+            }
         } else {
             None
         };
@@ -143,7 +155,7 @@ impl AppState {
 
         if let Some(ref sp) = self.active_snap {
             self.cursor_world = sp.pos;
-        } else if self.grid_snap_on && self.tool.wants_point_snap() {
+        } else if self.grid_snap_on && allow_snap {
             self.cursor_world = self.view.snap_to_grid(wx, wy);
         } else if self.ortho_on {
             if let Some(ref_pt) = self.tool.reference_point() {
@@ -1313,6 +1325,43 @@ mod tests {
             (a.cursor_world.1 - (-g)).abs() < 1e-6,
             "y={}",
             a.cursor_world.1
+        );
+    }
+
+    #[test]
+    fn grip_drag_snaps_to_other_entity() {
+        let mut a = app();
+        a.snap_on = true;
+        // Two lines; line2's endpoint sits at (5, 5).
+        let l1 = a.add_entity(EntityKind::Curve(Curve::Line(LineSeg::from_endpoints(
+            pt(0, 0),
+            pt(10, 0),
+        ))));
+        a.add_entity(EntityKind::Curve(Curve::Line(LineSeg::from_endpoints(
+            pt(5, 5),
+            pt(20, 5),
+        ))));
+        // Select line1 and start dragging one of its endpoint grips.
+        a.selection = vec![l1];
+        let grip = a
+            .selection_grips()
+            .into_iter()
+            .find(|(id, _)| *id == l1)
+            .map(|(_, g)| g)
+            .expect("line should expose grips");
+        a.begin_grip_drag(l1, grip);
+        // Move the cursor onto line2's endpoint — the grip must snap there even
+        // though the active tool is Select.
+        let (sx, sy) = a.view.world_to_screen(5.0, 5.0);
+        a.pointer_moved(sx, sy);
+        assert!(
+            a.active_snap.is_some(),
+            "expected a snap while grip-dragging"
+        );
+        assert!(
+            (a.cursor_world.0 - 5.0).abs() < 1e-6 && (a.cursor_world.1 - 5.0).abs() < 1e-6,
+            "cursor did not snap to the other entity: {:?}",
+            a.cursor_world
         );
     }
 

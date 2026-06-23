@@ -63,13 +63,14 @@ impl PolyCurve {
 
 impl CurveSegment for PolyCurve {
     fn domain(&self) -> (f64, f64) {
-        if self.segments.is_empty() {
-            return (0.0, 1.0);
-        }
-        (
-            self.segments[0].domain().0,
-            self.segments.last().unwrap().domain().1,
-        )
+        // `evaluate_f64`/`tangent_f64` parameterize the whole poly on a
+        // normalized `t in [0, 1]` (each segment owns `1/n` of the range, see
+        // the `t * n` mapping below). The domain must therefore be `(0, 1)`
+        // and *not* the first/last segment's raw bounds — otherwise a poly that
+        // ends in an arc (e.g. after a fillet) would report an angle-valued
+        // upper bound, and any caller sampling across `domain()` would evaluate
+        // the arc far outside its sweep, drawing a spurious full circle.
+        (0.0, 1.0)
     }
 
     fn evaluate_f64(&self, t: f64) -> (f64, f64) {
@@ -155,5 +156,35 @@ mod tests {
     fn total_arc_length() {
         let pc = PolyCurve::new(vec![seg(0, 0, 3, 4), seg(3, 4, 6, 0)]);
         assert!((pc.arc_length() - 10.0).abs() < 1e-8);
+    }
+
+    #[test]
+    fn poly_ending_in_arc_has_normalized_domain() {
+        use crate::primitives::CircularArc;
+        // A poly whose last segment is an arc with an angle-valued domain
+        // (here 0..PI/2) must still report a normalized (0, 1) domain so that
+        // sampling across `domain()` never evaluates the arc outside its sweep.
+        let arc = Curve::Arc(CircularArc::new(
+            pt(1, 0),
+            1.0,
+            0.0,
+            std::f64::consts::FRAC_PI_2,
+        ));
+        let pc = PolyCurve::new(vec![seg(0, 0, 1, 0), arc]);
+        assert_eq!(pc.domain(), (0.0, 1.0));
+        // Every sample must stay within the arc's radius of its center: a
+        // spurious full-circle sweep would still be on-radius, so also assert
+        // the endpoints land exactly on the segment ends.
+        let start = pc.evaluate_f64(0.0);
+        let end = pc.evaluate_f64(1.0);
+        assert!((start.0 - 0.0).abs() < 1e-9 && (start.1 - 0.0).abs() < 1e-9);
+        assert!((end.0 - 1.0).abs() < 1e-9 && (end.1 - 1.0).abs() < 1e-9);
+        // The arc half samples the first quadrant only: y stays in [0, 1] and
+        // never dips negative (which a wrapped full circle would).
+        for k in 0..=20 {
+            let t = 0.5 + 0.5 * k as f64 / 20.0;
+            let (_x, y) = pc.evaluate_f64(t);
+            assert!(y >= -1e-9, "arc sample dipped below the corner: y={y}");
+        }
     }
 }

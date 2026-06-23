@@ -66,23 +66,32 @@ pub(super) fn top_bar(ctx: &Context, app: &mut AppState, canvas_rect: egui::Rect
                     ui.set_height(34.0);
                     ui.horizontal_centered(|ui| {
                         ui.add_space(4.0);
-                        // Document name + "live" dot.
+                        // Document name + save-status dot:
+                        //   red   = never saved to disk
+                        //   amber = saved before, but has unsaved changes
+                        //   green = saved, no pending changes
                         ui.label(
                             egui::RichText::new(app.document_label())
                                 .size(13.0)
                                 .color(crate::theme::TEXT),
                         );
                         {
-                            let (rect, _) =
+                            let (dot_color, status) = if app.current_file_path.is_none() {
+                                (crate::theme::STATUS_RED, "Not saved yet")
+                            } else if app.is_dirty() {
+                                (crate::theme::STATUS_AMBER, "Unsaved changes")
+                            } else {
+                                (crate::theme::STATUS_GREEN, "All changes saved")
+                            };
+                            let (rect, resp) =
                                 ui.allocate_exact_size(egui::vec2(8.0, 8.0), egui::Sense::hover());
-                            ui.painter().circle_filled(
-                                rect.center(),
-                                3.0,
-                                crate::theme::STATUS_GREEN,
-                            );
+                            ui.painter().circle_filled(rect.center(), 3.0, dot_color);
+                            resp.on_hover_text(status);
                         }
                         ui.add_space(6.0);
-                        // Undo / redo sit right after the document name (as in the reference).
+                        menu_items(ui, app);
+                        // Undo / redo sit just right of the Help menu (as requested).
+                        ui.add_space(2.0);
                         ui.scope(|ui| {
                             ui.spacing_mut().item_spacing.x = 2.0;
                             ui.add_enabled_ui(app.history.can_undo(), |ui| {
@@ -112,8 +121,6 @@ pub(super) fn top_bar(ctx: &Context, app: &mut AppState, canvas_rect: egui::Rect
                                 }
                             });
                         });
-                        ui.add_space(6.0);
-                        menu_items(ui, app);
 
                         // Right cluster (search · export · avatar), right-aligned.
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -171,25 +178,38 @@ fn search_button() -> impl egui::Widget {
             egui::FontId::proportional(12.5),
             crate::theme::TEXT_DIM,
         );
-        // ⌘K badge on the right.
-        let badge = egui::Rect::from_min_size(
-            egui::pos2(rect.right() - 38.0, rect.center().y - 9.0),
-            egui::vec2(28.0, 18.0),
-        );
-        p.rect(
-            badge,
-            5.0,
-            crate::theme::WIDGET_BG,
-            egui::Stroke::new(1.0, crate::theme::OUTLINE),
-            egui::StrokeKind::Inside,
-        );
-        p.text(
-            badge.center(),
-            egui::Align2::CENTER_CENTER,
-            "⌘K",
-            egui::FontId::monospace(10.5),
-            crate::theme::TEXT_DIM,
-        );
+        // Two separate keycaps on the right — "Ctrl" and "K" — instead of one
+        // combined badge.
+        let cap = |p: &egui::Painter, right: f32, text: &str| -> f32 {
+            let galley = p.layout_no_wrap(
+                text.to_string(),
+                egui::FontId::monospace(10.0),
+                crate::theme::TEXT_DIM,
+            );
+            let w = galley.size().x + 10.0;
+            let kr = egui::Rect::from_min_size(
+                egui::pos2(right - w, rect.center().y - 9.0),
+                egui::vec2(w, 18.0),
+            );
+            p.rect(
+                kr,
+                5.0,
+                crate::theme::WIDGET_BG,
+                egui::Stroke::new(1.0, crate::theme::OUTLINE),
+                egui::StrokeKind::Inside,
+            );
+            p.text(
+                kr.center(),
+                egui::Align2::CENTER_CENTER,
+                text,
+                egui::FontId::monospace(10.0),
+                crate::theme::TEXT_DIM,
+            );
+            kr.left()
+        };
+        let mut right = rect.right() - 10.0;
+        right = cap(p, right, "K") - 4.0;
+        cap(p, right, "Ctrl");
         resp
     }
 }
@@ -1068,8 +1088,8 @@ fn unit_dropdown(ui: &mut egui::Ui, app: &mut AppState) {
     if open {
         let popup = egui::Area::new(egui::Id::new("unit_menu_popup"))
             .order(egui::Order::Foreground)
-            .fixed_pos(rect.right_top() - egui::vec2(0.0, 8.0))
-            .pivot(egui::Align2::RIGHT_BOTTOM)
+            .fixed_pos(rect.center_top() - egui::vec2(0.0, 8.0))
+            .pivot(egui::Align2::CENTER_BOTTOM)
             .show(ui.ctx(), |ui| {
                 crate::theme::glass(crate::theme::tok::R_MD)
                     .inner_margin(egui::Margin::same(6))
@@ -1420,7 +1440,7 @@ fn layers_section(ui: &mut egui::Ui, app: &mut AppState) {
                 crate::icons::Icon::AddLayer,
                 "New Layer",
                 false,
-                32.0,
+                38.0,
             )
             .clicked()
             {
@@ -1598,7 +1618,7 @@ pub(super) fn contextual_toolbar(ctx: &Context, app: &mut AppState, canvas_rect:
                     ui.spacing_mut().item_spacing = egui::vec2(2.0, 0.0);
                     ui.horizontal(|ui| {
                         use crate::icons::{Icon, icon_button_sized};
-                        if icon_button_sized(ui, Icon::Copy, "Duplicate  (CO)", false, 30.0)
+                        if icon_button_sized(ui, Icon::Copy, "Duplicate  (CO)", false, 38.0)
                             .clicked()
                         {
                             app.execute(Command::Activate(Tool::Copy {
@@ -1606,7 +1626,7 @@ pub(super) fn contextual_toolbar(ctx: &Context, app: &mut AppState, canvas_rect:
                                 ids: vec![],
                             }));
                         }
-                        if icon_button_sized(ui, Icon::Mirror, "Mirror  (MI)", false, 30.0)
+                        if icon_button_sized(ui, Icon::Mirror, "Mirror  (MI)", false, 38.0)
                             .clicked()
                         {
                             app.execute(Command::Activate(Tool::Mirror {
@@ -1614,7 +1634,7 @@ pub(super) fn contextual_toolbar(ctx: &Context, app: &mut AppState, canvas_rect:
                                 ids: vec![],
                             }));
                         }
-                        if icon_button_sized(ui, Icon::Rotate, "Rotate  (RO)", false, 30.0)
+                        if icon_button_sized(ui, Icon::Rotate, "Rotate  (RO)", false, 38.0)
                             .clicked()
                         {
                             app.execute(Command::Activate(Tool::Rotate {
@@ -1622,7 +1642,7 @@ pub(super) fn contextual_toolbar(ctx: &Context, app: &mut AppState, canvas_rect:
                                 ids: vec![],
                             }));
                         }
-                        if icon_button_sized(ui, Icon::Offset, "Offset  (O)", false, 30.0).clicked()
+                        if icon_button_sized(ui, Icon::Offset, "Offset  (O)", false, 38.0).clicked()
                         {
                             app.execute(Command::Activate(Tool::Offset {
                                 dist: 1.0,
@@ -1630,7 +1650,7 @@ pub(super) fn contextual_toolbar(ctx: &Context, app: &mut AppState, canvas_rect:
                             }));
                         }
                         pill_sep(ui);
-                        if icon_button_sized(ui, Icon::Delete, "Delete  (Del)", false, 30.0)
+                        if icon_button_sized(ui, Icon::Delete, "Delete  (Del)", false, 38.0)
                             .clicked()
                         {
                             app.erase_selection();
@@ -1853,7 +1873,10 @@ fn appearance_row(
     line_sample: bool,
     add_options: impl FnOnce(&mut egui::Ui),
 ) {
-    egui::Frame::new()
+    let id = ui.make_persistent_id(("appearance_row", label));
+    // Whole row is the control: paint the value (no inner button) and make the
+    // entire frame clickable so a click anywhere opens the dropdown.
+    let inner = egui::Frame::new()
         .fill(crate::theme::WIDGET_BG)
         .stroke(egui::Stroke::new(1.0, crate::theme::OUTLINE))
         .corner_radius(egui::CornerRadius::same(9))
@@ -1867,21 +1890,24 @@ fn appearance_row(
                         .color(crate::theme::TEXT_DIM),
                 );
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    // Borderless dropdown so the row itself reads as the control.
-                    let vis = ui.visuals_mut();
-                    vis.widgets.inactive.bg_fill = egui::Color32::TRANSPARENT;
-                    vis.widgets.inactive.weak_bg_fill = egui::Color32::TRANSPARENT;
-                    vis.widgets.inactive.bg_stroke = egui::Stroke::NONE;
-                    vis.widgets.hovered.bg_fill = egui::Color32::TRANSPARENT;
-                    vis.widgets.hovered.weak_bg_fill = egui::Color32::TRANSPARENT;
-                    vis.widgets.hovered.bg_stroke = egui::Stroke::NONE;
-                    vis.widgets.active.bg_fill = egui::Color32::TRANSPARENT;
-                    vis.widgets.active.weak_bg_fill = egui::Color32::TRANSPARENT;
-                    ui.menu_button(
+                    // Trailing chevron marks the row as a dropdown.
+                    let (cr, _) =
+                        ui.allocate_exact_size(egui::vec2(12.0, 22.0), egui::Sense::hover());
+                    let cc = cr.center();
+                    let (dx, dy) = (3.0, 2.0);
+                    ui.painter().add(egui::Shape::line(
+                        vec![
+                            egui::pos2(cc.x - dx, cc.y - dy * 0.6),
+                            egui::pos2(cc.x, cc.y + dy * 0.9),
+                            egui::pos2(cc.x + dx, cc.y - dy * 0.6),
+                        ],
+                        egui::Stroke::new(1.3, crate::theme::TEXT_DIM),
+                    ));
+                    ui.add_space(2.0);
+                    ui.label(
                         egui::RichText::new(value)
                             .size(12.5)
                             .color(crate::theme::TEXT),
-                        add_options,
                     );
                     if let Some(c) = swatch {
                         let (r, _) =
@@ -1900,6 +1926,20 @@ fn appearance_row(
                 });
             });
         });
+
+    let rect = inner.response.rect;
+    let resp = ui.interact(rect, id, egui::Sense::click());
+    if resp.hovered() {
+        // Brighten the whole row outline to read as a single hoverable control.
+        ui.painter().rect_stroke(
+            rect,
+            egui::CornerRadius::same(9),
+            egui::Stroke::new(1.0, crate::theme::ACCENT_DIM),
+            egui::StrokeKind::Inside,
+        );
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
+    egui::Popup::menu(&resp).show(add_options);
     ui.add_space(8.0);
 }
 

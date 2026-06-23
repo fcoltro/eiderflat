@@ -219,6 +219,9 @@ pub fn logo_texture(ctx: &egui::Context) -> Option<egui::TextureHandle> {
 }
 
 const ICON_SIZE: f32 = 30.0;
+/// Fixed glyph size (in points) so all icon buttons share one visual size,
+/// independent of their button box.
+const GLYPH_PX: f32 = 18.0;
 
 pub fn icon_button(ui: &mut Ui, icon: Icon, tooltip: &str, active: bool) -> Response {
     icon_button_sized(ui, icon, tooltip, active, ICON_SIZE)
@@ -270,9 +273,14 @@ pub fn icon_button_sized(
     };
 
     let accent = if enabled { crate::theme::ACCENT } else { fg };
-    // Crisp, pixel-snapped glyph at ~46% of the button (matching the reference's
-    // small line icons) instead of filling the whole button.
-    let area = snap_rect(rect.shrink((size * 0.27).round()), ppp);
+    // The glyph is a fixed pixel size regardless of the button box, so every
+    // icon across the UI (toolbars, layer rows, the contextual popup, undo/redo,
+    // …) renders at the same visual size. Smaller buttons keep a little padding.
+    let glyph = GLYPH_PX.min(size - 6.0).max(8.0);
+    let area = snap_rect(
+        Rect::from_center_size(rect.center(), Vec2::splat(glyph)),
+        ppp,
+    );
     let drawn_svg = if icon.svg_src().is_some() {
         let w = (area.width() * ppp).round().max(1.0) as u32;
         let h = (area.height() * ppp).round().max(1.0) as u32;
