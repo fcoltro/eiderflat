@@ -43,6 +43,10 @@ pub enum Tool {
     CircleTtt {
         picks: Vec<EntityId>,
     },
+    /// Line tangent to a circle/arc — from a point, or common to two circles.
+    TangentLine {
+        first: Option<TanAnchor>,
+    },
     Ellipse {
         center: Option<Point2d>,
         axis_end: Option<Point2d>,
@@ -108,6 +112,15 @@ pub enum Tool {
     Hatch,
 }
 
+/// First pick of the tangent-line tool: a free start point, or a picked
+/// circle/arc (with the point it was clicked at, used to choose between the
+/// possible tangents).
+#[derive(Clone, Debug)]
+pub enum TanAnchor {
+    Point(Point2d),
+    Circle(EntityId, Point2d),
+}
+
 #[allow(clippy::large_enum_variant)]
 #[derive(Clone, Debug)]
 pub enum ToolEvent {
@@ -130,6 +143,7 @@ impl Tool {
             Tool::CircleThreePoint { .. } => "CIRCLE 3P",
             Tool::CircleTtr { .. } => "CIRCLE TTR",
             Tool::CircleTtt { .. } => "CIRCLE TTT",
+            Tool::TangentLine { .. } => "TANGENT",
             Tool::Ellipse { .. } => "ELLIPSE",
             Tool::Rectangle { .. } => "RECTANGLE",
             Tool::Move { .. } => "MOVE",
@@ -484,7 +498,8 @@ impl Tool {
             | Tool::Chamfer { .. }
             | Tool::Stretch { .. }
             | Tool::CircleTtr { .. }
-            | Tool::CircleTtt { .. } => ToolEvent::Pending,
+            | Tool::CircleTtt { .. }
+            | Tool::TangentLine { .. } => ToolEvent::Pending,
         }
     }
 
@@ -505,6 +520,7 @@ impl Tool {
             Tool::CircleThreePoint { pts } => pts.clear(),
             Tool::CircleTtr { first, .. } => *first = None,
             Tool::CircleTtt { picks } => picks.clear(),
+            Tool::TangentLine { first } => *first = None,
             Tool::Ellipse { center, axis_end } => {
                 *center = None;
                 *axis_end = None;
@@ -546,6 +562,7 @@ impl Tool {
             Tool::CircleThreePoint { pts } => !pts.is_empty(),
             Tool::CircleTtr { first, .. } => first.is_some(),
             Tool::CircleTtt { picks } => !picks.is_empty(),
+            Tool::TangentLine { first } => first.is_some(),
             Tool::Ellipse { center, .. } => center.is_some(),
             Tool::Rectangle { first } => first.is_some(),
             Tool::Move { base, .. } | Tool::Copy { base, .. } => base.is_some(),
@@ -744,6 +761,10 @@ impl Tool {
             | Tool::Chamfer { .. }
             | Tool::CircleTtr { .. }
             | Tool::CircleTtt { .. } => None,
+            Tool::TangentLine { first } => match first {
+                Some(TanAnchor::Point(p)) => Some(*p),
+                _ => None,
+            },
             Tool::Select => None,
         }
     }

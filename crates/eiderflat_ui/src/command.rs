@@ -93,6 +93,7 @@ pub fn parse_command(input: &str) -> Command {
             })
         }
         "TTT" | "CIRCLETTT" => Command::Activate(Tool::CircleTtt { picks: vec![] }),
+        "TANGENT" | "TAN" => Command::Activate(Tool::TangentLine { first: None }),
         "ELLIPSE" | "EL" => Command::Activate(Tool::Ellipse {
             center: None,
             axis_end: None,

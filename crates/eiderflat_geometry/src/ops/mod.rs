@@ -15,4 +15,7 @@ pub use intersect::{
 };
 pub use offset::{offset_curve, refit_nurbs_subcurve};
 pub use split_reverse::{reverse_curve, split_curve};
-pub use tangent::{circle_through_three_points, tangent_circle_ttr, tangent_circle_ttt};
+pub use tangent::{
+    circle_through_three_points, common_tangent_segments, tangent_circle_ttr, tangent_circle_ttt,
+    tangent_points_from_point,
+};

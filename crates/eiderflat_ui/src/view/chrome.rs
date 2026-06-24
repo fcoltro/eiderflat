@@ -422,6 +422,7 @@ fn menu_items(ui: &mut egui::Ui, app: &mut AppState) {
         tool_menu_item(ui, app, "Select", Tool::Select);
         ui.separator();
         tool_menu_item(ui, app, "Line", Tool::Line { last: None });
+        tool_menu_item(ui, app, "Tangent Line", Tool::TangentLine { first: None });
         tool_menu_item(ui, app, "Circle", Tool::Circle { center: None });
         ui.menu_button("Circle ▸", |ui| {
             tool_menu_item(ui, app, "Center, Radius", Tool::Circle { center: None });
@@ -1001,7 +1002,8 @@ fn tool_hotkey(tool: &Tool) -> &'static str {
         | Tool::CircleTwoPoint { .. }
         | Tool::CircleThreePoint { .. }
         | Tool::CircleTtr { .. }
-        | Tool::CircleTtt { .. } => "",
+        | Tool::CircleTtt { .. }
+        | Tool::TangentLine { .. } => "",
     }
 }
 

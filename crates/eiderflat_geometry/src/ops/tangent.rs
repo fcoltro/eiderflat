@@ -195,6 +195,63 @@ fn solve_quadratic(a: f64, b: f64, c: f64) -> Vec<f64> {
     vec![(-b + s) / (2.0 * a), (-b - s) / (2.0 * a)]
 }
 
+/// The points on the circle (centre `o`, radius `r`) where a line from external
+/// point `p` is tangent. Two points when `p` is outside, one when on the circle,
+/// none when inside.
+pub fn tangent_points_from_point(o: Point2d, r: f64, p: Point2d) -> Vec<Point2d> {
+    let d = o.dist_f64(&p);
+    if d < r - EPS || r <= EPS {
+        return Vec::new();
+    }
+    let base = (p.y - o.y).atan2(p.x - o.x);
+    let th = (r / d).clamp(-1.0, 1.0).acos();
+    if th < EPS {
+        return vec![Point2d::from_f64(o.x + r * base.cos(), o.y + r * base.sin())];
+    }
+    [base + th, base - th]
+        .iter()
+        .map(|a| Point2d::from_f64(o.x + r * a.cos(), o.y + r * a.sin()))
+        .collect()
+}
+
+/// Common tangent segments between two circles, each as the pair of touch points
+/// `(on circle 1, on circle 2)`. Returns the two outer tangents (when they
+/// exist) followed by the two inner tangents (when the circles are separate).
+pub fn common_tangent_segments(
+    o1: Point2d,
+    r1: f64,
+    o2: Point2d,
+    r2: f64,
+) -> Vec<(Point2d, Point2d)> {
+    let (dx, dy) = (o2.x - o1.x, o2.y - o1.y);
+    let d = (dx * dx + dy * dy).sqrt();
+    if d < EPS {
+        return Vec::new();
+    }
+    let (ux, uy) = (dx / d, dy / d); // along the centre line
+    let (vx, vy) = (-uy, ux); // perpendicular
+    let mut out = Vec::new();
+    // s1 fixed at +1; s2 = +1 gives the outer pair, s2 = -1 the inner pair. The
+    // ± on the perpendicular component gives the two lines of each pair.
+    for &s2 in &[1.0_f64, -1.0] {
+        let k = s2 * r2 - r1;
+        let along = k / d;
+        if along.abs() > 1.0 + EPS {
+            continue;
+        }
+        let perp = (1.0 - along * along).max(0.0).sqrt();
+        for &sign in &[1.0_f64, -1.0] {
+            // Line normal n = along·û + sign·perp·v̂ (unit).
+            let nx = along * ux + sign * perp * vx;
+            let ny = along * uy + sign * perp * vy;
+            let t1 = Point2d::from_f64(o1.x - r1 * nx, o1.y - r1 * ny);
+            let t2 = Point2d::from_f64(o2.x - s2 * r2 * nx, o2.y - s2 * r2 * ny);
+            out.push((t1, t2));
+        }
+    }
+    out
+}
+
 // ── Locus of centres ────────────────────────────────────────────────────────
 
 /// A locus on which a tangent circle's centre can lie.
@@ -472,6 +529,61 @@ mod tests {
         assert!(is_tangent(center, r, &l), "not tangent to line");
         assert!(is_tangent(center, r, &c1), "not tangent to c1");
         assert!(is_tangent(center, r, &c2), "not tangent to c2");
+    }
+
+    #[test]
+    fn tangent_points_from_external_point() {
+        // Unit circle at origin, point at (2,0): tangent touch points are at
+        // x = 1/2, y = ±√3/2 (the classic 60° result).
+        let pts = tangent_points_from_point(Point2d::from_f64(0.0, 0.0), 1.0, Point2d::from_f64(2.0, 0.0));
+        assert_eq!(pts.len(), 2);
+        for p in &pts {
+            assert!((p.x - 0.5).abs() < 1e-9, "touch x should be 0.5, got {p:?}");
+            assert!((p.y.abs() - 3.0_f64.sqrt() / 2.0).abs() < 1e-9);
+            // Touch point lies on the circle.
+            assert!(((p.x * p.x + p.y * p.y).sqrt() - 1.0).abs() < 1e-9);
+        }
+    }
+
+    #[test]
+    fn point_inside_circle_has_no_tangents() {
+        let pts = tangent_points_from_point(Point2d::from_f64(0.0, 0.0), 2.0, Point2d::from_f64(0.5, 0.0));
+        assert!(pts.is_empty());
+    }
+
+    #[test]
+    fn common_tangents_of_two_equal_circles() {
+        // Two unit circles at (0,0) and (4,0): 2 outer + 2 inner = 4 tangents.
+        let segs = common_tangent_segments(
+            Point2d::from_f64(0.0, 0.0),
+            1.0,
+            Point2d::from_f64(4.0, 0.0),
+            1.0,
+        );
+        assert_eq!(segs.len(), 4);
+        // Outer tangents are horizontal at y = ±1; each touch point on its circle.
+        for (a, b) in &segs {
+            assert!(((a.x).powi(2) + (a.y).powi(2)).sqrt() - 1.0 < 1e-9);
+            assert!(((b.x - 4.0).powi(2) + (b.y).powi(2)).sqrt() - 1.0 < 1e-9);
+            // The segment is perpendicular to both radii (tangent): direction ·
+            // radius vector ≈ 0 at each end.
+            let (dx, dy) = (b.x - a.x, b.y - a.y);
+            let len = (dx * dx + dy * dy).sqrt().max(1e-12);
+            let dot_a = (dx / len) * (a.x - 0.0) + (dy / len) * (a.y - 0.0);
+            assert!(dot_a.abs() < 1e-6, "segment not tangent at circle 1");
+        }
+    }
+
+    #[test]
+    fn nested_circles_have_no_common_tangents() {
+        // A small circle entirely inside a big one shares no tangent line.
+        let segs = common_tangent_segments(
+            Point2d::from_f64(0.0, 0.0),
+            5.0,
+            Point2d::from_f64(0.5, 0.0),
+            1.0,
+        );
+        assert!(segs.is_empty());
     }
 
     #[test]

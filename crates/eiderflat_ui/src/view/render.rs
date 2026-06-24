@@ -78,6 +78,10 @@ pub(super) fn tool_prompt(tool: &Tool) -> String {
             1 => "Pick the second tangent entity".into(),
             _ => "Pick the third tangent entity".into(),
         },
+        Tool::TangentLine { first } => match first {
+            None => "Pick a start point or a circle/arc".into(),
+            Some(_) => "Pick the circle/arc to be tangent to (or an end point)".into(),
+        },
         Tool::Ellipse { center, axis_end } => match (center, axis_end) {
             (None, _) => "Specify center of ellipse".into(),
             (Some(_), None) => "Specify end of first axis".into(),

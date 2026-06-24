@@ -151,6 +151,10 @@ impl AppState {
                 }
                 true
             }
+            Tool::TangentLine { first } => {
+                self.handle_tangent_line_click(first, p);
+                true
+            }
             Tool::Stretch { c1, c2, base, ids } => {
                 match (c1, c2, base) {
                     (None, _, _) => {
@@ -246,6 +250,99 @@ impl AppState {
         self.apply_tool_event(crate::tools::ToolEvent::Create(vec![
             eiderflat_document::EntityKind::Curve(eiderflat_geometry::Curve::Arc(arc)),
         ]));
+    }
+
+    /// Add a line segment as an entity, applying the new-object line defaults.
+    fn create_line(&mut self, a: Point2d, b: Point2d) {
+        if a.dist_f64(&b) < 1e-9 {
+            return;
+        }
+        self.apply_tool_event(crate::tools::ToolEvent::Create(vec![
+            eiderflat_document::EntityKind::Curve(eiderflat_geometry::Curve::Line(
+                eiderflat_geometry::LineSeg::from_endpoints(a, b),
+            )),
+        ]));
+    }
+
+    /// `(centre, radius)` if the entity is a full circle / arc, else `None`.
+    fn circle_of(&self, id: EntityId) -> Option<(Point2d, f64)> {
+        match self.document.get(id).and_then(|e| e.as_curve()) {
+            Some(eiderflat_geometry::Curve::Arc(a)) => Some((a.center, a.radius)),
+            _ => None,
+        }
+    }
+
+    /// Drive the tangent-line tool from a click. First pick is a free point or a
+    /// circle/arc; the second resolves into a tangent line (from a point to a
+    /// circle, or a common tangent of two circles).
+    fn handle_tangent_line_click(&mut self, first: Option<crate::tools::TanAnchor>, p: &Point2d) {
+        use crate::tools::{TanAnchor, Tool};
+        let tol = self.view.pixel_world_size() * 6.0;
+        let picked = pick_at(&self.document, p.x, p.y, tol).filter(|&id| id != self.origin_id);
+        let picked_circle = picked.and_then(|id| self.circle_of(id).map(|c| (id, c)));
+
+        let nearest = |pts: &[Point2d], target: Point2d| -> Option<Point2d> {
+            pts.iter()
+                .copied()
+                .min_by(|a, b| {
+                    a.dist_sq(&target)
+                        .partial_cmp(&b.dist_sq(&target))
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                })
+        };
+
+        match first {
+            None => {
+                let anchor = match picked_circle {
+                    Some((id, _)) => TanAnchor::Circle(id, *p),
+                    None => TanAnchor::Point(*p),
+                };
+                self.tool = Tool::TangentLine {
+                    first: Some(anchor),
+                };
+            }
+            // From a free point, tangent to the picked circle.
+            Some(TanAnchor::Point(pt)) => {
+                if let Some((_, (o, r))) = picked_circle {
+                    let touches = eiderflat_geometry::tangent_points_from_point(o, r, pt);
+                    if let Some(t) = nearest(&touches, *p) {
+                        self.create_line(pt, t);
+                    }
+                    self.tool = Tool::TangentLine { first: None };
+                }
+                // Otherwise keep waiting for a circle/arc pick.
+            }
+            Some(TanAnchor::Circle(aid, aclick)) => {
+                let Some((o1, r1)) = self.circle_of(aid) else {
+                    self.tool = Tool::TangentLine { first: None };
+                    return;
+                };
+                match picked_circle {
+                    // Common tangent between the two circles.
+                    Some((bid, (o2, r2))) if bid != aid => {
+                        let segs = eiderflat_geometry::common_tangent_segments(o1, r1, o2, r2);
+                        let best = segs.into_iter().min_by(|x, y| {
+                            let cost = |s: &(Point2d, Point2d)| {
+                                s.0.dist_sq(&aclick) + s.1.dist_sq(p)
+                            };
+                            cost(x).partial_cmp(&cost(y)).unwrap_or(std::cmp::Ordering::Equal)
+                        });
+                        if let Some((t1, t2)) = best {
+                            self.create_line(t1, t2);
+                        }
+                        self.tool = Tool::TangentLine { first: None };
+                    }
+                    // Second pick is a free point: tangent from it to the circle.
+                    _ => {
+                        let touches = eiderflat_geometry::tangent_points_from_point(o1, r1, *p);
+                        if let Some(t) = nearest(&touches, aclick) {
+                            self.create_line(*p, t);
+                        }
+                        self.tool = Tool::TangentLine { first: None };
+                    }
+                }
+            }
+        }
     }
 
     pub fn trim_extend_preview(&self) -> Option<TrimExtendPreview> {
