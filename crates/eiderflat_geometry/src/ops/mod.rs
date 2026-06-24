@@ -3,6 +3,7 @@ pub mod distance;
 pub mod intersect;
 pub mod offset;
 pub mod split_reverse;
+pub mod tangent;
 
 pub use curvature::{curvature_at, normal_at, tangent_at};
 pub use distance::{
@@ -14,3 +15,4 @@ pub use intersect::{
 };
 pub use offset::{offset_curve, refit_nurbs_subcurve};
 pub use split_reverse::{reverse_curve, split_curve};
+pub use tangent::{circle_through_three_points, tangent_circle_ttr, tangent_circle_ttt};

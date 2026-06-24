@@ -239,6 +239,65 @@ pub fn triangulate_with_tol(
     ear_clip(&merged)
 }
 
+/// Triangulate filled regions made of many closed contours, classifying them by
+/// even-odd containment depth (even depth = filled, odd = hole) rather than
+/// requiring the caller to separate outer rings from holes. This is what fills a
+/// whole text string in one call: each letter is its own filled region, and
+/// counters like the bowl of an `o` or the triangle in an `A` become holes.
+pub fn triangulate_contours(contours: &[Curve], tol: f64) -> Vec<[Point2d; 3]> {
+    let polys: Vec<Vec<P>> = contours
+        .iter()
+        .map(|c| loop_polygon(std::slice::from_ref(c), tol))
+        .filter(|p| p.len() >= 3)
+        .collect();
+    let n = polys.len();
+    if n == 0 {
+        return Vec::new();
+    }
+    // A vertex of one contour is strictly inside/outside every *other* contour
+    // (glyph contours don't share points), so vertex 0 is a fine containment
+    // probe. Depth = how many other contours enclose it.
+    let depth: Vec<usize> = (0..n)
+        .map(|i| {
+            let (px, py) = polys[i][0];
+            (0..n)
+                .filter(|&j| j != i && point_in_poly(&polys[j], px, py))
+                .count()
+        })
+        .collect();
+    // The immediate parent of contour k is the deepest contour that encloses it.
+    let immediate_parent = |k: usize| -> Option<usize> {
+        let (px, py) = polys[k][0];
+        (0..n)
+            .filter(|&j| j != k && point_in_poly(&polys[j], px, py))
+            .max_by_key(|&j| depth[j])
+    };
+
+    let mut tris = Vec::new();
+    for i in 0..n {
+        if !depth[i].is_multiple_of(2) {
+            continue; // a hole — emitted with its parent below
+        }
+        let mut outer = polys[i].clone();
+        if signed_area(&outer) < 0.0 {
+            outer.reverse(); // outer ring CCW
+        }
+        let hole_polys: Vec<Vec<P>> = (0..n)
+            .filter(|&k| depth[k] == depth[i] + 1 && immediate_parent(k) == Some(i))
+            .map(|k| {
+                let mut h = polys[k].clone();
+                if signed_area(&h) > 0.0 {
+                    h.reverse(); // holes CW
+                }
+                h
+            })
+            .collect();
+        let merged = bridge_holes(outer, hole_polys);
+        tris.extend(ear_clip(&merged));
+    }
+    tris
+}
+
 /// Flattened closed boundary loops (outer ring first, then each hole) at the
 /// given tolerance. Lets the renderer stroke a hatch outline from a cached
 /// polyline instead of re-flattening every boundary curve every frame, while
@@ -1078,6 +1137,44 @@ mod tests {
             (total - 12.0).abs() < 1e-5,
             "ring fill area 12, got {total}"
         );
+    }
+
+    // One closed square contour as a single Poly curve (what `outline_text`
+    // emits per glyph contour).
+    fn square_contour(x0: i64, y0: i64, x1: i64, y1: i64) -> Curve {
+        Curve::Poly(Box::new(PolyCurve::new(vec![
+            Curve::Line(LineSeg::from_endpoints(pti(x0, y0), pti(x1, y0))),
+            Curve::Line(LineSeg::from_endpoints(pti(x1, y0), pti(x1, y1))),
+            Curve::Line(LineSeg::from_endpoints(pti(x1, y1), pti(x0, y1))),
+            Curve::Line(LineSeg::from_endpoints(pti(x0, y1), pti(x0, y0))),
+        ])))
+    }
+
+    #[test]
+    fn triangulate_contours_classifies_holes_by_depth() {
+        // Outer 6×6 (36), hole 4×4 at depth 1 (−16), island 2×2 at depth 2 (+4)
+        // → filled area 24. Verifies even-odd containment nesting.
+        let contours = [
+            square_contour(0, 0, 6, 6),
+            square_contour(1, 1, 5, 5),
+            square_contour(2, 2, 4, 4),
+        ];
+        let total: f64 = triangulate_contours(&contours, 0.01)
+            .iter()
+            .map(tri_area)
+            .sum();
+        assert!((total - 24.0).abs() < 1e-5, "nested fill area 24, got {total}");
+    }
+
+    #[test]
+    fn triangulate_contours_handles_separate_regions() {
+        // Two disjoint squares (two letters) → 4 + 4 = 8.
+        let contours = [square_contour(0, 0, 2, 2), square_contour(5, 0, 7, 2)];
+        let total: f64 = triangulate_contours(&contours, 0.01)
+            .iter()
+            .map(tri_area)
+            .sum();
+        assert!((total - 8.0).abs() < 1e-5, "two-region fill area 8, got {total}");
     }
 
     #[test]
