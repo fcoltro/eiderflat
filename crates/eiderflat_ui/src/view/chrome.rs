@@ -734,58 +734,64 @@ pub(super) fn line_props_dialog(ctx: &Context, app: &mut AppState, ui_state: &mu
             );
 
             // ── Defaults for newly drawn objects ───────────────────────────
+            // Both sections show rows labelled "Line weight"/"Line type", so
+            // scope each in its own id to avoid egui widget-id clashes.
             prop_section(ui, "NEW OBJECTS");
-            let dw = app.default_line_weight.clone();
-            appearance_row(ui, "Line weight", lw_label(&dw), None, false, |ui| {
-                for (lbl, val) in lw_options() {
-                    if ui.selectable_label(dw == val, lbl).clicked() {
-                        app.default_line_weight = val;
-                        ui.close();
+            ui.push_id("line_props_new", |ui| {
+                let dw = app.default_line_weight.clone();
+                appearance_row(ui, "Line weight", lw_label(&dw), None, false, |ui| {
+                    for (lbl, val) in lw_options() {
+                        if ui.selectable_label(dw == val, lbl).clicked() {
+                            app.default_line_weight = val;
+                            ui.close();
+                        }
                     }
-                }
-            });
-            let dt = app.default_line_type.clone();
-            appearance_row(ui, "Line type", lt_label(&dt), None, true, |ui| {
-                for (lbl, val) in lt_options() {
-                    if ui.selectable_label(dt == val, lbl).clicked() {
-                        app.default_line_type = val;
-                        ui.close();
+                });
+                let dt = app.default_line_type.clone();
+                appearance_row(ui, "Line type", lt_label(&dt), None, true, |ui| {
+                    for (lbl, val) in lt_options() {
+                        if ui.selectable_label(dt == val, lbl).clicked() {
+                            app.default_line_type = val;
+                            ui.close();
+                        }
                     }
-                }
+                });
             });
 
             // ── Selection (only when something is selected) ────────────────
             if !sel.is_empty() {
                 prop_section(ui, &format!("SELECTION ({})", sel.len()));
-                let sw = app.document.get(sel[0]).map(|e| e.line_weight.clone());
-                let sw_lbl = sw.as_ref().map(lw_label).unwrap_or_else(|| "—".into());
-                appearance_row(ui, "Line weight", sw_lbl, None, false, |ui| {
-                    for (lbl, val) in lw_options() {
-                        if ui.selectable_label(sw.as_ref() == Some(&val), lbl).clicked() {
-                            app.history.snapshot(&app.document);
-                            for &id in &sel {
-                                if let Some(e) = app.document.get_mut(id) {
-                                    e.line_weight = val.clone();
+                ui.push_id("line_props_sel", |ui| {
+                    let sw = app.document.get(sel[0]).map(|e| e.line_weight.clone());
+                    let sw_lbl = sw.as_ref().map(lw_label).unwrap_or_else(|| "—".into());
+                    appearance_row(ui, "Line weight", sw_lbl, None, false, |ui| {
+                        for (lbl, val) in lw_options() {
+                            if ui.selectable_label(sw.as_ref() == Some(&val), lbl).clicked() {
+                                app.history.snapshot(&app.document);
+                                for &id in &sel {
+                                    if let Some(e) = app.document.get_mut(id) {
+                                        e.line_weight = val.clone();
+                                    }
                                 }
+                                ui.close();
                             }
-                            ui.close();
                         }
-                    }
-                });
-                let st = app.document.get(sel[0]).map(|e| e.line_type.clone());
-                let st_lbl = st.as_ref().map(lt_label).unwrap_or_else(|| "—".into());
-                appearance_row(ui, "Line type", st_lbl, None, true, |ui| {
-                    for (lbl, val) in lt_options() {
-                        if ui.selectable_label(st.as_ref() == Some(&val), lbl).clicked() {
-                            app.history.snapshot(&app.document);
-                            for &id in &sel {
-                                if let Some(e) = app.document.get_mut(id) {
-                                    e.line_type = val.clone();
+                    });
+                    let st = app.document.get(sel[0]).map(|e| e.line_type.clone());
+                    let st_lbl = st.as_ref().map(lt_label).unwrap_or_else(|| "—".into());
+                    appearance_row(ui, "Line type", st_lbl, None, true, |ui| {
+                        for (lbl, val) in lt_options() {
+                            if ui.selectable_label(st.as_ref() == Some(&val), lbl).clicked() {
+                                app.history.snapshot(&app.document);
+                                for &id in &sel {
+                                    if let Some(e) = app.document.get_mut(id) {
+                                        e.line_type = val.clone();
+                                    }
                                 }
+                                ui.close();
                             }
-                            ui.close();
                         }
-                    }
+                    });
                 });
             }
 

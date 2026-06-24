@@ -532,7 +532,7 @@ fn canvas(root_ui: &mut egui::Ui, app: &mut AppState, ui_state: &mut UiState, pa
         {
             app.run_command("");
         }
-        let hovered_id = if matches!(app.tool, Tool::Select) {
+        let hovered_id = if matches!(app.tool, Tool::Select) || app.tool.picks_entities() {
             response
                 .hover_pos()
                 .and_then(|p| {
@@ -827,7 +827,13 @@ fn canvas(root_ui: &mut egui::Ui, app: &mut AppState, ui_state: &mut UiState, pa
                     Color32::from_rgb(0, 200, 255)
                 }
             } else if hovered {
-                Color32::from_rgb(120, 230, 255)
+                // Amber while an entity-pick tool (trim, fillet, tangent, TTR/
+                // TTT, …) is hovering a candidate; cyan for plain selection hover.
+                if app.tool.picks_entities() {
+                    Color32::from_rgb(255, 176, 32)
+                } else {
+                    Color32::from_rgb(120, 230, 255)
+                }
             } else {
                 Color32::from_rgb(r, g, b)
             };
@@ -1187,14 +1193,12 @@ fn canvas(root_ui: &mut egui::Ui, app: &mut AppState, ui_state: &mut UiState, pa
             let cross = Stroke::new(1.0, Color32::from_rgb(140, 150, 170));
             painter.line_segment([pos2(rect.left(), cc.y), pos2(rect.right(), cc.y)], cross);
             painter.line_segment([pos2(cc.x, rect.top()), pos2(cc.x, rect.bottom())], cross);
-            if matches!(
-                app.tool,
-                Tool::Select | Tool::Trim | Tool::Extend | Tool::Offset { .. }
-            ) {
+            if matches!(app.tool, Tool::Select) || app.tool.picks_entities() {
                 let box_stroke = if matches!(app.tool, Tool::Select) {
                     cross
                 } else {
-                    Stroke::new(1.4, crate::theme::SNAP)
+                    // Amber pick box matches the entity highlight for pick tools.
+                    Stroke::new(1.4, Color32::from_rgb(255, 176, 32))
                 };
                 painter.rect_stroke(
                     egui::Rect::from_center_size(cc, vec2(11.0, 11.0)),

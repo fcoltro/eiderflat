@@ -175,6 +175,23 @@ impl Tool {
         matches!(self, Tool::Line { .. })
     }
 
+    /// Tools driven by clicking existing entities (rather than placing free
+    /// points). The canvas shows a pick box and highlights the entity under the
+    /// cursor for these.
+    pub fn picks_entities(&self) -> bool {
+        matches!(
+            self,
+            Tool::Trim
+                | Tool::Extend
+                | Tool::Offset { .. }
+                | Tool::Fillet { .. }
+                | Tool::Chamfer { .. }
+                | Tool::CircleTtr { .. }
+                | Tool::CircleTtt { .. }
+                | Tool::TangentLine { .. }
+        )
+    }
+
     pub fn wants_point_snap(&self) -> bool {
         !matches!(
             self,
