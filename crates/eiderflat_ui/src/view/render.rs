@@ -605,9 +605,17 @@ pub(super) fn draw_entity(
             let font = crate::fonts::text_font_id(painter.ctx(), font.as_deref(), raster_px);
             let galley = painter.layout_no_wrap(content.clone(), font, stroke.color);
             let angle = -(*rotation as f32);
-            let h = galley.size().y * scale;
+            // Anchor on the text baseline (the conventional insertion point that
+            // outline_text also uses), not the galley bottom — otherwise outlined
+            // text lands below the placed text by the descent + line gap.
+            let baseline = galley
+                .rows
+                .first()
+                .and_then(|r| r.row.glyphs.first().map(|g| r.pos.y + g.pos.y))
+                .unwrap_or_else(|| galley.size().y);
+            let off = baseline * scale;
             let (sn, cs) = angle.sin_cos();
-            let pos = to_screen(x, y) + vec2(h * sn, -h * cs);
+            let pos = to_screen(x, y) + vec2(off * sn, -off * cs);
             let mut shape = egui::epaint::TextShape::new(pos, galley, stroke.color);
             shape.angle = angle;
             if (scale - 1.0).abs() > 1e-3 {
