@@ -159,6 +159,64 @@ fn fillet_triangle_caps_radius_across_shared_edges() {
 }
 
 #[test]
+fn fillet_triangle_arcs_connect_to_trimmed_lines() {
+    use eiderflat_ui::state::CornerKind;
+
+    // A scalene triangle with an acute corner. The fillet at an acute corner has
+    // a long tangent reach, so each side must be trimmed at the end that meets
+    // the corner — not the end nearer the tangent point. Otherwise an arc ends
+    // up disconnected from its lines (the reported bug).
+    let mut a = app();
+    let i1 = a.add_entity(line(0, 0, 40, 2));
+    let i2 = a.add_entity(line(40, 2, 15, 25));
+    let i3 = a.add_entity(line(15, 25, 0, 0));
+    a.selection = vec![i1, i2, i3];
+
+    let corners = a.detect_corners();
+    assert_eq!(corners.len(), 3);
+    a.begin_corner_action(corners[0]);
+    a.set_corner_size(1e6);
+    a.apply_corner_action();
+
+    // Collect endpoints of every line and arc.
+    let mut line_pts: Vec<(f64, f64)> = Vec::new();
+    let mut arc_pts: Vec<(f64, f64)> = Vec::new();
+    let mut n_arcs = 0;
+    for e in a.document.iter() {
+        match &e.kind {
+            EntityKind::Curve(Curve::Line(l)) => {
+                line_pts.push(l.p0.to_f64());
+                line_pts.push(l.p1.to_f64());
+            }
+            EntityKind::Curve(Curve::Arc(arc)) => {
+                n_arcs += 1;
+                arc_pts.push(arc.start_point());
+                arc_pts.push(arc.end_point());
+            }
+            _ => {}
+        }
+    }
+    assert_eq!(n_arcs, 3, "one fillet arc per corner");
+    // Every arc endpoint must coincide with a (trimmed) line endpoint.
+    for ap in &arc_pts {
+        let connected = line_pts
+            .iter()
+            .any(|lp| (lp.0 - ap.0).hypot(lp.1 - ap.1) < 1e-6);
+        assert!(connected, "fillet arc endpoint {ap:?} is disconnected");
+    }
+    // And the trimmed sides must keep positive length (no over-trim/flip).
+    for e in a.document.iter() {
+        if let EntityKind::Curve(Curve::Line(l)) = &e.kind {
+            let (p0, p1) = (l.p0.to_f64(), l.p1.to_f64());
+            assert!(
+                (p1.0 - p0.0).hypot(p1.1 - p0.1) > 1e-6,
+                "a trimmed side collapsed"
+            );
+        }
+    }
+}
+
+#[test]
 fn rotate_tool_turns_selection() {
     let mut a = app();
     let id = a.add_entity(line(1, 0, 2, 0));

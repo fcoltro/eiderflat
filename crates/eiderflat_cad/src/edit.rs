@@ -665,8 +665,9 @@ pub fn fillet(
     let ea = CornerEdge::from_curve(doc.get(a)?.as_curve()?)?;
     let eb = CornerEdge::from_curve(doc.get(b)?.as_curve()?)?;
     let sol = solve_fillet(ea, eb, radius, (px, py))?;
-    trim_entity_for_corner(doc, a, ea, sol.ta, sol.a_angle);
-    trim_entity_for_corner(doc, b, eb, sol.tb, sol.b_angle);
+    let vtx = corner_vertex(ea, eb);
+    trim_entity_for_corner(doc, a, ea, sol.ta, sol.a_angle, vtx);
+    trim_entity_for_corner(doc, b, eb, sol.tb, sol.b_angle, vtx);
     let arc = arc_between(sol.center, sol.ta, sol.tb, radius);
     Some(doc.add_on_layer(EntityKind::Curve(Curve::Arc(arc)), layer))
 }
@@ -685,8 +686,9 @@ pub fn chamfer(
     let ea = CornerEdge::from_curve(doc.get(a)?.as_curve()?)?;
     let eb = CornerEdge::from_curve(doc.get(b)?.as_curve()?)?;
     let sol = solve_chamfer(ea, eb, dist_a, dist_b)?;
-    trim_entity_for_corner(doc, a, ea, sol.pa, None);
-    trim_entity_for_corner(doc, b, eb, sol.pb, None);
+    let vtx = corner_vertex(ea, eb);
+    trim_entity_for_corner(doc, a, ea, sol.pa, None, vtx);
+    trim_entity_for_corner(doc, b, eb, sol.pb, None, vtx);
     let conn = LineSeg::from_endpoints(
         Point2d::from_f64(sol.pa.0, sol.pa.1),
         Point2d::from_f64(sol.pb.0, sol.pb.1),
@@ -1004,11 +1006,15 @@ fn trim_entity_for_corner(
     edge: CornerEdge,
     pt: (f64, f64),
     angle: Option<f64>,
+    vtx: (f64, f64),
 ) {
+    // Trim the end that meets the corner — the one nearer the corner vertex.
+    // (Picking the end nearer the tangent point fails on acute corners, where
+    // the tangent point sits past the midpoint toward the far endpoint.)
     match edge {
         CornerEdge::Line { .. } => {
             if let Some(la) = line_endpoints(doc, id) {
-                set_line_endpoint(doc, id, endpoint_nearer_is_p1(la, pt.0, pt.1), pt.0, pt.1);
+                set_line_endpoint(doc, id, endpoint_nearer_is_p1(la, vtx.0, vtx.1), pt.0, pt.1);
             }
         }
         CornerEdge::Arc {
@@ -1026,9 +1032,46 @@ fn trim_entity_for_corner(
                     start,
                     end,
                 };
-                set_arc_endpoint(doc, id, arc_endpoint_nearer(&snap, pt.0, pt.1), ang);
+                set_arc_endpoint(doc, id, arc_endpoint_nearer(&snap, vtx.0, vtx.1), ang);
             }
         }
+    }
+}
+
+/// The corner where two edges meet: the lines' (extended) intersection, else the
+/// closest pair of edge endpoints. Used to decide which end of each edge to trim.
+fn corner_vertex(a: CornerEdge, b: CornerEdge) -> (f64, f64) {
+    if let (CornerEdge::Line { p0: a0, p1: a1 }, CornerEdge::Line { p0: b0, p1: b1 }) = (a, b)
+        && let Some(v) = infinite_line_intersection((a0, a1), (b0, b1))
+    {
+        return v;
+    }
+    let (ea, eb) = (edge_endpoints(a), edge_endpoints(b));
+    let mut best = (f64::MAX, (0.0, 0.0));
+    for &pa in &ea {
+        for &pb in &eb {
+            let d = sq_dist(pa, pb);
+            if d < best.0 {
+                best = (d, ((pa.0 + pb.0) * 0.5, (pa.1 + pb.1) * 0.5));
+            }
+        }
+    }
+    best.1
+}
+
+fn edge_endpoints(e: CornerEdge) -> [(f64, f64); 2] {
+    match e {
+        CornerEdge::Line { p0, p1 } => [p0, p1],
+        CornerEdge::Arc {
+            cx,
+            cy,
+            r,
+            start,
+            end,
+        } => [
+            (cx + r * start.cos(), cy + r * start.sin()),
+            (cx + r * end.cos(), cy + r * end.sin()),
+        ],
     }
 }
 
