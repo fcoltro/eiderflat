@@ -491,6 +491,13 @@ fn menu_items(ui: &mut egui::Ui, app: &mut AppState) {
                 height: 2.5,
             },
         );
+        ui.separator();
+        tool_menu_item(
+            ui,
+            app,
+            "Dimension",
+            Tool::Dimension { p1: None, p2: None },
+        );
     });
     ui.menu_button("Modify", |ui| {
         tool_menu_item(
@@ -1003,7 +1010,8 @@ fn tool_hotkey(tool: &Tool) -> &'static str {
         | Tool::CircleThreePoint { .. }
         | Tool::CircleTtr { .. }
         | Tool::CircleTtt { .. }
-        | Tool::TangentLine { .. } => "",
+        | Tool::TangentLine { .. }
+        | Tool::Dimension { .. } => "",
     }
 }
 
@@ -2186,6 +2194,7 @@ fn kind_label(kind: &EntityKind) -> &'static str {
         EntityKind::Ray { .. } => "Ray",
         EntityKind::Insert { .. } => "Block insert",
         EntityKind::Hatch { .. } => "Hatch",
+        EntityKind::Dimension { .. } => "Dimension",
     }
 }
 

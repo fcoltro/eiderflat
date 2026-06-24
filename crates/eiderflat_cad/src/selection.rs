@@ -24,7 +24,7 @@ pub fn pick_at(doc: &Document, x: f64, y: f64, tol: f64) -> Option<EntityId> {
                     return Some(e.id);
                 }
             }
-            EntityKind::Text { .. } => {
+            EntityKind::Text { .. } | EntityKind::Dimension { .. } => {
                 return Some(e.id);
             }
             EntityKind::Hatch {

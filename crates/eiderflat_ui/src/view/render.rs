@@ -82,6 +82,11 @@ pub(super) fn tool_prompt(tool: &Tool) -> String {
             None => "Pick a start point or a circle/arc".into(),
             Some(_) => "Pick the circle/arc to be tangent to (or an end point)".into(),
         },
+        Tool::Dimension { p1, p2 } => match (p1, p2) {
+            (None, _) => "Specify first dimension point".into(),
+            (Some(_), None) => "Specify second dimension point".into(),
+            (Some(_), Some(_)) => "Specify dimension line location".into(),
+        },
         Tool::Ellipse { center, axis_end } => match (center, axis_end) {
             (None, _) => "Specify center of ellipse".into(),
             (Some(_), None) => "Specify end of first axis".into(),
@@ -868,7 +873,114 @@ pub(super) fn draw_entity(
                 }
             }
         }
+        EntityKind::Dimension {
+            p1,
+            p2,
+            line,
+            height,
+        } => {
+            draw_dimension(painter, app, *p1, *p2, *line, *height, &to_screen, stroke.color);
+        }
         _ => {}
+    }
+}
+
+/// Draw an aligned linear dimension: extension lines from the two measured
+/// points out to the dimension line, the dimension line with arrowheads, and
+/// the measured length as text (in the document's units).
+#[allow(clippy::too_many_arguments)]
+fn draw_dimension(
+    painter: &egui::Painter,
+    app: &AppState,
+    p1: Point2d,
+    p2: Point2d,
+    line: Point2d,
+    height: f64,
+    to_screen: &impl Fn(f64, f64) -> egui::Pos2,
+    color: Color32,
+) {
+    let (x1, y1) = p1.to_f64();
+    let (x2, y2) = p2.to_f64();
+    let (lx, ly) = line.to_f64();
+    let (dx, dy) = (x2 - x1, y2 - y1);
+    let len = (dx * dx + dy * dy).sqrt();
+    if len < 1e-9 {
+        return;
+    }
+    let (ux, uy) = (dx / len, dy / len);
+    // Project each measured point onto the dimension line (through `line`,
+    // parallel to p1→p2) to get the dimension-line endpoints.
+    let t1 = (x1 - lx) * ux + (y1 - ly) * uy;
+    let t2 = (x2 - lx) * ux + (y2 - ly) * uy;
+    let d1 = (lx + t1 * ux, ly + t1 * uy);
+    let d2 = (lx + t2 * ux, ly + t2 * uy);
+
+    let s1 = to_screen(x1, y1);
+    let s2 = to_screen(x2, y2);
+    let sd1 = to_screen(d1.0, d1.1);
+    let sd2 = to_screen(d2.0, d2.1);
+    let stroke = Stroke::new(1.0, color);
+
+    // Extension lines (measured point → dimension line) and the dimension line.
+    painter.line_segment([s1, sd1], stroke);
+    painter.line_segment([s2, sd2], stroke);
+    painter.line_segment([sd1, sd2], stroke);
+    arrowhead(painter, sd1, sd2, color);
+    arrowhead(painter, sd2, sd1, color);
+
+    // Measured length, placed just off the dimension line's midpoint.
+    let label = format_measure(len, app.document.settings.units);
+    let size_px = (height as f32 * app.view.zoom as f32).clamp(9.0, 200.0);
+    let mid = pos2((sd1.x + sd2.x) * 0.5, (sd1.y + sd2.y) * 0.5);
+    // Perpendicular (screen space) pointing away from the measured points.
+    let (mut nx, mut ny) = (-(sd2.y - sd1.y), sd2.x - sd1.x);
+    let nlen = (nx * nx + ny * ny).sqrt().max(1.0);
+    nx /= nlen;
+    ny /= nlen;
+    let mid_meas = pos2((s1.x + s2.x) * 0.5, (s1.y + s2.y) * 0.5);
+    // Flip the normal so the text sits on the far side from the geometry.
+    if (mid.x + nx - mid_meas.x).powi(2) + (mid.y + ny - mid_meas.y).powi(2)
+        < (mid.x - nx - mid_meas.x).powi(2) + (mid.y - ny - mid_meas.y).powi(2)
+    {
+        nx = -nx;
+        ny = -ny;
+    }
+    let off = size_px * 0.8;
+    let text_pos = pos2(mid.x + nx * off, mid.y + ny * off);
+    painter.text(
+        text_pos,
+        egui::Align2::CENTER_CENTER,
+        label,
+        egui::FontId::proportional(size_px),
+        color,
+    );
+}
+
+/// Filled arrowhead at `tip`, pointing along `from`→`tip`.
+fn arrowhead(painter: &egui::Painter, tip: egui::Pos2, from: egui::Pos2, color: Color32) {
+    let d = tip - from;
+    let len = d.length();
+    if len < 1e-3 {
+        return;
+    }
+    let dir = d / len;
+    let size = 9.0;
+    let back = tip - dir * size;
+    let perp = vec2(-dir.y, dir.x) * (size * 0.35);
+    painter.add(egui::Shape::convex_polygon(
+        vec![tip, back + perp, back - perp],
+        color,
+        Stroke::NONE,
+    ));
+}
+
+/// Format a measured length with the document's unit suffix.
+fn format_measure(value: f64, units: eiderflat_document::Units) -> String {
+    let s = units.short_name();
+    if s.is_empty() {
+        format!("{value:.2}")
+    } else {
+        format!("{value:.2} {s}")
     }
 }
 

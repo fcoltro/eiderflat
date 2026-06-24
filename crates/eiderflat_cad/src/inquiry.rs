@@ -106,6 +106,9 @@ pub fn list_entity(doc: &Document, id: EntityId) -> Option<String> {
             fill.2,
             hatch_pattern_name(pattern)
         ),
+        EntityKind::Dimension { p1, p2, .. } => {
+            format!("DIMENSION  length={:.4}", p1.dist_f64(p2))
+        }
     };
     Some(format!("[{}] layer={}  {}", id.0, layer_name, geom))
 }

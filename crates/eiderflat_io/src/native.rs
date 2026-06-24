@@ -164,6 +164,20 @@ fn write_entity(s: &mut String, e: &Entity) {
             esc(content),
             font.as_deref().map(esc).unwrap_or_else(|| "-".into())
         )),
+        EntityKind::Dimension {
+            p1,
+            p2,
+            line,
+            height,
+        } => s.push_str(&format!(
+            "E DIM {} {} {} {} {} {}\n",
+            layer,
+            color,
+            pt(p1),
+            pt(p2),
+            pt(line),
+            height
+        )),
         _ => {}
     }
 }
@@ -344,6 +358,18 @@ fn parse_entity<'a>(
                 height,
                 rotation,
                 font,
+            })
+        }
+        "DIM" => {
+            let p1 = parse_pt(tok.next());
+            let p2 = parse_pt(tok.next());
+            let line = parse_pt(tok.next());
+            let height = tok.next().and_then(|v| v.parse().ok()).unwrap_or(2.5);
+            Some(EntityKind::Dimension {
+                p1,
+                p2,
+                line,
+                height,
             })
         }
         "POLY" => {
@@ -724,6 +750,30 @@ mod tests {
             |e| matches!(&e.kind, EntityKind::Text { content, .. } if content == "hello world"),
         );
         assert!(has_text);
+    }
+
+    #[test]
+    fn roundtrip_dimension() {
+        let mut doc = Document::new();
+        doc.add(EntityKind::Dimension {
+            p1: pt_i(0, 0),
+            p2: pt_i(10, 0),
+            line: pt_i(0, 3),
+            height: 2.5,
+        });
+        let doc2 = from_string(&to_string(&doc)).unwrap();
+        let e = doc2.iter().next().expect("one entity");
+        match &e.kind {
+            EntityKind::Dimension {
+                p1, p2, line, height,
+            } => {
+                assert_eq!(*p1, pt_i(0, 0));
+                assert_eq!(*p2, pt_i(10, 0));
+                assert_eq!(*line, pt_i(0, 3));
+                assert!((*height - 2.5).abs() < 1e-9);
+            }
+            other => panic!("expected a Dimension, got {other:?}"),
+        }
     }
 
     #[test]

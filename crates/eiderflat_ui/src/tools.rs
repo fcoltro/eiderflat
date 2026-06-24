@@ -47,6 +47,11 @@ pub enum Tool {
     TangentLine {
         first: Option<TanAnchor>,
     },
+    /// Aligned linear dimension: pick two points, then the dimension-line offset.
+    Dimension {
+        p1: Option<Point2d>,
+        p2: Option<Point2d>,
+    },
     Ellipse {
         center: Option<Point2d>,
         axis_end: Option<Point2d>,
@@ -144,6 +149,7 @@ impl Tool {
             Tool::CircleTtr { .. } => "CIRCLE TTR",
             Tool::CircleTtt { .. } => "CIRCLE TTT",
             Tool::TangentLine { .. } => "TANGENT",
+            Tool::Dimension { .. } => "DIMENSION",
             Tool::Ellipse { .. } => "ELLIPSE",
             Tool::Rectangle { .. } => "RECTANGLE",
             Tool::Move { .. } => "MOVE",
@@ -296,6 +302,26 @@ impl Tool {
                             std::f64::consts::TAU,
                         )))])
                     }
+                }
+            },
+
+            Tool::Dimension { p1, p2 } => match (*p1, *p2) {
+                (None, _) => {
+                    *p1 = Some(p);
+                    ToolEvent::Pending
+                }
+                (Some(_), None) => {
+                    *p2 = Some(p);
+                    ToolEvent::Pending
+                }
+                (Some(a), Some(b)) => {
+                    *self = Tool::Dimension { p1: None, p2: None };
+                    ToolEvent::Create(vec![EntityKind::Dimension {
+                        p1: a,
+                        p2: b,
+                        line: p,
+                        height: 2.5,
+                    }])
                 }
             },
 
@@ -521,6 +547,10 @@ impl Tool {
             Tool::CircleTtr { first, .. } => *first = None,
             Tool::CircleTtt { picks } => picks.clear(),
             Tool::TangentLine { first } => *first = None,
+            Tool::Dimension { p1, p2 } => {
+                *p1 = None;
+                *p2 = None;
+            }
             Tool::Ellipse { center, axis_end } => {
                 *center = None;
                 *axis_end = None;
@@ -563,6 +593,7 @@ impl Tool {
             Tool::CircleTtr { first, .. } => first.is_some(),
             Tool::CircleTtt { picks } => !picks.is_empty(),
             Tool::TangentLine { first } => first.is_some(),
+            Tool::Dimension { p1, .. } => p1.is_some(),
             Tool::Ellipse { center, .. } => center.is_some(),
             Tool::Rectangle { first } => first.is_some(),
             Tool::Move { base, .. } | Tool::Copy { base, .. } => base.is_some(),
@@ -641,6 +672,14 @@ impl Tool {
                 Some(a) => vec![Curve::Arc(a)],
                 None => vec![Curve::Line(LineSeg::from_endpoints(*s, *cursor))],
             },
+            Tool::Dimension {
+                p1: Some(a),
+                p2: None,
+            } => vec![Curve::Line(LineSeg::from_endpoints(*a, *cursor))],
+            Tool::Dimension {
+                p1: Some(a),
+                p2: Some(b),
+            } => vec![Curve::Line(LineSeg::from_endpoints(*a, *b))],
             Tool::CircleTwoPoint { first: Some(a) } => {
                 let d = a.dist_f64(cursor);
                 if d < 1e-9 {
@@ -765,6 +804,7 @@ impl Tool {
                 Some(TanAnchor::Point(p)) => Some(*p),
                 _ => None,
             },
+            Tool::Dimension { p1, p2 } => (*p2).or(*p1),
             Tool::Select => None,
         }
     }

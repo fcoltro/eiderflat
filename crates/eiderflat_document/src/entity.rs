@@ -50,6 +50,15 @@ pub enum EntityKind {
         fill: (u8, u8, u8),
         pattern: HatchPattern,
     },
+    /// Aligned linear dimension between two points. The dimension line is
+    /// parallel to `p1`→`p2` and passes through `line`, which sets the offset
+    /// distance and side; the measured value is the distance `p1`→`p2`.
+    Dimension {
+        p1: Point2d,
+        p2: Point2d,
+        line: Point2d,
+        height: f64,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -98,6 +107,18 @@ impl Entity {
                 .iter()
                 .map(|c| c.bounding_box())
                 .reduce(|a, b| a.union(&b)),
+            EntityKind::Dimension { p1, p2, line, .. } => {
+                let pts = [p1.to_f64(), p2.to_f64(), line.to_f64()];
+                let (mut minx, mut miny) = pts[0];
+                let (mut maxx, mut maxy) = pts[0];
+                for (x, y) in pts {
+                    minx = minx.min(x);
+                    miny = miny.min(y);
+                    maxx = maxx.max(x);
+                    maxy = maxy.max(y);
+                }
+                Some(BoundingBox::from_corners(minx, miny, maxx, maxy))
+            }
         }
     }
 
@@ -143,6 +164,17 @@ impl Entity {
                     .collect(),
                 fill: *fill,
                 pattern: transform_pattern(pattern, t),
+            },
+            EntityKind::Dimension {
+                p1,
+                p2,
+                line,
+                height,
+            } => EntityKind::Dimension {
+                p1: t.apply_point(p1),
+                p2: t.apply_point(p2),
+                line: t.apply_point(line),
+                height: height * t.scale_factor(),
             },
         };
     }
