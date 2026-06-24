@@ -49,6 +49,11 @@ pub(super) fn tool_prompt(tool: &Tool) -> String {
             (Some(_), None) => "Specify center of arc".into(),
             (Some(_), Some(_)) => "Specify end point of arc".into(),
         },
+        Tool::ArcCenterStartEnd { center, start } => match (center, start) {
+            (None, _) => "Specify center of arc".into(),
+            (Some(_), None) => "Specify start point of arc".into(),
+            (Some(_), Some(_)) => "Specify end point of arc".into(),
+        },
         Tool::CircleTwoPoint { first } => {
             if first.is_none() {
                 "Specify first end of diameter".into()

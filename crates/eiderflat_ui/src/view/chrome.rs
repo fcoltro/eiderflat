@@ -459,6 +459,15 @@ fn menu_items(ui: &mut egui::Ui, app: &mut AppState) {
                     center: None,
                 },
             );
+            tool_menu_item(
+                ui,
+                app,
+                "Center, Start, End",
+                Tool::ArcCenterStartEnd {
+                    center: None,
+                    start: None,
+                },
+            );
         });
         tool_menu_item(ui, app, "Rectangle", Tool::Rectangle { first: None });
         tool_menu_item(
@@ -988,6 +997,7 @@ fn tool_hotkey(tool: &Tool) -> &'static str {
         Tool::Stretch { .. } => "Shift+S",
         Tool::Hatch => "H",
         Tool::ArcStartCenterEnd { .. }
+        | Tool::ArcCenterStartEnd { .. }
         | Tool::CircleTwoPoint { .. }
         | Tool::CircleThreePoint { .. }
         | Tool::CircleTtr { .. }

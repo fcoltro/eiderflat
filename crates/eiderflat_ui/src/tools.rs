@@ -21,6 +21,11 @@ pub enum Tool {
         start: Option<Point2d>,
         center: Option<Point2d>,
     },
+    /// Arc by centre, then start point, then end point (CCW from start to end).
+    ArcCenterStartEnd {
+        center: Option<Point2d>,
+        start: Option<Point2d>,
+    },
     /// Circle by two diameter endpoints.
     CircleTwoPoint {
         first: Option<Point2d>,
@@ -120,6 +125,7 @@ impl Tool {
             Tool::Circle { .. } => "CIRCLE",
             Tool::Arc3 { .. } => "ARC",
             Tool::ArcStartCenterEnd { .. } => "ARC SCE",
+            Tool::ArcCenterStartEnd { .. } => "ARC CSE",
             Tool::CircleTwoPoint { .. } => "CIRCLE 2P",
             Tool::CircleThreePoint { .. } => "CIRCLE 3P",
             Tool::CircleTtr { .. } => "CIRCLE TTR",
@@ -229,6 +235,27 @@ impl Tool {
                         *self = Tool::ArcStartCenterEnd {
                             start: None,
                             center: None,
+                        };
+                        ToolEvent::Create(vec![EntityKind::Curve(Curve::Arc(a))])
+                    }
+                    None => ToolEvent::Pending,
+                },
+            },
+
+            Tool::ArcCenterStartEnd { center, start } => match (*center, *start) {
+                (None, _) => {
+                    *center = Some(p);
+                    ToolEvent::Pending
+                }
+                (Some(_), None) => {
+                    *start = Some(p);
+                    ToolEvent::Pending
+                }
+                (Some(c), Some(s)) => match arc_start_center_end(&s, &c, &p) {
+                    Some(a) => {
+                        *self = Tool::ArcCenterStartEnd {
+                            center: None,
+                            start: None,
                         };
                         ToolEvent::Create(vec![EntityKind::Curve(Curve::Arc(a))])
                     }
@@ -470,6 +497,10 @@ impl Tool {
                 *start = None;
                 *center = None;
             }
+            Tool::ArcCenterStartEnd { center, start } => {
+                *center = None;
+                *start = None;
+            }
             Tool::CircleTwoPoint { first } => *first = None,
             Tool::CircleThreePoint { pts } => pts.clear(),
             Tool::CircleTtr { first, .. } => *first = None,
@@ -510,6 +541,7 @@ impl Tool {
             Tool::Circle { center } => center.is_some(),
             Tool::Arc3 { pts } => !pts.is_empty(),
             Tool::ArcStartCenterEnd { start, .. } => start.is_some(),
+            Tool::ArcCenterStartEnd { center, .. } => center.is_some(),
             Tool::CircleTwoPoint { first } => first.is_some(),
             Tool::CircleThreePoint { pts } => !pts.is_empty(),
             Tool::CircleTtr { first, .. } => first.is_some(),
@@ -580,6 +612,17 @@ impl Tool {
             } => match arc_start_center_end(s, c, cursor) {
                 Some(a) => vec![Curve::Arc(a)],
                 None => vec![Curve::Line(LineSeg::from_endpoints(*c, *cursor))],
+            },
+            Tool::ArcCenterStartEnd {
+                center: Some(c),
+                start: None,
+            } => vec![Curve::Line(LineSeg::from_endpoints(*c, *cursor))],
+            Tool::ArcCenterStartEnd {
+                center: Some(c),
+                start: Some(s),
+            } => match arc_start_center_end(s, c, cursor) {
+                Some(a) => vec![Curve::Arc(a)],
+                None => vec![Curve::Line(LineSeg::from_endpoints(*s, *cursor))],
             },
             Tool::CircleTwoPoint { first: Some(a) } => {
                 let d = a.dist_f64(cursor);
@@ -679,6 +722,7 @@ impl Tool {
             Tool::Rectangle { first } => *first,
             Tool::Arc3 { pts } => pts.last().cloned(),
             Tool::ArcStartCenterEnd { start, center } => (*center).or(*start),
+            Tool::ArcCenterStartEnd { center, start } => (*start).or(*center),
             Tool::CircleTwoPoint { first } => *first,
             Tool::CircleThreePoint { pts } => pts.last().cloned(),
             Tool::Ellipse { center, axis_end } => (*axis_end).or(*center),

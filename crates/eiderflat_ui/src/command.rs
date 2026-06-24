@@ -75,6 +75,10 @@ pub fn parse_command(input: &str) -> Command {
             start: None,
             center: None,
         }),
+        "ARCCSE" | "ACSE" => Command::Activate(Tool::ArcCenterStartEnd {
+            center: None,
+            start: None,
+        }),
         "CIRCLE2P" | "C2P" => Command::Activate(Tool::CircleTwoPoint { first: None }),
         "CIRCLE3P" | "C3P" => Command::Activate(Tool::CircleThreePoint { pts: vec![] }),
         "TTR" | "CIRCLETTR" => {
