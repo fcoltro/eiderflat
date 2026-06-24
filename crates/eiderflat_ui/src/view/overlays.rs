@@ -2,8 +2,53 @@ use super::UiState;
 use super::render::corner_glass_frame;
 use crate::state::AppState;
 use crate::tools::Tool;
-use egui::{Color32, pos2};
-use eiderflat_geometry::Point2d;
+use egui::{Color32, Stroke, pos2};
+use eiderflat_geometry::{Curve, CurveSegment, Point2d, curvature_at, normal_at};
+
+/// Draw a curvature comb for `curve`: teeth normal to the curve whose length is
+/// proportional to curvature, with an envelope through the tips. Reveals
+/// smoothness/inflections on splines and arcs. `scale` is the world-unit tooth
+/// length per unit curvature; `samples` is the tooth count.
+pub(super) fn curvature_comb(
+    painter: &egui::Painter,
+    app: &AppState,
+    curve: &Curve,
+    origin: egui::Pos2,
+    scale: f64,
+    samples: usize,
+) {
+    let to_screen = |wx: f64, wy: f64| {
+        let (sx, sy) = app.view.world_to_screen(wx, wy);
+        pos2(origin.x + sx as f32, origin.y + sy as f32)
+    };
+    let (t0, t1) = curve.domain();
+    let n = samples.max(2);
+    let tooth = Stroke::new(1.0, Color32::from_rgb(190, 120, 255));
+    let envelope = Stroke::new(1.5, Color32::from_rgb(150, 90, 230));
+    let mut tips: Vec<egui::Pos2> = Vec::with_capacity(n + 1);
+    for i in 0..=n {
+        let t = t0 + (t1 - t0) * i as f64 / n as f64;
+        let k = match curvature_at(curve, t) {
+            Some(k) if k.is_finite() => k,
+            _ => continue,
+        };
+        let (x, y) = curve.evaluate_f64(t);
+        let (nx, ny) = normal_at(curve, t);
+        let nlen = (nx * nx + ny * ny).sqrt();
+        if nlen < 1e-12 {
+            continue;
+        }
+        // Tooth points toward the centre of curvature (along -normal*sign(k)).
+        let d = -k * scale;
+        let base = to_screen(x, y);
+        let tip = to_screen(x + nx / nlen * d, y + ny / nlen * d);
+        painter.line_segment([base, tip], tooth);
+        tips.push(tip);
+    }
+    if tips.len() >= 2 {
+        painter.add(egui::Shape::line(tips, envelope));
+    }
+}
 pub(super) fn dyn_line_hud(
     ctx: &egui::Context,
     app: &mut AppState,

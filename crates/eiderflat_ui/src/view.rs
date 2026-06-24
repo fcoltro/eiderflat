@@ -13,13 +13,14 @@ mod palette;
 mod render;
 mod tessellate;
 use chrome::{
-    about_window, contextual_toolbar, handle_shortcuts, inspector, ribbon, status_pill, top_bar,
+    about_window, contextual_toolbar, handle_shortcuts, inspector, line_props_dialog,
+    ribbon, settings_dialog, status_pill, top_bar,
 };
 use palette::command_bar;
 use render::{
     HATCH_SELECT, draw_corner_preview, draw_dashed_line, draw_entity, draw_grid, draw_prompt_chip,
     draw_scale_bar, draw_transform_ghost, draw_trim_extend_preview, layer_visible,
-    refresh_hatch_cache, resolve_color, resolve_line_weight_px, tool_prompt,
+    refresh_hatch_cache, refresh_text_cache, resolve_color, resolve_line_weight_px, tool_prompt,
 };
 use tessellate::draw_curve;
 
@@ -27,6 +28,11 @@ use tessellate::draw_curve;
 /// outline loops). See [`render::refresh_hatch_cache`].
 pub type HatchCache =
     std::collections::HashMap<EntityId, (u64, Vec<[Point2d; 3]>, Vec<Vec<Point2d>>)>;
+
+/// Per-text render cache: (content+font+zoom signature, filled glyph triangles).
+/// Placed text is drawn from its exact vector outlines, triangulated once and
+/// reused until the text or zoom level changes. See [`render::refresh_text_cache`].
+pub type TextCache = std::collections::HashMap<EntityId, (u64, Vec<[Point2d; 3]>)>;
 
 #[derive(Default)]
 pub struct UiState {
@@ -60,7 +66,10 @@ pub struct UiState {
     pub palette_nav: bool,
     pub last_title: String,
     pub about_open: bool,
+    pub line_props_open: bool,
+    pub settings_open: bool,
     pub hatch_cache: HatchCache,
+    pub text_cache: TextCache,
 }
 
 pub fn draw_ui(ui: &mut egui::Ui, app: &mut AppState, ui_state: &mut UiState) {
@@ -91,6 +100,8 @@ pub fn draw_ui(ui: &mut egui::Ui, app: &mut AppState, ui_state: &mut UiState) {
     status_pill(&ctx, app, canvas_rect);
     contextual_toolbar(&ctx, app, canvas_rect);
     about_window(&ctx, ui_state);
+    line_props_dialog(&ctx, app, ui_state);
+    settings_dialog(&ctx, app, ui_state);
     let cmd_bar_focused = command_bar(&ctx, app, ui_state, canvas_rect);
     canvas(ui, app, ui_state, cmd_bar_focused);
 }
@@ -576,6 +587,11 @@ fn canvas(root_ui: &mut egui::Ui, app: &mut AppState, ui_state: &mut UiState, pa
                         app.outline_text_selection();
                         ui.close();
                     }
+                    if ui.button("Line Weight & Type…").clicked() {
+                        ui.ctx()
+                            .data_mut(|d| d.insert_temp(egui::Id::new("open_line_props"), true));
+                        ui.close();
+                    }
                     ui.separator();
                     let acts = [
                         (
@@ -793,6 +809,7 @@ fn canvas(root_ui: &mut egui::Ui, app: &mut AppState, ui_state: &mut UiState, pa
             draw_grid(&painter, app, rect, &to_screen);
         }
         refresh_hatch_cache(app, &mut ui_state.hatch_cache);
+        refresh_text_cache(app, &mut ui_state.text_cache);
         let selected_set: std::collections::HashSet<EntityId> =
             app.selection.iter().copied().collect();
         for e in app.document.iter() {
@@ -832,6 +849,11 @@ fn canvas(root_ui: &mut egui::Ui, app: &mut AppState, ui_state: &mut UiState, pa
             } else {
                 (None, None)
             };
+            let text_tris = if matches!(e.kind, EntityKind::Text { .. }) {
+                ui_state.text_cache.get(&e.id).map(|(_, t)| t.as_slice())
+            } else {
+                None
+            };
             draw_entity(
                 &painter,
                 app,
@@ -841,7 +863,16 @@ fn canvas(root_ui: &mut egui::Ui, app: &mut AppState, ui_state: &mut UiState, pa
                 selected,
                 hatch_tris,
                 hatch_loops,
+                text_tris,
             );
+        }
+        // Curvature comb on selected curves (toggle in View ▸ Curvature Comb).
+        if app.comb_on {
+            for &id in &app.selection {
+                if let Some(c) = app.document.get(id).and_then(|e| e.as_curve()) {
+                    overlays::curvature_comb(&painter, app, c, origin, app.comb_scale, 48);
+                }
+            }
         }
         if matches!(app.tool, Tool::Select) && app.interaction.corner_action.is_none() {
             let guide = Stroke::new(1.0, Color32::from_rgb(120, 140, 170));

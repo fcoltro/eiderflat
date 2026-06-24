@@ -2,7 +2,7 @@ use eiderflat_cad::{
     Grip, Guide, SnapPoint, SnapSettings, apply_grip, best_snap, edit, find_snaps_excluding,
     grips_for, infer_axis, pick_at,
 };
-use eiderflat_document::{Document, EntityId, EntityKind, Layer};
+use eiderflat_document::{Document, EntityId, EntityKind, Layer, LineTypeRef, LineWeight};
 use eiderflat_geometry::{Curve, Point2d};
 
 use crate::command::{Command, CoordInput, parse_command, parse_coordinate};
@@ -42,6 +42,135 @@ pub struct AppState {
     pub hatch_pattern: eiderflat_document::HatchPattern,
     pub saved_depth: usize,
     pub zoom_target: Option<(f64, f64, f64)>,
+    /// Line type/weight applied to newly created entities (edited in the line
+    /// properties dialog). Default `ByLayer`, matching `Entity::new`.
+    pub default_line_type: LineTypeRef,
+    pub default_line_weight: LineWeight,
+    /// Show a curvature comb on selected curves, and its tooth scale.
+    pub comb_on: bool,
+    pub comb_scale: f64,
+}
+
+/// User interface preferences that persist across sessions (the snap/tracking
+/// toggles and the last-used text font). Document data is *not* here — that
+/// lives in the saved file. Serialized with a tiny hand-rolled `key=value`
+/// format to keep the crate serde-free; the app shell stores the string via
+/// eframe's storage.
+#[derive(Clone, Debug, PartialEq)]
+pub struct UiPrefs {
+    pub snap_on: bool,
+    pub grid_on: bool,
+    pub grid_snap_on: bool,
+    pub ortho_on: bool,
+    pub polar_on: bool,
+    pub track_on: bool,
+    pub dyn_on: bool,
+    pub comb_on: bool,
+    pub comb_scale: f64,
+    pub text_font: Option<String>,
+}
+
+impl Default for UiPrefs {
+    /// Matches the fresh-state defaults in [`AppState::new`].
+    fn default() -> Self {
+        UiPrefs {
+            snap_on: true,
+            grid_on: true,
+            grid_snap_on: false,
+            ortho_on: false,
+            polar_on: true,
+            track_on: true,
+            dyn_on: true,
+            comb_on: false,
+            comb_scale: 5.0,
+            text_font: None,
+        }
+    }
+}
+
+impl UiPrefs {
+    pub fn serialize(&self) -> String {
+        let b = |v: bool| if v { "1" } else { "0" };
+        let font = self.text_font.as_deref().unwrap_or("");
+        format!(
+            "snap={}\ngrid={}\ngsnap={}\northo={}\npolar={}\ntrack={}\ndyn={}\ncomb={}\ncomb_scale={}\nfont={}\n",
+            b(self.snap_on),
+            b(self.grid_on),
+            b(self.grid_snap_on),
+            b(self.ortho_on),
+            b(self.polar_on),
+            b(self.track_on),
+            b(self.dyn_on),
+            b(self.comb_on),
+            self.comb_scale,
+            font,
+        )
+    }
+
+    pub fn deserialize(s: &str) -> Self {
+        let mut p = UiPrefs::default();
+        for line in s.lines() {
+            let Some((k, v)) = line.split_once('=') else {
+                continue;
+            };
+            let on = v == "1";
+            match k.trim() {
+                "snap" => p.snap_on = on,
+                "grid" => p.grid_on = on,
+                "gsnap" => p.grid_snap_on = on,
+                "ortho" => p.ortho_on = on,
+                "polar" => p.polar_on = on,
+                "track" => p.track_on = on,
+                "dyn" => p.dyn_on = on,
+                "comb" => p.comb_on = on,
+                "comb_scale" => {
+                    if let Ok(f) = v.trim().parse::<f64>() {
+                        p.comb_scale = f;
+                    }
+                }
+                "font" => p.text_font = (!v.is_empty()).then(|| v.to_string()),
+                _ => {}
+            }
+        }
+        p
+    }
+}
+
+impl AppState {
+    /// Snapshot the current UI preferences for persistence.
+    pub fn ui_prefs(&self) -> UiPrefs {
+        UiPrefs {
+            snap_on: self.snap_on,
+            grid_on: self.grid_on,
+            grid_snap_on: self.grid_snap_on,
+            ortho_on: self.ortho_on,
+            polar_on: self.polar_on,
+            track_on: self.track_on,
+            dyn_on: self.dyn_on,
+            comb_on: self.comb_on,
+            comb_scale: self.comb_scale,
+            text_font: self.text_font.clone(),
+        }
+    }
+
+    /// Apply restored (or reset-to-default) UI preferences.
+    pub fn apply_prefs(&mut self, p: &UiPrefs) {
+        self.snap_on = p.snap_on;
+        self.grid_on = p.grid_on;
+        self.grid_snap_on = p.grid_snap_on;
+        self.ortho_on = p.ortho_on;
+        self.polar_on = p.polar_on;
+        self.track_on = p.track_on;
+        self.dyn_on = p.dyn_on;
+        self.comb_on = p.comb_on;
+        self.comb_scale = p.comb_scale;
+        self.text_font = p.text_font.clone();
+        // Ortho and polar are mutually exclusive; if a stale state has both on,
+        // let ortho win (it's the more restrictive constraint).
+        if self.ortho_on {
+            self.polar_on = false;
+        }
+    }
 }
 
 #[derive(Default)]
@@ -140,6 +269,22 @@ impl AppState {
             hatch_pattern: eiderflat_document::HatchPattern::Solid,
             saved_depth: 0,
             zoom_target: None,
+            default_line_type: LineTypeRef::ByLayer,
+            default_line_weight: LineWeight::ByLayer,
+            comb_on: false,
+            comb_scale: 5.0,
+        }
+    }
+
+    /// Apply the current new-entity line defaults to a just-created entity.
+    fn apply_new_entity_defaults(&mut self, id: EntityId) {
+        let (lt, lw) = (
+            self.default_line_type.clone(),
+            self.default_line_weight.clone(),
+        );
+        if let Some(e) = self.document.get_mut(id) {
+            e.line_type = lt;
+            e.line_weight = lw;
         }
     }
 
@@ -300,7 +445,8 @@ impl AppState {
             ToolEvent::Create(kinds) => {
                 self.history.snapshot(&self.document);
                 for k in kinds {
-                    self.document.add(k);
+                    let id = self.document.add(k);
+                    self.apply_new_entity_defaults(id);
                 }
             }
             ToolEvent::Transform { ids, t } => {
@@ -420,6 +566,14 @@ impl AppState {
                 Tool::Chamfer { first, .. } => {
                     self.tool = Tool::Chamfer {
                         dist: v,
+                        first: *first,
+                    };
+                    self.command_log.push(trimmed.to_string());
+                    return;
+                }
+                Tool::CircleTtr { first, .. } => {
+                    self.tool = Tool::CircleTtr {
+                        radius: v,
                         first: *first,
                     };
                     self.command_log.push(trimmed.to_string());
@@ -1171,6 +1325,42 @@ mod tests {
 
     fn app() -> AppState {
         AppState::new(800.0, 600.0)
+    }
+
+    #[test]
+    fn ui_prefs_round_trip() {
+        let p = UiPrefs {
+            snap_on: false,
+            grid_on: true,
+            grid_snap_on: true,
+            ortho_on: true,
+            polar_on: false,
+            track_on: false,
+            dyn_on: true,
+            comb_on: true,
+            comb_scale: 7.5,
+            text_font: Some("Arial".into()),
+        };
+        assert_eq!(UiPrefs::deserialize(&p.serialize()), p);
+        // No font → None survives the round-trip.
+        let q = UiPrefs {
+            text_font: None,
+            ..Default::default()
+        };
+        assert_eq!(UiPrefs::deserialize(&q.serialize()).text_font, None);
+    }
+
+    #[test]
+    fn apply_prefs_keeps_ortho_polar_exclusive() {
+        let mut a = app();
+        // stale: both ortho and polar on
+        let p = UiPrefs {
+            ortho_on: true,
+            polar_on: true,
+            ..Default::default()
+        };
+        a.apply_prefs(&p);
+        assert!(a.ortho_on && !a.polar_on, "ortho should win over polar");
     }
 
     #[test]

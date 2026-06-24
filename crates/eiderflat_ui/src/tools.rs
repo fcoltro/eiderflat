@@ -16,6 +16,28 @@ pub enum Tool {
     Arc3 {
         pts: Vec<Point2d>,
     },
+    /// Arc by start point, then centre, then end point (CCW from start to end).
+    ArcStartCenterEnd {
+        start: Option<Point2d>,
+        center: Option<Point2d>,
+    },
+    /// Circle by two diameter endpoints.
+    CircleTwoPoint {
+        first: Option<Point2d>,
+    },
+    /// Circle through three points.
+    CircleThreePoint {
+        pts: Vec<Point2d>,
+    },
+    /// Circle of a given radius tangent to two picked entities (TTR).
+    CircleTtr {
+        radius: f64,
+        first: Option<EntityId>,
+    },
+    /// Circle tangent to three picked entities (TTT).
+    CircleTtt {
+        picks: Vec<EntityId>,
+    },
     Ellipse {
         center: Option<Point2d>,
         axis_end: Option<Point2d>,
@@ -97,6 +119,11 @@ impl Tool {
             Tool::Line { .. } => "LINE",
             Tool::Circle { .. } => "CIRCLE",
             Tool::Arc3 { .. } => "ARC",
+            Tool::ArcStartCenterEnd { .. } => "ARC SCE",
+            Tool::CircleTwoPoint { .. } => "CIRCLE 2P",
+            Tool::CircleThreePoint { .. } => "CIRCLE 3P",
+            Tool::CircleTtr { .. } => "CIRCLE TTR",
+            Tool::CircleTtt { .. } => "CIRCLE TTT",
             Tool::Ellipse { .. } => "ELLIPSE",
             Tool::Rectangle { .. } => "RECTANGLE",
             Tool::Move { .. } => "MOVE",
@@ -132,6 +159,8 @@ impl Tool {
                 | Tool::Offset { .. }
                 | Tool::Fillet { .. }
                 | Tool::Chamfer { .. }
+                | Tool::CircleTtr { .. }
+                | Tool::CircleTtt { .. }
         )
     }
 
@@ -179,6 +208,65 @@ impl Tool {
                     *self = Tool::Arc3 { pts: vec![] };
                     match arc {
                         Some(a) => ToolEvent::Create(vec![EntityKind::Curve(Curve::Arc(a))]),
+                        None => ToolEvent::Pending,
+                    }
+                } else {
+                    ToolEvent::Pending
+                }
+            }
+
+            Tool::ArcStartCenterEnd { start, center } => match (*start, *center) {
+                (None, _) => {
+                    *start = Some(p);
+                    ToolEvent::Pending
+                }
+                (Some(_), None) => {
+                    *center = Some(p);
+                    ToolEvent::Pending
+                }
+                (Some(s), Some(c)) => match arc_start_center_end(&s, &c, &p) {
+                    Some(a) => {
+                        *self = Tool::ArcStartCenterEnd {
+                            start: None,
+                            center: None,
+                        };
+                        ToolEvent::Create(vec![EntityKind::Curve(Curve::Arc(a))])
+                    }
+                    None => ToolEvent::Pending,
+                },
+            },
+
+            Tool::CircleTwoPoint { first } => match first.take() {
+                None => {
+                    *first = Some(p);
+                    ToolEvent::Pending
+                }
+                Some(a) => {
+                    let d = a.dist_f64(&p);
+                    if d < 1e-9 {
+                        *first = Some(a);
+                        ToolEvent::Pending
+                    } else {
+                        *self = Tool::CircleTwoPoint { first: None };
+                        ToolEvent::Create(vec![EntityKind::Curve(Curve::Arc(CircularArc::new(
+                            a.midpoint(&p),
+                            d / 2.0,
+                            0.0,
+                            std::f64::consts::TAU,
+                        )))])
+                    }
+                }
+            },
+
+            Tool::CircleThreePoint { pts } => {
+                pts.push(p);
+                if pts.len() == 3 {
+                    let res = eiderflat_geometry::circle_through_three_points(pts[0], pts[1], pts[2]);
+                    *self = Tool::CircleThreePoint { pts: vec![] };
+                    match res {
+                        Some((c, r)) => ToolEvent::Create(vec![EntityKind::Curve(Curve::Arc(
+                            CircularArc::new(c, r, 0.0, std::f64::consts::TAU),
+                        ))]),
                         None => ToolEvent::Pending,
                     }
                 } else {
@@ -367,7 +455,9 @@ impl Tool {
             | Tool::Offset { .. }
             | Tool::Fillet { .. }
             | Tool::Chamfer { .. }
-            | Tool::Stretch { .. } => ToolEvent::Pending,
+            | Tool::Stretch { .. }
+            | Tool::CircleTtr { .. }
+            | Tool::CircleTtt { .. } => ToolEvent::Pending,
         }
     }
 
@@ -376,6 +466,14 @@ impl Tool {
             Tool::Line { last } => *last = None,
             Tool::Circle { center } => *center = None,
             Tool::Arc3 { pts } => pts.clear(),
+            Tool::ArcStartCenterEnd { start, center } => {
+                *start = None;
+                *center = None;
+            }
+            Tool::CircleTwoPoint { first } => *first = None,
+            Tool::CircleThreePoint { pts } => pts.clear(),
+            Tool::CircleTtr { first, .. } => *first = None,
+            Tool::CircleTtt { picks } => picks.clear(),
             Tool::Ellipse { center, axis_end } => {
                 *center = None;
                 *axis_end = None;
@@ -411,6 +509,11 @@ impl Tool {
             Tool::Line { last } => last.is_some(),
             Tool::Circle { center } => center.is_some(),
             Tool::Arc3 { pts } => !pts.is_empty(),
+            Tool::ArcStartCenterEnd { start, .. } => start.is_some(),
+            Tool::CircleTwoPoint { first } => first.is_some(),
+            Tool::CircleThreePoint { pts } => !pts.is_empty(),
+            Tool::CircleTtr { first, .. } => first.is_some(),
+            Tool::CircleTtt { picks } => !picks.is_empty(),
             Tool::Ellipse { center, .. } => center.is_some(),
             Tool::Rectangle { first } => first.is_some(),
             Tool::Move { base, .. } | Tool::Copy { base, .. } => base.is_some(),
@@ -464,6 +567,44 @@ impl Tool {
             Tool::Arc3 { pts } if pts.len() == 2 => {
                 match CircularArc::from_three_points(&pts[0], &pts[1], cursor) {
                     Some(a) => vec![Curve::Arc(a)],
+                    None => vec![Curve::Line(LineSeg::from_endpoints(pts[1], *cursor))],
+                }
+            }
+            Tool::ArcStartCenterEnd {
+                start: Some(s),
+                center: None,
+            } => vec![Curve::Line(LineSeg::from_endpoints(*s, *cursor))],
+            Tool::ArcStartCenterEnd {
+                start: Some(s),
+                center: Some(c),
+            } => match arc_start_center_end(s, c, cursor) {
+                Some(a) => vec![Curve::Arc(a)],
+                None => vec![Curve::Line(LineSeg::from_endpoints(*c, *cursor))],
+            },
+            Tool::CircleTwoPoint { first: Some(a) } => {
+                let d = a.dist_f64(cursor);
+                if d < 1e-9 {
+                    vec![]
+                } else {
+                    vec![Curve::Arc(CircularArc::new(
+                        a.midpoint(cursor),
+                        d / 2.0,
+                        0.0,
+                        std::f64::consts::TAU,
+                    ))]
+                }
+            }
+            Tool::CircleThreePoint { pts } if pts.len() == 1 => {
+                vec![Curve::Line(LineSeg::from_endpoints(pts[0], *cursor))]
+            }
+            Tool::CircleThreePoint { pts } if pts.len() == 2 => {
+                match eiderflat_geometry::circle_through_three_points(pts[0], pts[1], *cursor) {
+                    Some((c, r)) => vec![Curve::Arc(CircularArc::new(
+                        c,
+                        r,
+                        0.0,
+                        std::f64::consts::TAU,
+                    ))],
                     None => vec![Curve::Line(LineSeg::from_endpoints(pts[1], *cursor))],
                 }
             }
@@ -537,6 +678,9 @@ impl Tool {
             Tool::Circle { center } => *center,
             Tool::Rectangle { first } => *first,
             Tool::Arc3 { pts } => pts.last().cloned(),
+            Tool::ArcStartCenterEnd { start, center } => (*center).or(*start),
+            Tool::CircleTwoPoint { first } => *first,
+            Tool::CircleThreePoint { pts } => pts.last().cloned(),
             Tool::Ellipse { center, axis_end } => (*axis_end).or(*center),
             Tool::Move { base, .. } => *base,
             Tool::Copy { base, .. } => *base,
@@ -553,7 +697,9 @@ impl Tool {
             | Tool::Hatch
             | Tool::Offset { .. }
             | Tool::Fillet { .. }
-            | Tool::Chamfer { .. } => None,
+            | Tool::Chamfer { .. }
+            | Tool::CircleTtr { .. }
+            | Tool::CircleTtt { .. } => None,
             Tool::Select => None,
         }
     }
@@ -661,6 +807,22 @@ fn rectangle_curves(c0: &Point2d, c1: &Point2d) -> Vec<Curve> {
 }
 fn closed_polycurve(curves: Vec<Curve>) -> EntityKind {
     EntityKind::Curve(Curve::Poly(Box::new(PolyCurve::new(curves))))
+}
+
+/// Build the CCW arc from `start` to `end` about `center`. The end point is
+/// projected onto the circle through `start`, so it need only give a direction.
+/// Returns `None` if `start` coincides with `center`.
+fn arc_start_center_end(start: &Point2d, center: &Point2d, end: &Point2d) -> Option<CircularArc> {
+    let r = center.dist_f64(start);
+    if r < 1e-9 {
+        return None;
+    }
+    let sa = (start.y - center.y).atan2(start.x - center.x);
+    let mut ea = (end.y - center.y).atan2(end.x - center.x);
+    while ea <= sa {
+        ea += std::f64::consts::TAU;
+    }
+    Some(CircularArc::new(*center, r, sa, ea))
 }
 
 fn order(a: f64, b: f64) -> (f64, f64) {

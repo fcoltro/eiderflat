@@ -71,6 +71,24 @@ pub fn parse_command(input: &str) -> Command {
         "LINE" | "L" => Command::Activate(Tool::Line { last: None }),
         "CIRCLE" | "C" => Command::Activate(Tool::Circle { center: None }),
         "ARC" | "A" => Command::Activate(Tool::Arc3 { pts: vec![] }),
+        "ARCSCE" | "ASCE" => Command::Activate(Tool::ArcStartCenterEnd {
+            start: None,
+            center: None,
+        }),
+        "CIRCLE2P" | "C2P" => Command::Activate(Tool::CircleTwoPoint { first: None }),
+        "CIRCLE3P" | "C3P" => Command::Activate(Tool::CircleThreePoint { pts: vec![] }),
+        "TTR" | "CIRCLETTR" => {
+            let radius = rest
+                .first()
+                .and_then(|s| s.parse::<f64>().ok())
+                .filter(|r| *r > 0.0)
+                .unwrap_or(1.0);
+            Command::Activate(Tool::CircleTtr {
+                radius,
+                first: None,
+            })
+        }
+        "TTT" | "CIRCLETTT" => Command::Activate(Tool::CircleTtt { picks: vec![] }),
         "ELLIPSE" | "EL" => Command::Activate(Tool::Ellipse {
             center: None,
             axis_end: None,

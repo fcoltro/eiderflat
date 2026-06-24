@@ -115,6 +115,42 @@ impl AppState {
                 }
                 true
             }
+            Tool::CircleTtr { radius, first } => {
+                if let Some(id) = pick(self) {
+                    match first {
+                        None => {
+                            self.tool = Tool::CircleTtr {
+                                radius,
+                                first: Some(id),
+                            }
+                        }
+                        Some(a) => {
+                            if a != id {
+                                self.add_tangent_circle_ttr(a, id, radius, *p);
+                            }
+                            self.tool = Tool::CircleTtr {
+                                radius,
+                                first: None,
+                            };
+                        }
+                    }
+                }
+                true
+            }
+            Tool::CircleTtt { mut picks } => {
+                if let Some(id) = pick(self)
+                    && !picks.contains(&id)
+                {
+                    picks.push(id);
+                    if picks.len() == 3 {
+                        self.add_tangent_circle_ttt([picks[0], picks[1], picks[2]], *p);
+                        self.tool = Tool::CircleTtt { picks: Vec::new() };
+                    } else {
+                        self.tool = Tool::CircleTtt { picks };
+                    }
+                }
+                true
+            }
             Tool::Stretch { c1, c2, base, ids } => {
                 match (c1, c2, base) {
                     (None, _, _) => {
@@ -170,6 +206,46 @@ impl AppState {
             }
             _ => false,
         }
+    }
+
+    /// Circle of `radius` tangent to entities `a` and `b`, nearest the pick.
+    fn add_tangent_circle_ttr(&mut self, a: EntityId, b: EntityId, radius: f64, near: Point2d) {
+        let (Some(c1), Some(c2)) = (
+            self.document.get(a).and_then(|e| e.as_curve()).cloned(),
+            self.document.get(b).and_then(|e| e.as_curve()).cloned(),
+        ) else {
+            return;
+        };
+        if let Some((center, r)) = eiderflat_geometry::tangent_circle_ttr(&c1, &c2, radius, near) {
+            self.create_full_circle(center, r);
+        }
+    }
+
+    /// Circle tangent to three entities, nearest the final pick.
+    fn add_tangent_circle_ttt(&mut self, ids: [EntityId; 3], near: Point2d) {
+        let curves: Vec<_> = ids
+            .iter()
+            .filter_map(|&id| self.document.get(id).and_then(|e| e.as_curve()).cloned())
+            .collect();
+        if curves.len() != 3 {
+            return;
+        }
+        if let Some((center, r)) =
+            eiderflat_geometry::tangent_circle_ttt(&curves[0], &curves[1], &curves[2], near)
+        {
+            self.create_full_circle(center, r);
+        }
+    }
+
+    /// Add a full circle as an entity, applying the new-object line defaults.
+    fn create_full_circle(&mut self, center: Point2d, r: f64) {
+        if r <= 1e-9 {
+            return;
+        }
+        let arc = eiderflat_geometry::CircularArc::new(center, r, 0.0, std::f64::consts::TAU);
+        self.apply_tool_event(crate::tools::ToolEvent::Create(vec![
+            eiderflat_document::EntityKind::Curve(eiderflat_geometry::Curve::Arc(arc)),
+        ]));
     }
 
     pub fn trim_extend_preview(&self) -> Option<TrimExtendPreview> {

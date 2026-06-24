@@ -378,6 +378,12 @@ fn menu_items(ui: &mut egui::Ui, app: &mut AppState) {
             ui.ctx()
                 .data_mut(|d| d.insert_temp(egui::Id::new("open_palette"), true));
         }
+        ui.separator();
+        if ui.button("Settings…").clicked() {
+            ui.ctx()
+                .data_mut(|d| d.insert_temp(egui::Id::new("open_settings"), true));
+            ui.close();
+        }
     });
     ui.menu_button("View", |ui| {
         if ui
@@ -404,12 +410,34 @@ fn menu_items(ui: &mut egui::Ui, app: &mut AppState) {
         }
         ui.checkbox(&mut app.track_on, "Track — Extension Tracking  (F11)");
         ui.checkbox(&mut app.dyn_on, "Dynamic Input  (F12)");
+        ui.separator();
+        ui.checkbox(&mut app.comb_on, "Curvature Comb");
+        ui.separator();
+        if ui.button("Reset Tool Options").clicked() {
+            app.apply_prefs(&crate::state::UiPrefs::default());
+            ui.close();
+        }
     });
     ui.menu_button("Draw", |ui| {
         tool_menu_item(ui, app, "Select", Tool::Select);
         ui.separator();
         tool_menu_item(ui, app, "Line", Tool::Line { last: None });
         tool_menu_item(ui, app, "Circle", Tool::Circle { center: None });
+        ui.menu_button("Circle ▸", |ui| {
+            tool_menu_item(ui, app, "Center, Radius", Tool::Circle { center: None });
+            tool_menu_item(ui, app, "2 Points (diameter)", Tool::CircleTwoPoint { first: None });
+            tool_menu_item(ui, app, "3 Points", Tool::CircleThreePoint { pts: vec![] });
+            tool_menu_item(
+                ui,
+                app,
+                "Tan, Tan, Radius",
+                Tool::CircleTtr {
+                    radius: 1.0,
+                    first: None,
+                },
+            );
+            tool_menu_item(ui, app, "Tan, Tan, Tan", Tool::CircleTtt { picks: vec![] });
+        });
         tool_menu_item(
             ui,
             app,
@@ -420,6 +448,18 @@ fn menu_items(ui: &mut egui::Ui, app: &mut AppState) {
             },
         );
         tool_menu_item(ui, app, "Arc", Tool::Arc3 { pts: vec![] });
+        ui.menu_button("Arc ▸", |ui| {
+            tool_menu_item(ui, app, "3 Points", Tool::Arc3 { pts: vec![] });
+            tool_menu_item(
+                ui,
+                app,
+                "Start, Center, End",
+                Tool::ArcStartCenterEnd {
+                    start: None,
+                    center: None,
+                },
+            );
+        });
         tool_menu_item(ui, app, "Rectangle", Tool::Rectangle { first: None });
         tool_menu_item(
             ui,
@@ -552,6 +592,12 @@ fn menu_items(ui: &mut egui::Ui, app: &mut AppState) {
             app.execute(Command::Hatch);
             ui.close();
         }
+        ui.separator();
+        if ui.button("Line Weight & Type…").clicked() {
+            ui.ctx()
+                .data_mut(|d| d.insert_temp(egui::Id::new("open_line_props"), true));
+            ui.close();
+        }
     });
     ui.menu_button("Help", |ui| {
         if ui.button("About eiderFLAT").clicked() {
@@ -627,6 +673,267 @@ pub(super) fn about_window(ctx: &Context, ui_state: &mut UiState) {
     }
 }
 
+/// Modal dialog for editing line weight & type: sets the defaults applied to
+/// newly drawn objects, and (when something is selected) edits the selection.
+/// Opened via the "open_line_props" context flag.
+pub(super) fn line_props_dialog(ctx: &Context, app: &mut AppState, ui_state: &mut UiState) {
+    if ctx.data(|d| {
+        d.get_temp::<bool>(egui::Id::new("open_line_props"))
+            .unwrap_or(false)
+    }) {
+        ctx.data_mut(|d| d.insert_temp(egui::Id::new("open_line_props"), false));
+        ui_state.line_props_open = true;
+    }
+    if !ui_state.line_props_open {
+        return;
+    }
+
+    let backdrop = egui::Area::new(egui::Id::new("line_props_backdrop"))
+        .order(egui::Order::Middle)
+        .fixed_pos(ctx.content_rect().min)
+        .show(ctx, |ui| {
+            let r = ctx.content_rect();
+            ui.painter()
+                .rect_filled(r, 0.0, egui::Color32::from_black_alpha(160));
+            ui.allocate_rect(r, egui::Sense::click())
+        });
+    let mut close = backdrop.inner.clicked();
+    let sel = app.selection.clone();
+
+    egui::Window::new("line_props_dialog")
+        .title_bar(false)
+        .collapsible(false)
+        .resizable(false)
+        .order(egui::Order::Foreground)
+        .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
+        .fixed_size(egui::vec2(320.0, 0.0))
+        .show(ctx, |ui| {
+            ui.add_space(10.0);
+            ui.label(
+                egui::RichText::new("Line Weight & Type")
+                    .size(14.0)
+                    .strong()
+                    .color(crate::theme::TEXT),
+            );
+
+            // ── Defaults for newly drawn objects ───────────────────────────
+            prop_section(ui, "NEW OBJECTS");
+            let dw = app.default_line_weight.clone();
+            appearance_row(ui, "Line weight", lw_label(&dw), None, false, |ui| {
+                for (lbl, val) in lw_options() {
+                    if ui.selectable_label(dw == val, lbl).clicked() {
+                        app.default_line_weight = val;
+                        ui.close();
+                    }
+                }
+            });
+            let dt = app.default_line_type.clone();
+            appearance_row(ui, "Line type", lt_label(&dt), None, true, |ui| {
+                for (lbl, val) in lt_options() {
+                    if ui.selectable_label(dt == val, lbl).clicked() {
+                        app.default_line_type = val;
+                        ui.close();
+                    }
+                }
+            });
+
+            // ── Selection (only when something is selected) ────────────────
+            if !sel.is_empty() {
+                prop_section(ui, &format!("SELECTION ({})", sel.len()));
+                let sw = app.document.get(sel[0]).map(|e| e.line_weight.clone());
+                let sw_lbl = sw.as_ref().map(lw_label).unwrap_or_else(|| "—".into());
+                appearance_row(ui, "Line weight", sw_lbl, None, false, |ui| {
+                    for (lbl, val) in lw_options() {
+                        if ui.selectable_label(sw.as_ref() == Some(&val), lbl).clicked() {
+                            app.history.snapshot(&app.document);
+                            for &id in &sel {
+                                if let Some(e) = app.document.get_mut(id) {
+                                    e.line_weight = val.clone();
+                                }
+                            }
+                            ui.close();
+                        }
+                    }
+                });
+                let st = app.document.get(sel[0]).map(|e| e.line_type.clone());
+                let st_lbl = st.as_ref().map(lt_label).unwrap_or_else(|| "—".into());
+                appearance_row(ui, "Line type", st_lbl, None, true, |ui| {
+                    for (lbl, val) in lt_options() {
+                        if ui.selectable_label(st.as_ref() == Some(&val), lbl).clicked() {
+                            app.history.snapshot(&app.document);
+                            for &id in &sel {
+                                if let Some(e) = app.document.get_mut(id) {
+                                    e.line_type = val.clone();
+                                }
+                            }
+                            ui.close();
+                        }
+                    }
+                });
+            }
+
+            ui.add_space(12.0);
+            ui.vertical_centered(|ui| {
+                if ui.button("Close").clicked() {
+                    close = true;
+                }
+            });
+            ui.add_space(6.0);
+        });
+
+    if close || ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+        ui_state.line_props_open = false;
+    }
+}
+
+/// Consolidated user-settings dialog: drawing units, the snap/tracking aids
+/// (which persist across sessions via `UiPrefs`), the curvature comb, and the
+/// default text font. Opened via Edit ▸ Settings… (the "open_settings" flag).
+pub(super) fn settings_dialog(ctx: &Context, app: &mut AppState, ui_state: &mut UiState) {
+    use eiderflat_document::Units;
+    if ctx.data(|d| {
+        d.get_temp::<bool>(egui::Id::new("open_settings"))
+            .unwrap_or(false)
+    }) {
+        ctx.data_mut(|d| d.insert_temp(egui::Id::new("open_settings"), false));
+        ui_state.settings_open = true;
+    }
+    if !ui_state.settings_open {
+        return;
+    }
+
+    let backdrop = egui::Area::new(egui::Id::new("settings_backdrop"))
+        .order(egui::Order::Middle)
+        .fixed_pos(ctx.content_rect().min)
+        .show(ctx, |ui| {
+            let r = ctx.content_rect();
+            ui.painter()
+                .rect_filled(r, 0.0, egui::Color32::from_black_alpha(160));
+            ui.allocate_rect(r, egui::Sense::click())
+        });
+    let mut close = backdrop.inner.clicked();
+
+    egui::Window::new("settings_dialog")
+        .title_bar(false)
+        .collapsible(false)
+        .resizable(false)
+        .order(egui::Order::Foreground)
+        .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
+        .fixed_size(egui::vec2(340.0, 0.0))
+        .show(ctx, |ui| {
+            ui.add_space(10.0);
+            ui.label(
+                egui::RichText::new("Settings")
+                    .size(14.0)
+                    .strong()
+                    .color(crate::theme::TEXT),
+            );
+
+            // ── Units ──────────────────────────────────────────────────────
+            prop_section(ui, "UNITS");
+            egui::ComboBox::from_id_salt("settings_units")
+                .selected_text(units_label(app.document.settings.units))
+                .width(180.0)
+                .show_ui(ui, |ui| {
+                    for units in [
+                        Units::Millimeters,
+                        Units::Centimeters,
+                        Units::Meters,
+                        Units::Kilometers,
+                        Units::Inches,
+                        Units::Feet,
+                        Units::Unitless,
+                    ] {
+                        if ui
+                            .selectable_label(
+                                app.document.settings.units == units,
+                                units_label(units),
+                            )
+                            .clicked()
+                            && app.document.settings.units != units
+                        {
+                            app.document.settings.units = units;
+                            app.sync_zoom_limits();
+                        }
+                    }
+                });
+
+            // ── Drawing aids (persist via UiPrefs) ─────────────────────────
+            prop_section(ui, "DRAWING AIDS");
+            ui.checkbox(&mut app.snap_on, "Object snap");
+            ui.checkbox(&mut app.grid_on, "Grid");
+            ui.checkbox(&mut app.grid_snap_on, "Snap to grid");
+            // Ortho and polar are mutually exclusive (same rule as the F-keys).
+            let mut polar = app.polar_on;
+            if ui.checkbox(&mut polar, "Polar tracking").changed() {
+                app.polar_on = polar;
+                if polar {
+                    app.ortho_on = false;
+                }
+            }
+            let mut ortho = app.ortho_on;
+            if ui.checkbox(&mut ortho, "Ortho").changed() {
+                app.ortho_on = ortho;
+                if ortho {
+                    app.polar_on = false;
+                }
+            }
+            ui.checkbox(&mut app.track_on, "Extension tracking");
+            ui.checkbox(&mut app.dyn_on, "Dynamic input");
+
+            // ── Curvature comb ─────────────────────────────────────────────
+            prop_section(ui, "CURVATURE COMB");
+            ui.checkbox(&mut app.comb_on, "Show on selected curves");
+            ui.add_enabled(
+                app.comb_on,
+                egui::Slider::new(&mut app.comb_scale, 1.0..=20.0).text("Scale"),
+            );
+
+            // ── Text ───────────────────────────────────────────────────────
+            prop_section(ui, "TEXT");
+            ui.horizontal(|ui| {
+                ui.label("Default font");
+                font_combo(ui, "settings_font", &mut app.text_font);
+            });
+
+            ui.add_space(14.0);
+            ui.horizontal(|ui| {
+                if ui.button("Reset Aids to Defaults").clicked() {
+                    app.apply_prefs(&crate::state::UiPrefs::default());
+                }
+                if ui.button("Line Weight & Type…").clicked() {
+                    ui.ctx()
+                        .data_mut(|d| d.insert_temp(egui::Id::new("open_line_props"), true));
+                }
+            });
+            ui.add_space(8.0);
+            ui.vertical_centered(|ui| {
+                if ui.button("Close").clicked() {
+                    close = true;
+                }
+            });
+            ui.add_space(6.0);
+        });
+
+    if close || ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+        ui_state.settings_open = false;
+    }
+}
+
+/// Human-readable label for a drawing-units choice.
+fn units_label(u: eiderflat_document::Units) -> &'static str {
+    use eiderflat_document::Units;
+    match u {
+        Units::Millimeters => "Millimeters (mm)",
+        Units::Centimeters => "Centimeters (cm)",
+        Units::Meters => "Meters (m)",
+        Units::Kilometers => "Kilometers (km)",
+        Units::Inches => "Inches (in)",
+        Units::Feet => "Feet (ft)",
+        Units::Unitless => "Unitless",
+    }
+}
+
 pub(super) fn font_combo(ui: &mut egui::Ui, salt: &str, font: &mut Option<String>) -> bool {
     let families = crate::fonts::system_families();
     let default_label = match crate::fonts::default_family_label() {
@@ -680,6 +987,11 @@ fn tool_hotkey(tool: &Tool) -> &'static str {
         Tool::Chamfer { .. } => "Shift+H",
         Tool::Stretch { .. } => "Shift+S",
         Tool::Hatch => "H",
+        Tool::ArcStartCenterEnd { .. }
+        | Tool::CircleTwoPoint { .. }
+        | Tool::CircleThreePoint { .. }
+        | Tool::CircleTtr { .. }
+        | Tool::CircleTtt { .. } => "",
     }
 }
 
@@ -2046,8 +2358,54 @@ fn appearance_row(
     ui.add_space(8.0);
 }
 
+/// The preset line-weight choices offered in the inspector and the line dialog.
+fn lw_options() -> [(&'static str, eiderflat_document::LineWeight); 7] {
+    use eiderflat_document::LineWeight::{ByLayer, Hundredths};
+    [
+        ("By layer", ByLayer),
+        ("0.13 mm", Hundredths(13)),
+        ("0.25 mm", Hundredths(25)),
+        ("0.35 mm", Hundredths(35)),
+        ("0.50 mm", Hundredths(50)),
+        ("0.70 mm", Hundredths(70)),
+        ("1.00 mm", Hundredths(100)),
+    ]
+}
+
+/// Human-readable label for a line weight.
+fn lw_label(w: &eiderflat_document::LineWeight) -> String {
+    use eiderflat_document::LineWeight;
+    match w {
+        LineWeight::ByBlock => "By block".into(),
+        LineWeight::Hundredths(h) => format!("{:.2} mm", *h as f64 / 100.0),
+        LineWeight::ByLayer => "By layer".into(),
+    }
+}
+
+/// The line-type choices offered in the inspector and the line dialog.
+fn lt_options() -> [(&'static str, eiderflat_document::LineTypeRef); 5] {
+    use eiderflat_document::LineTypeRef;
+    [
+        ("By layer", LineTypeRef::ByLayer),
+        ("Solid", LineTypeRef::Named("Continuous".into())),
+        ("Dashed", LineTypeRef::Named("Dashed".into())),
+        ("Dotted", LineTypeRef::Named("Dotted".into())),
+        ("Center", LineTypeRef::Named("Center".into())),
+    ]
+}
+
+/// Human-readable label for a line type.
+fn lt_label(t: &eiderflat_document::LineTypeRef) -> String {
+    use eiderflat_document::LineTypeRef;
+    match t {
+        LineTypeRef::ByBlock => "By block".into(),
+        LineTypeRef::Named(n) if n == "Continuous" => "Solid".into(),
+        LineTypeRef::Named(n) => n.clone(),
+        LineTypeRef::ByLayer => "By layer".into(),
+    }
+}
+
 fn appearance_section(ui: &mut egui::Ui, app: &mut AppState, sel: &[eiderflat_document::EntityId]) {
-    use eiderflat_document::{LineTypeRef, LineWeight};
     prop_section(ui, "APPEARANCE");
 
     // ── Line weight ───────────────────────────────────────────────────────
@@ -2055,21 +2413,9 @@ fn appearance_section(ui: &mut egui::Ui, app: &mut AppState, sel: &[eiderflat_do
         .first()
         .and_then(|&id| app.document.get(id))
         .map(|e| e.line_weight.clone());
-    let lw_label = match &first_lw {
-        Some(LineWeight::ByBlock) => "By block".to_string(),
-        Some(LineWeight::Hundredths(h)) => format!("{:.2} mm", *h as f64 / 100.0),
-        _ => "By layer".to_string(),
-    };
-    appearance_row(ui, "Line weight", lw_label, None, false, |ui| {
-        for (lbl, val) in [
-            ("By layer", LineWeight::ByLayer),
-            ("0.13 mm", LineWeight::Hundredths(13)),
-            ("0.25 mm", LineWeight::Hundredths(25)),
-            ("0.35 mm", LineWeight::Hundredths(35)),
-            ("0.50 mm", LineWeight::Hundredths(50)),
-            ("0.70 mm", LineWeight::Hundredths(70)),
-            ("1.00 mm", LineWeight::Hundredths(100)),
-        ] {
+    let lw_lbl = first_lw.as_ref().map(lw_label).unwrap_or_else(|| "By layer".into());
+    appearance_row(ui, "Line weight", lw_lbl, None, false, |ui| {
+        for (lbl, val) in lw_options() {
             if ui
                 .selectable_label(first_lw.as_ref() == Some(&val), lbl)
                 .clicked()
@@ -2090,20 +2436,9 @@ fn appearance_section(ui: &mut egui::Ui, app: &mut AppState, sel: &[eiderflat_do
         .first()
         .and_then(|&id| app.document.get(id))
         .map(|e| e.line_type.clone());
-    let lt_label = match &first_lt {
-        Some(LineTypeRef::ByBlock) => "By block".to_string(),
-        Some(LineTypeRef::Named(n)) if n == "Continuous" => "Solid".to_string(),
-        Some(LineTypeRef::Named(n)) => n.clone(),
-        _ => "By layer".to_string(),
-    };
-    appearance_row(ui, "Line type", lt_label, None, true, |ui| {
-        for (lbl, val) in [
-            ("By layer", LineTypeRef::ByLayer),
-            ("Solid", LineTypeRef::Named("Continuous".into())),
-            ("Dashed", LineTypeRef::Named("Dashed".into())),
-            ("Dotted", LineTypeRef::Named("Dotted".into())),
-            ("Center", LineTypeRef::Named("Center".into())),
-        ] {
+    let lt_lbl = first_lt.as_ref().map(lt_label).unwrap_or_else(|| "By layer".into());
+    appearance_row(ui, "Line type", lt_lbl, None, true, |ui| {
+        for (lbl, val) in lt_options() {
             if ui
                 .selectable_label(first_lt.as_ref() == Some(&val), lbl)
                 .clicked()

@@ -44,6 +44,35 @@ pub(super) fn tool_prompt(tool: &Tool) -> String {
             1 => "Specify second point".into(),
             _ => "Specify end point".into(),
         },
+        Tool::ArcStartCenterEnd { start, center } => match (start, center) {
+            (None, _) => "Specify start point of arc".into(),
+            (Some(_), None) => "Specify center of arc".into(),
+            (Some(_), Some(_)) => "Specify end point of arc".into(),
+        },
+        Tool::CircleTwoPoint { first } => {
+            if first.is_none() {
+                "Specify first end of diameter".into()
+            } else {
+                "Specify second end of diameter".into()
+            }
+        }
+        Tool::CircleThreePoint { pts } => match pts.len() {
+            0 => "Specify first point on circle".into(),
+            1 => "Specify second point on circle".into(),
+            _ => "Specify third point on circle".into(),
+        },
+        Tool::CircleTtr { first, .. } => {
+            if first.is_none() {
+                "Pick the first tangent entity (type a radius first)".into()
+            } else {
+                "Pick the second tangent entity".into()
+            }
+        }
+        Tool::CircleTtt { picks } => match picks.len() {
+            0 => "Pick the first tangent entity".into(),
+            1 => "Pick the second tangent entity".into(),
+            _ => "Pick the third tangent entity".into(),
+        },
         Tool::Ellipse { center, axis_end } => match (center, axis_end) {
             (None, _) => "Specify center of ellipse".into(),
             (Some(_), None) => "Specify end of first axis".into(),
@@ -531,6 +560,58 @@ pub(super) fn refresh_hatch_cache(app: &AppState, cache: &mut super::HatchCache)
     cache.retain(|id, _| live.contains(id));
 }
 
+pub(super) fn refresh_text_cache(app: &AppState, cache: &mut super::TextCache) {
+    use std::collections::HashSet;
+    let target = (app.view.pixel_world_size() * 0.4).max(1e-9);
+    let bucket = target.log2().floor();
+    let tol = 2f64.powf(bucket);
+    let mut live: HashSet<EntityId> = HashSet::new();
+    for e in app.document.iter() {
+        if let EntityKind::Text {
+            anchor,
+            content,
+            height,
+            rotation,
+            font,
+        } = &e.kind
+        {
+            live.insert(e.id);
+            // Bucket is part of the signature, so the glyph fill re-triangulates
+            // (and only then) when the text, font, placement, or zoom changes —
+            // keeping the outline crisp as you zoom in without per-frame cost.
+            let sig = text_signature(content, *height, *rotation, font.as_deref(), *anchor, bucket as i64);
+            if cache.get(&e.id).map(|(s, _)| *s) != Some(sig) {
+                let contours =
+                    crate::fonts::outline_text(content, font.as_deref(), *height, *anchor, *rotation);
+                let tris = eiderflat_cad::triangulate_contours(&contours, tol);
+                cache.insert(e.id, (sig, tris));
+            }
+        }
+    }
+    cache.retain(|id, _| live.contains(id));
+}
+
+fn text_signature(
+    content: &str,
+    height: f64,
+    rotation: f64,
+    font: Option<&str>,
+    anchor: Point2d,
+    tol_bucket: i64,
+) -> u64 {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    let mut h = DefaultHasher::new();
+    tol_bucket.hash(&mut h);
+    content.hash(&mut h);
+    height.to_bits().hash(&mut h);
+    rotation.to_bits().hash(&mut h);
+    font.hash(&mut h);
+    anchor.x.to_bits().hash(&mut h);
+    anchor.y.to_bits().hash(&mut h);
+    h.finish()
+}
+
 fn hatch_signature(boundary: &[Curve], holes: &[Vec<Curve>], tol_bucket: i64) -> u64 {
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
@@ -566,6 +647,7 @@ pub(super) fn draw_entity(
     selected: bool,
     hatch_tris: Option<&[[Point2d; 3]]>,
     hatch_loops: Option<&[Vec<Point2d>]>,
+    text_tris: Option<&[[Point2d; 3]]>,
 ) {
     let to_screen = |wx: f64, wy: f64| {
         let (sx, sy) = app.view.world_to_screen(wx, wy);
@@ -654,44 +736,54 @@ pub(super) fn draw_entity(
             rotation,
             font,
         } => {
-            let (x, y) = anchor.to_f64();
-            // Rasterize glyphs at a quantized size (next power of two, capped)
-            // and scale the shape to the exact on-screen size. Tying the font's
-            // raster size directly to a continuously-changing zoom thrashes
-            // egui's font atlas — every new size forces a glyph re-raster and
-            // periodic full texture rebuilds — which is what made zooming over
-            // text stutter. Quantizing keeps it to a handful of cached sizes.
-            const MIN_PX: f32 = 8.0;
-            const MAX_PX: f32 = 512.0;
-            let target_px = (*height as f32 * app.view.zoom as f32).max(0.01);
-            let raster_px = 2f32
-                .powf(target_px.clamp(MIN_PX, MAX_PX).log2().ceil())
-                .clamp(MIN_PX, MAX_PX);
-            let scale = target_px / raster_px;
-            let font = crate::fonts::text_font_id(painter.ctx(), font.as_deref(), raster_px);
-            let galley = painter.layout_no_wrap(content.clone(), font, stroke.color);
-            let angle = -(*rotation as f32);
-            // Anchor on the text baseline (the conventional insertion point that
-            // outline_text also uses), not the galley bottom — otherwise outlined
-            // text lands below the placed text by the descent + line gap.
-            let baseline = galley
-                .rows
-                .first()
-                .and_then(|r| r.row.glyphs.first().map(|g| r.pos.y + g.pos.y))
-                .unwrap_or_else(|| galley.size().y);
-            let off = baseline * scale;
-            let (sn, cs) = angle.sin_cos();
-            let pos = to_screen(x, y) + vec2(off * sn, -off * cs);
-            let mut shape = egui::epaint::TextShape::new(pos, galley, stroke.color);
-            shape.angle = angle;
-            if (scale - 1.0).abs() > 1e-3 {
-                // Scale glyphs about the anchor `pos` (keeps `pos` fixed).
-                shape.transform(egui::emath::TSTransform {
-                    scaling: scale,
-                    translation: pos.to_vec2() * (1.0 - scale),
-                });
+            // Placed text is drawn from its exact filled vector outlines (same
+            // geometry as the "outline text" command), triangulated and cached
+            // per zoom level by `refresh_text_cache`. This avoids the galley's
+            // pixel-snapped raster, which pixelated at extreme zoom and never
+            // matched the outline exactly in spacing/corners.
+            if let Some(tris) = text_tris.filter(|t| !t.is_empty()) {
+                let mut mesh = egui::epaint::Mesh::default();
+                for t in tris {
+                    let base = mesh.vertices.len() as u32;
+                    for v in t {
+                        mesh.colored_vertex(to_screen(v.x, v.y), stroke.color);
+                    }
+                    mesh.add_triangle(base, base + 1, base + 2);
+                }
+                painter.add(egui::Shape::mesh(mesh));
+            } else if !content.is_empty() {
+                // Fallback (cache not yet populated, or the font produced no
+                // outline, e.g. a missing glyph): draw a quantized galley so the
+                // text is never invisible. Mirrors the old raster path.
+                let (x, y) = anchor.to_f64();
+                const MIN_PX: f32 = 8.0;
+                const MAX_PX: f32 = 512.0;
+                let target_px = (*height as f32 * app.view.zoom as f32).max(0.01);
+                let raster_px = 2f32
+                    .powf(target_px.clamp(MIN_PX, MAX_PX).log2().ceil())
+                    .clamp(MIN_PX, MAX_PX);
+                let scale = target_px / raster_px;
+                let font = crate::fonts::text_font_id(painter.ctx(), font.as_deref(), raster_px);
+                let galley = painter.layout_no_wrap(content.clone(), font, stroke.color);
+                let angle = -(*rotation as f32);
+                let baseline = galley
+                    .rows
+                    .first()
+                    .and_then(|r| r.row.glyphs.first().map(|g| r.pos.y + g.pos.y))
+                    .unwrap_or_else(|| galley.size().y);
+                let off = baseline * scale;
+                let (sn, cs) = angle.sin_cos();
+                let pos = to_screen(x, y) + vec2(off * sn, -off * cs);
+                let mut shape = egui::epaint::TextShape::new(pos, galley, stroke.color);
+                shape.angle = angle;
+                if (scale - 1.0).abs() > 1e-3 {
+                    shape.transform(egui::emath::TSTransform {
+                        scaling: scale,
+                        translation: pos.to_vec2() * (1.0 - scale),
+                    });
+                }
+                painter.add(shape);
             }
-            painter.add(shape);
         }
         EntityKind::Hatch {
             boundary,
