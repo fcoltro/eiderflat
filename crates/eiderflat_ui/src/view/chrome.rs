@@ -919,6 +919,32 @@ pub(super) fn settings_dialog(ctx: &Context, app: &mut AppState, ui_state: &mut 
                 font_combo(ui, "settings_font", &mut app.text_font);
             });
 
+            // ── Dimensions ─────────────────────────────────────────────────
+            prop_section(ui, "DIMENSIONS");
+            let ds = &mut app.document.settings.dim_style;
+            ui.horizontal(|ui| {
+                ui.label("Text height");
+                ui.add(
+                    egui::DragValue::new(&mut ds.text_height)
+                        .speed(0.1)
+                        .range(0.1..=1000.0)
+                        .max_decimals(3),
+                );
+            });
+            ui.horizontal(|ui| {
+                ui.label("Arrow size");
+                ui.add(
+                    egui::DragValue::new(&mut ds.arrow_size)
+                        .speed(0.1)
+                        .range(0.1..=1000.0)
+                        .max_decimals(3),
+                );
+            });
+            ui.horizontal(|ui| {
+                ui.label("Font");
+                font_combo(ui, "settings_dim_font", &mut ds.font);
+            });
+
             ui.add_space(14.0);
             ui.horizontal(|ui| {
                 if ui.button("Reset Aids to Defaults").clicked() {

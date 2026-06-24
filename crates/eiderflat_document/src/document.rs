@@ -55,11 +55,37 @@ pub struct NamedView {
     pub zoom: f64,
 }
 
+/// Drawing-wide dimension style: how dimensions are drawn (text size, arrow
+/// size, and text font). Shared by all dimension entities.
+#[derive(Clone, Debug, PartialEq)]
+pub struct DimStyle {
+    /// Dimension text height, in drawing units.
+    pub text_height: f64,
+    /// Arrowhead length, in drawing units.
+    pub arrow_size: f64,
+    /// Text font family; `None` uses the application default.
+    pub font: Option<String>,
+}
+
+impl Default for DimStyle {
+    fn default() -> Self {
+        DimStyle {
+            text_height: 2.5,
+            arrow_size: 2.5,
+            font: None,
+        }
+    }
+}
+
+/// The layer dimensions are placed on; created on demand.
+pub const DIMENSION_LAYER: &str = "Dimensions";
+
 #[derive(Clone, Debug)]
 pub struct Settings {
     pub units: Units,
     pub grid_spacing: f64,
     pub snap_spacing: f64,
+    pub dim_style: DimStyle,
 }
 
 impl Default for Settings {
@@ -68,6 +94,7 @@ impl Default for Settings {
             units: Units::Millimeters,
             grid_spacing: 10.0,
             snap_spacing: 1.0,
+            dim_style: DimStyle::default(),
         }
     }
 }

@@ -277,14 +277,28 @@ impl AppState {
     }
 
     /// Apply the current new-entity line defaults to a just-created entity.
+    /// Dimensions are also moved onto their own (auto-created) layer.
     fn apply_new_entity_defaults(&mut self, id: EntityId) {
         let (lt, lw) = (
             self.default_line_type.clone(),
             self.default_line_weight.clone(),
         );
+        let is_dim = matches!(
+            self.document.get(id).map(|e| &e.kind),
+            Some(eiderflat_document::EntityKind::Dimension { .. })
+        );
+        let dim_layer = is_dim.then(|| {
+            self.document.layers.add(
+                eiderflat_document::Layer::new(eiderflat_document::DIMENSION_LAYER)
+                    .with_color(120, 170, 255),
+            )
+        });
         if let Some(e) = self.document.get_mut(id) {
             e.line_type = lt;
             e.line_weight = lw;
+            if let Some(layer) = dim_layer {
+                e.layer = layer;
+            }
         }
     }
 
@@ -1348,6 +1362,25 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(UiPrefs::deserialize(&q.serialize()).text_font, None);
+    }
+
+    #[test]
+    fn dimension_lands_on_dimension_layer() {
+        let mut a = app();
+        a.tool = crate::tools::Tool::Dimension {
+            p1: None,
+            p2: None,
+        };
+        a.place_tool_point(Point2d::from_f64(0.0, 0.0));
+        a.place_tool_point(Point2d::from_f64(10.0, 0.0));
+        a.place_tool_point(Point2d::from_f64(0.0, 3.0)); // commits the dimension
+        let dim = a
+            .document
+            .iter()
+            .find(|e| matches!(e.kind, eiderflat_document::EntityKind::Dimension { .. }))
+            .expect("a dimension entity");
+        let layer = a.document.layers.get(dim.layer).expect("its layer");
+        assert_eq!(layer.name, eiderflat_document::DIMENSION_LAYER);
     }
 
     #[test]

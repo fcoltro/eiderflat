@@ -17,6 +17,13 @@ pub fn to_string(doc: &Document) -> String {
     s.push_str(&format!("UNITS {}\n", units_name(doc.settings.units)));
     s.push_str(&format!("GRID {}\n", doc.settings.grid_spacing));
     s.push_str(&format!("SNAP {}\n", doc.settings.snap_spacing));
+    let ds = &doc.settings.dim_style;
+    s.push_str(&format!(
+        "DIMSTYLE {} {} {}\n",
+        ds.text_height,
+        ds.arrow_size,
+        ds.font.as_deref().map(esc).unwrap_or_else(|| "-".into())
+    ));
 
     for lt in &doc.line_types {
         let pat: Vec<String> = lt.pattern.iter().map(|p| p.to_string()).collect();
@@ -258,6 +265,15 @@ pub fn from_string(text: &str) -> Result<Document, String> {
             }
             Some("SNAP") => {
                 doc.settings.snap_spacing = tok.next().and_then(|v| v.parse().ok()).unwrap_or(1.0)
+            }
+            Some("DIMSTYLE") => {
+                let ds = &mut doc.settings.dim_style;
+                ds.text_height = tok.next().and_then(|v| v.parse().ok()).unwrap_or(2.5);
+                ds.arrow_size = tok.next().and_then(|v| v.parse().ok()).unwrap_or(2.5);
+                ds.font = match tok.next() {
+                    None | Some("-") => None,
+                    Some(t) => Some(unesc(t)),
+                };
             }
             Some("LT") => {
                 if let Some(lt) = parse_lt(&mut tok) {
@@ -750,6 +766,18 @@ mod tests {
             |e| matches!(&e.kind, EntityKind::Text { content, .. } if content == "hello world"),
         );
         assert!(has_text);
+    }
+
+    #[test]
+    fn roundtrip_dim_style() {
+        let mut doc = Document::new();
+        doc.settings.dim_style.text_height = 3.5;
+        doc.settings.dim_style.arrow_size = 1.25;
+        doc.settings.dim_style.font = Some("Arial".into());
+        let doc2 = from_string(&to_string(&doc)).unwrap();
+        assert!((doc2.settings.dim_style.text_height - 3.5).abs() < 1e-9);
+        assert!((doc2.settings.dim_style.arrow_size - 1.25).abs() < 1e-9);
+        assert_eq!(doc2.settings.dim_style.font.as_deref(), Some("Arial"));
     }
 
     #[test]

@@ -873,13 +873,8 @@ pub(super) fn draw_entity(
                 }
             }
         }
-        EntityKind::Dimension {
-            p1,
-            p2,
-            line,
-            height,
-        } => {
-            draw_dimension(painter, app, *p1, *p2, *line, *height, &to_screen, stroke.color);
+        EntityKind::Dimension { p1, p2, line, .. } => {
+            draw_dimension(painter, app, *p1, *p2, *line, &to_screen, stroke.color);
         }
         _ => {}
     }
@@ -887,15 +882,14 @@ pub(super) fn draw_entity(
 
 /// Draw an aligned linear dimension: extension lines from the two measured
 /// points out to the dimension line, the dimension line with arrowheads, and
-/// the measured length as text (in the document's units).
-#[allow(clippy::too_many_arguments)]
+/// the measured length as text — rotated to sit along the dimension line and
+/// sized/fonted by the document's dimension style.
 fn draw_dimension(
     painter: &egui::Painter,
     app: &AppState,
     p1: Point2d,
     p2: Point2d,
     line: Point2d,
-    height: f64,
     to_screen: &impl Fn(f64, f64) -> egui::Pos2,
     color: Color32,
 ) {
@@ -921,50 +915,57 @@ fn draw_dimension(
     let sd2 = to_screen(d2.0, d2.1);
     let stroke = Stroke::new(1.0, color);
 
+    let style = &app.document.settings.dim_style;
+    let zoom = app.view.zoom as f32;
+
     // Extension lines (measured point → dimension line) and the dimension line.
     painter.line_segment([s1, sd1], stroke);
     painter.line_segment([s2, sd2], stroke);
     painter.line_segment([sd1, sd2], stroke);
-    arrowhead(painter, sd1, sd2, color);
-    arrowhead(painter, sd2, sd1, color);
+    let arrow_px = (style.arrow_size as f32 * zoom).clamp(4.0, 60.0);
+    arrowhead(painter, sd1, sd2, arrow_px, color);
+    arrowhead(painter, sd2, sd1, arrow_px, color);
 
-    // Measured length, placed just off the dimension line's midpoint.
+    // Measured length, laid along the dimension line and kept upright.
     let label = format_measure(len, app.document.settings.units);
-    let size_px = (height as f32 * app.view.zoom as f32).clamp(9.0, 200.0);
-    let mid = pos2((sd1.x + sd2.x) * 0.5, (sd1.y + sd2.y) * 0.5);
-    // Perpendicular (screen space) pointing away from the measured points.
-    let (mut nx, mut ny) = (-(sd2.y - sd1.y), sd2.x - sd1.x);
-    let nlen = (nx * nx + ny * ny).sqrt().max(1.0);
-    nx /= nlen;
-    ny /= nlen;
-    let mid_meas = pos2((s1.x + s2.x) * 0.5, (s1.y + s2.y) * 0.5);
-    // Flip the normal so the text sits on the far side from the geometry.
-    if (mid.x + nx - mid_meas.x).powi(2) + (mid.y + ny - mid_meas.y).powi(2)
-        < (mid.x - nx - mid_meas.x).powi(2) + (mid.y - ny - mid_meas.y).powi(2)
-    {
-        nx = -nx;
-        ny = -ny;
+    let text_px = (style.text_height as f32 * zoom).clamp(9.0, 200.0);
+    let font_id = crate::fonts::text_font_id(painter.ctx(), style.font.as_deref(), text_px);
+    let galley = painter.layout_no_wrap(label, font_id, color);
+    let size = galley.size();
+
+    let dir = (sd2 - sd1).normalized();
+    let mut angle = dir.y.atan2(dir.x);
+    // Flip so text never reads upside down.
+    use std::f32::consts::FRAC_PI_2;
+    if !(-FRAC_PI_2..=FRAC_PI_2).contains(&angle) {
+        angle += std::f32::consts::PI;
     }
-    let off = size_px * 0.8;
-    let text_pos = pos2(mid.x + nx * off, mid.y + ny * off);
-    painter.text(
-        text_pos,
-        egui::Align2::CENTER_CENTER,
-        label,
-        egui::FontId::proportional(size_px),
-        color,
-    );
+    // Sit the text just off the dimension line, on the side away from the
+    // measured geometry.
+    let mut perp = vec2(-dir.y, dir.x);
+    let mid = pos2((sd1.x + sd2.x) * 0.5, (sd1.y + sd2.y) * 0.5);
+    let mid_meas = pos2((s1.x + s2.x) * 0.5, (s1.y + s2.y) * 0.5);
+    if (mid + perp - mid_meas).length_sq() < (mid - perp - mid_meas).length_sq() {
+        perp = -perp;
+    }
+    let gap = text_px * 0.5 + 3.0;
+    let center = mid + perp * gap;
+    // TextShape rotates the galley around its top-left `pos`; offset so the
+    // galley's centre lands on `center`.
+    let rot = egui::emath::Rot2::from_angle(angle);
+    let mut shape = egui::epaint::TextShape::new(center - rot * (size * 0.5), galley, color);
+    shape.angle = angle;
+    painter.add(shape);
 }
 
-/// Filled arrowhead at `tip`, pointing along `from`→`tip`.
-fn arrowhead(painter: &egui::Painter, tip: egui::Pos2, from: egui::Pos2, color: Color32) {
+/// Filled arrowhead at `tip`, pointing along `from`→`tip`, `size` px long.
+fn arrowhead(painter: &egui::Painter, tip: egui::Pos2, from: egui::Pos2, size: f32, color: Color32) {
     let d = tip - from;
     let len = d.length();
     if len < 1e-3 {
         return;
     }
     let dir = d / len;
-    let size = 9.0;
     let back = tip - dir * size;
     let perp = vec2(-dir.y, dir.x) * (size * 0.35);
     painter.add(egui::Shape::convex_polygon(
