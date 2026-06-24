@@ -1,7 +1,10 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use eiderflat_geometry::{CircularArc, Curve, LineSeg, Point2d, intersect};
-use eiderflat_ui::{AppState, UiState, draw_ui, egui};
+use eiderflat_ui::{AppState, UiPrefs, UiState, draw_ui, egui};
+
+/// eframe storage key for the persisted UI preferences.
+const PREFS_KEY: &str = "eiderflat_ui_prefs";
 
 fn main() {
     // Capture any panic to the log file (the console may flash and close).
@@ -65,6 +68,11 @@ impl eframe::App for EiderflatCad {
         // algebraic kernel), tessellated only for display.
         draw_ui(ui, &mut self.app, &mut self.ui);
     }
+
+    // Persist UI preferences (snap/tracking toggles, last font) between sessions.
+    fn save(&mut self, storage: &mut dyn eframe::Storage) {
+        storage.set_string(PREFS_KEY, self.app.ui_prefs().serialize());
+    }
 }
 
 fn run_gui() -> eframe::Result<()> {
@@ -83,10 +91,15 @@ fn run_gui() -> eframe::Result<()> {
     eframe::run_native(
         "eiderFLAT",
         options,
-        Box::new(|_cc| {
+        Box::new(|cc| {
             log("Window created. Using the adaptive-tessellation egui painter.");
+            let mut app = AppState::new(1200.0, 800.0);
+            // Restore persisted UI preferences from the previous session.
+            if let Some(s) = cc.storage.and_then(|s| s.get_string(PREFS_KEY)) {
+                app.apply_prefs(&UiPrefs::deserialize(&s));
+            }
             Ok(Box::new(EiderflatCad {
-                app: AppState::new(1200.0, 800.0),
+                app,
                 ui: UiState::default(),
             }))
         }),
