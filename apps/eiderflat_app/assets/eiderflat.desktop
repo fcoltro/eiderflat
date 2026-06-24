@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=eiderFLAT
+GenericName=CAD Editor
+Comment=2D CAD drawing and editing
+Exec=eiderflat %f
+Icon=eiderflat
+Terminal=false
+Categories=Graphics;Engineering;2DGraphics;
+StartupNotify=true

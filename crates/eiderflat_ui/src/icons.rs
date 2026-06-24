@@ -250,6 +250,45 @@ pub fn app_icon() -> egui::IconData {
     }
 }
 
+/// The app symbol rasterized to a square PNG of `size`×`size` px (straight
+/// alpha). Used to build the executable/launcher icons.
+pub fn app_icon_png(size: u32) -> Option<Vec<u8>> {
+    let svg = include_str!("../assets/logotype/symbol.svg");
+    rasterize_svg(svg, size, size)?.encode_png().ok()
+}
+
+/// A multi-resolution Windows `.ico` of the app symbol as raw file bytes, with
+/// one PNG-compressed entry per size (read by Windows Vista+). Embedded into the
+/// `.exe` by the app's build script so the file shows the icon in Explorer.
+pub fn app_icon_ico() -> Option<Vec<u8>> {
+    let sizes = [16u32, 24, 32, 48, 64, 128, 256];
+    let mut entries: Vec<(u32, Vec<u8>)> = Vec::with_capacity(sizes.len());
+    for &s in &sizes {
+        entries.push((s, app_icon_png(s)?));
+    }
+    let mut out = Vec::new();
+    out.extend_from_slice(&0u16.to_le_bytes()); // reserved
+    out.extend_from_slice(&1u16.to_le_bytes()); // type: icon
+    out.extend_from_slice(&(entries.len() as u16).to_le_bytes());
+    let mut offset = 6 + entries.len() * 16; // header + directory entries
+    for (s, png) in &entries {
+        let dim = if *s >= 256 { 0u8 } else { *s as u8 }; // 256 encodes as 0
+        out.push(dim); // width
+        out.push(dim); // height
+        out.push(0); // palette colors
+        out.push(0); // reserved
+        out.extend_from_slice(&1u16.to_le_bytes()); // color planes
+        out.extend_from_slice(&32u16.to_le_bytes()); // bits per pixel
+        out.extend_from_slice(&(png.len() as u32).to_le_bytes());
+        out.extend_from_slice(&(offset as u32).to_le_bytes());
+        offset += png.len();
+    }
+    for (_, png) in &entries {
+        out.extend_from_slice(png);
+    }
+    Some(out)
+}
+
 pub fn logo_texture(ctx: &egui::Context) -> Option<egui::TextureHandle> {
     let id = egui::Id::new("eiderflat_logo_tex");
     if let Some(t) = ctx.data(|d| d.get_temp::<egui::TextureHandle>(id)) {
