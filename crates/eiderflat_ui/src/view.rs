@@ -19,7 +19,7 @@ use chrome::{
 use palette::command_bar;
 use render::{
     HATCH_SELECT, draw_corner_preview, draw_dashed_line, draw_entity, draw_grid, draw_prompt_chip,
-    draw_scale_bar, draw_transform_ghost, draw_trim_extend_preview, layer_visible,
+    draw_dimension, draw_scale_bar, draw_transform_ghost, draw_trim_extend_preview, layer_visible,
     refresh_hatch_cache, refresh_text_cache, resolve_color, resolve_line_weight_px, tool_prompt,
 };
 use tessellate::draw_curve;
@@ -1169,6 +1169,15 @@ fn canvas(root_ui: &mut egui::Ui, app: &mut AppState, ui_state: &mut UiState, pa
         let preview_stroke = Stroke::new(1.5, crate::theme::PREVIEW);
         for c in app.tool.preview(&cursor) {
             draw_curve(&painter, &c, &to_screen, preview_stroke);
+        }
+        // Live dimension: once both points are placed, preview the full
+        // dimension (extension lines, arrows, text) tracking the cursor offset.
+        if let Tool::Dimension {
+            p1: Some(a),
+            p2: Some(b),
+        } = &app.tool
+        {
+            draw_dimension(&painter, app, *a, *b, cursor, &to_screen, crate::theme::PREVIEW);
         }
         draw_transform_ghost(&painter, app, &to_screen);
         draw_trim_extend_preview(&painter, app, &to_screen);

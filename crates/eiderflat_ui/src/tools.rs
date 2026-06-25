@@ -693,10 +693,8 @@ impl Tool {
                 p1: Some(a),
                 p2: None,
             } => vec![Curve::Line(LineSeg::from_endpoints(*a, *cursor))],
-            Tool::Dimension {
-                p1: Some(a),
-                p2: Some(b),
-            } => vec![Curve::Line(LineSeg::from_endpoints(*a, *b))],
+            // With both points placed, the full dimension preview (extension
+            // lines, arrows, text) is drawn by the canvas instead of a curve.
             Tool::CircleTwoPoint { first: Some(a) } => {
                 let d = a.dist_f64(cursor);
                 if d < 1e-9 {

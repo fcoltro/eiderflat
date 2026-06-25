@@ -290,7 +290,7 @@ impl AppState {
         let dim_layer = is_dim.then(|| {
             self.document.layers.add(
                 eiderflat_document::Layer::new(eiderflat_document::DIMENSION_LAYER)
-                    .with_color(120, 170, 255),
+                    .with_color(46, 204, 113),
             )
         });
         if let Some(e) = self.document.get_mut(id) {

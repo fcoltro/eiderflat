@@ -884,7 +884,7 @@ pub(super) fn draw_entity(
 /// points out to the dimension line, the dimension line with arrowheads, and
 /// the measured length as text — rotated to sit along the dimension line and
 /// sized/fonted by the document's dimension style.
-fn draw_dimension(
+pub(super) fn draw_dimension(
     painter: &egui::Painter,
     app: &AppState,
     p1: Point2d,
