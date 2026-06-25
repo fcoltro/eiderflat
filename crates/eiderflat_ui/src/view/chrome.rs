@@ -426,7 +426,12 @@ fn menu_items(ui: &mut egui::Ui, app: &mut AppState) {
         tool_menu_item(ui, app, "Circle", Tool::Circle { center: None });
         ui.menu_button("Circle ▸", |ui| {
             tool_menu_item(ui, app, "Center, Radius", Tool::Circle { center: None });
-            tool_menu_item(ui, app, "2 Points (diameter)", Tool::CircleTwoPoint { first: None });
+            tool_menu_item(
+                ui,
+                app,
+                "2 Points (diameter)",
+                Tool::CircleTwoPoint { first: None },
+            );
             tool_menu_item(ui, app, "3 Points", Tool::CircleThreePoint { pts: vec![] });
             tool_menu_item(
                 ui,
@@ -492,12 +497,7 @@ fn menu_items(ui: &mut egui::Ui, app: &mut AppState) {
             },
         );
         ui.separator();
-        tool_menu_item(
-            ui,
-            app,
-            "Dimension",
-            Tool::Dimension { p1: None, p2: None },
-        );
+        tool_menu_item(ui, app, "Dimension", Tool::Dimension { p1: None, p2: None });
     });
     ui.menu_button("Modify", |ui| {
         tool_menu_item(
@@ -766,7 +766,10 @@ pub(super) fn line_props_dialog(ctx: &Context, app: &mut AppState, ui_state: &mu
                     let sw_lbl = sw.as_ref().map(lw_label).unwrap_or_else(|| "—".into());
                     appearance_row(ui, "Line weight", sw_lbl, None, false, |ui| {
                         for (lbl, val) in lw_options() {
-                            if ui.selectable_label(sw.as_ref() == Some(&val), lbl).clicked() {
+                            if ui
+                                .selectable_label(sw.as_ref() == Some(&val), lbl)
+                                .clicked()
+                            {
                                 app.history.snapshot(&app.document);
                                 for &id in &sel {
                                     if let Some(e) = app.document.get_mut(id) {
@@ -781,7 +784,10 @@ pub(super) fn line_props_dialog(ctx: &Context, app: &mut AppState, ui_state: &mu
                     let st_lbl = st.as_ref().map(lt_label).unwrap_or_else(|| "—".into());
                     appearance_row(ui, "Line type", st_lbl, None, true, |ui| {
                         for (lbl, val) in lt_options() {
-                            if ui.selectable_label(st.as_ref() == Some(&val), lbl).clicked() {
+                            if ui
+                                .selectable_label(st.as_ref() == Some(&val), lbl)
+                                .clicked()
+                            {
                                 app.history.snapshot(&app.document);
                                 for &id in &sel {
                                     if let Some(e) = app.document.get_mut(id) {
@@ -995,7 +1001,11 @@ pub(super) fn font_combo(ui: &mut egui::Ui, salt: &str, font: &mut Option<String
         .selected_text(label)
         .width(150.0)
         .show_ui(ui, |ui| {
-            if ui.selectable_label(font.is_none(), &default_label).clicked() && font.is_some() {
+            if ui
+                .selectable_label(font.is_none(), &default_label)
+                .clicked()
+                && font.is_some()
+            {
                 *font = None;
                 changed = true;
             }
@@ -1993,26 +2003,23 @@ fn layer_appearance_menus(ui: &mut egui::Ui, app: &mut AppState, i: usize) {
         LineTypeRef::Named(n) if n == "Center" => "─·",
         _ => "──",
     };
-    ui.menu_button(
-        egui::RichText::new(lt_glyph).monospace().size(12.0),
-        |ui| {
-            for (lbl, name) in [
-                ("Solid", "Continuous"),
-                ("Dashed", "Dashed"),
-                ("Dotted", "Dotted"),
-                ("Center", "Center"),
-            ] {
-                let val = LineTypeRef::Named(name.into());
-                if ui.selectable_label(cur_lt == val, lbl).clicked() {
-                    app.history.snapshot(&app.document);
-                    if let Some(l) = app.document.layers.get_mut(i) {
-                        l.line_type = val;
-                    }
-                    ui.close();
+    ui.menu_button(egui::RichText::new(lt_glyph).monospace().size(12.0), |ui| {
+        for (lbl, name) in [
+            ("Solid", "Continuous"),
+            ("Dashed", "Dashed"),
+            ("Dotted", "Dotted"),
+            ("Center", "Center"),
+        ] {
+            let val = LineTypeRef::Named(name.into());
+            if ui.selectable_label(cur_lt == val, lbl).clicked() {
+                app.history.snapshot(&app.document);
+                if let Some(l) = app.document.layers.get_mut(i) {
+                    l.line_type = val;
                 }
+                ui.close();
             }
-        },
-    )
+        }
+    })
     .response
     .on_hover_text("Layer line type");
 
@@ -2028,25 +2035,25 @@ fn layer_appearance_menus(ui: &mut egui::Ui, app: &mut AppState, i: usize) {
     } else {
         format!("{cur_w:.2}")
     };
-    ui.menu_button(
-        egui::RichText::new(w_lbl).monospace().size(11.0),
-        |ui| {
-            for mm in [0.0, 0.13, 0.25, 0.35, 0.50, 0.70, 1.00] {
-                let lbl = if mm <= 0.0 {
-                    "Default (hairline)".to_string()
-                } else {
-                    format!("{mm:.2} mm")
-                };
-                if ui.selectable_label((cur_w - mm).abs() < 1e-9, lbl).clicked() {
-                    app.history.snapshot(&app.document);
-                    if let Some(l) = app.document.layers.get_mut(i) {
-                        l.line_weight_mm = mm;
-                    }
-                    ui.close();
+    ui.menu_button(egui::RichText::new(w_lbl).monospace().size(11.0), |ui| {
+        for mm in [0.0, 0.13, 0.25, 0.35, 0.50, 0.70, 1.00] {
+            let lbl = if mm <= 0.0 {
+                "Default (hairline)".to_string()
+            } else {
+                format!("{mm:.2} mm")
+            };
+            if ui
+                .selectable_label((cur_w - mm).abs() < 1e-9, lbl)
+                .clicked()
+            {
+                app.history.snapshot(&app.document);
+                if let Some(l) = app.document.layers.get_mut(i) {
+                    l.line_weight_mm = mm;
                 }
+                ui.close();
             }
-        },
-    )
+        }
+    })
     .response
     .on_hover_text("Layer line weight");
 }
@@ -2109,7 +2116,8 @@ pub(super) fn contextual_toolbar(ctx: &Context, app: &mut AppState, canvas_rect:
                                 ids: vec![],
                             }));
                         }
-                        if icon_button_sized(ui, Icon::Offset, "Offset  (Shift+O)", false, 38.0).clicked()
+                        if icon_button_sized(ui, Icon::Offset, "Offset  (Shift+O)", false, 38.0)
+                            .clicked()
                         {
                             app.execute(Command::Activate(Tool::Offset {
                                 dist: 1.0,
@@ -2466,7 +2474,10 @@ fn appearance_section(ui: &mut egui::Ui, app: &mut AppState, sel: &[eiderflat_do
         .first()
         .and_then(|&id| app.document.get(id))
         .map(|e| e.line_weight.clone());
-    let lw_lbl = first_lw.as_ref().map(lw_label).unwrap_or_else(|| "By layer".into());
+    let lw_lbl = first_lw
+        .as_ref()
+        .map(lw_label)
+        .unwrap_or_else(|| "By layer".into());
     appearance_row(ui, "Line weight", lw_lbl, None, false, |ui| {
         for (lbl, val) in lw_options() {
             if ui
@@ -2489,7 +2500,10 @@ fn appearance_section(ui: &mut egui::Ui, app: &mut AppState, sel: &[eiderflat_do
         .first()
         .and_then(|&id| app.document.get(id))
         .map(|e| e.line_type.clone());
-    let lt_lbl = first_lt.as_ref().map(lt_label).unwrap_or_else(|| "By layer".into());
+    let lt_lbl = first_lt
+        .as_ref()
+        .map(lt_label)
+        .unwrap_or_else(|| "By layer".into());
     appearance_row(ui, "Line type", lt_lbl, None, true, |ui| {
         for (lbl, val) in lt_options() {
             if ui

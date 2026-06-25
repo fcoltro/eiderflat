@@ -1367,10 +1367,7 @@ mod tests {
     #[test]
     fn dimension_lands_on_dimension_layer() {
         let mut a = app();
-        a.tool = crate::tools::Tool::Dimension {
-            p1: None,
-            p2: None,
-        };
+        a.tool = crate::tools::Tool::Dimension { p1: None, p2: None };
         a.place_tool_point(Point2d::from_f64(0.0, 0.0));
         a.place_tool_point(Point2d::from_f64(10.0, 0.0));
         a.place_tool_point(Point2d::from_f64(0.0, 3.0)); // commits the dimension

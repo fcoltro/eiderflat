@@ -345,7 +345,8 @@ impl Tool {
             Tool::CircleThreePoint { pts } => {
                 pts.push(p);
                 if pts.len() == 3 {
-                    let res = eiderflat_geometry::circle_through_three_points(pts[0], pts[1], pts[2]);
+                    let res =
+                        eiderflat_geometry::circle_through_three_points(pts[0], pts[1], pts[2]);
                     *self = Tool::CircleThreePoint { pts: vec![] };
                     match res {
                         Some((c, r)) => ToolEvent::Create(vec![EntityKind::Curve(Curve::Arc(

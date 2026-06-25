@@ -946,7 +946,11 @@ fn recurve_loop(loop_: &[Curve], parts: &[Curve]) -> Vec<Curve> {
         for j in 1..=len {
             let raw = va[(e + j) % m].unwrap().1;
             let prev = *u.last().unwrap();
-            u.push(if closed { raw + (prev - raw).round() } else { raw });
+            u.push(if closed {
+                raw + (prev - raw).round()
+            } else {
+                raw
+            });
         }
         let (t0, t1) = (u[0], u[len]);
         let inc = t1 >= t0;
@@ -1163,7 +1167,10 @@ mod tests {
             .iter()
             .map(tri_area)
             .sum();
-        assert!((total - 24.0).abs() < 1e-5, "nested fill area 24, got {total}");
+        assert!(
+            (total - 24.0).abs() < 1e-5,
+            "nested fill area 24, got {total}"
+        );
     }
 
     #[test]
@@ -1174,7 +1181,10 @@ mod tests {
             .iter()
             .map(tri_area)
             .sum();
-        assert!((total - 8.0).abs() < 1e-5, "two-region fill area 8, got {total}");
+        assert!(
+            (total - 8.0).abs() < 1e-5,
+            "two-region fill area 8, got {total}"
+        );
     }
 
     #[test]

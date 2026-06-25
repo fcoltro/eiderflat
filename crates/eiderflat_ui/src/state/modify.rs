@@ -282,13 +282,11 @@ impl AppState {
         let picked_circle = picked.and_then(|id| self.circle_of(id).map(|c| (id, c)));
 
         let nearest = |pts: &[Point2d], target: Point2d| -> Option<Point2d> {
-            pts.iter()
-                .copied()
-                .min_by(|a, b| {
-                    a.dist_sq(&target)
-                        .partial_cmp(&b.dist_sq(&target))
-                        .unwrap_or(std::cmp::Ordering::Equal)
-                })
+            pts.iter().copied().min_by(|a, b| {
+                a.dist_sq(&target)
+                    .partial_cmp(&b.dist_sq(&target))
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
         };
 
         match first {
@@ -322,10 +320,11 @@ impl AppState {
                     Some((bid, (o2, r2))) if bid != aid => {
                         let segs = eiderflat_geometry::common_tangent_segments(o1, r1, o2, r2);
                         let best = segs.into_iter().min_by(|x, y| {
-                            let cost = |s: &(Point2d, Point2d)| {
-                                s.0.dist_sq(&aclick) + s.1.dist_sq(p)
-                            };
-                            cost(x).partial_cmp(&cost(y)).unwrap_or(std::cmp::Ordering::Equal)
+                            let cost =
+                                |s: &(Point2d, Point2d)| s.0.dist_sq(&aclick) + s.1.dist_sq(p);
+                            cost(x)
+                                .partial_cmp(&cost(y))
+                                .unwrap_or(std::cmp::Ordering::Equal)
                         });
                         if let Some((t1, t2)) = best {
                             self.create_line(t1, t2);

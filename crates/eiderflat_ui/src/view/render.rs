@@ -518,14 +518,15 @@ pub(super) fn resolve_line_pattern(app: &AppState, e: &eiderflat_document::Entit
     // Resolve the named line type, following "by layer" to the layer's type.
     let name = match &e.line_type {
         LineTypeRef::Named(n) => Some(n.clone()),
-        LineTypeRef::ByLayer | LineTypeRef::ByBlock => app
-            .document
-            .layers
-            .get(e.layer)
-            .and_then(|l| match &l.line_type {
-                LineTypeRef::Named(n) => Some(n.clone()),
-                _ => None,
-            }),
+        LineTypeRef::ByLayer | LineTypeRef::ByBlock => {
+            app.document
+                .layers
+                .get(e.layer)
+                .and_then(|l| match &l.line_type {
+                    LineTypeRef::Named(n) => Some(n.clone()),
+                    _ => None,
+                })
+        }
     };
     let Some(name) = name else {
         return Vec::new();
@@ -593,10 +594,22 @@ pub(super) fn refresh_text_cache(app: &AppState, cache: &mut super::TextCache) {
             // Bucket is part of the signature, so the glyph fill re-triangulates
             // (and only then) when the text, font, placement, or zoom changes —
             // keeping the outline crisp as you zoom in without per-frame cost.
-            let sig = text_signature(content, *height, *rotation, font.as_deref(), *anchor, bucket as i64);
+            let sig = text_signature(
+                content,
+                *height,
+                *rotation,
+                font.as_deref(),
+                *anchor,
+                bucket as i64,
+            );
             if cache.get(&e.id).map(|(s, _)| *s) != Some(sig) {
-                let contours =
-                    crate::fonts::outline_text(content, font.as_deref(), *height, *anchor, *rotation);
+                let contours = crate::fonts::outline_text(
+                    content,
+                    font.as_deref(),
+                    *height,
+                    *anchor,
+                    *rotation,
+                );
                 let tris = eiderflat_cad::triangulate_contours(&contours, tol);
                 cache.insert(e.id, (sig, tris));
             }
@@ -959,7 +972,13 @@ pub(super) fn draw_dimension(
 }
 
 /// Filled arrowhead at `tip`, pointing along `from`→`tip`, `size` px long.
-fn arrowhead(painter: &egui::Painter, tip: egui::Pos2, from: egui::Pos2, size: f32, color: Color32) {
+fn arrowhead(
+    painter: &egui::Painter,
+    tip: egui::Pos2,
+    from: egui::Pos2,
+    size: f32,
+    color: Color32,
+) {
     let d = tip - from;
     let len = d.length();
     if len < 1e-3 {

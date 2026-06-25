@@ -271,14 +271,35 @@ pub fn apply_grip(start: &EntityKind, grip: &Grip, to: Point2d) -> EntityKind {
             }
         }
 
-        (EntityKind::Dimension { p2, line, height, .. }, GripRole::Endpoint(0)) => {
-            EntityKind::Dimension { p1: to, p2: *p2, line: *line, height: *height }
-        }
-        (EntityKind::Dimension { p1, line, height, .. }, GripRole::Endpoint(1)) => {
-            EntityKind::Dimension { p1: *p1, p2: to, line: *line, height: *height }
-        }
+        (
+            EntityKind::Dimension {
+                p2, line, height, ..
+            },
+            GripRole::Endpoint(0),
+        ) => EntityKind::Dimension {
+            p1: to,
+            p2: *p2,
+            line: *line,
+            height: *height,
+        },
+        (
+            EntityKind::Dimension {
+                p1, line, height, ..
+            },
+            GripRole::Endpoint(1),
+        ) => EntityKind::Dimension {
+            p1: *p1,
+            p2: to,
+            line: *line,
+            height: *height,
+        },
         (EntityKind::Dimension { p1, p2, height, .. }, GripRole::Vertex(2)) => {
-            EntityKind::Dimension { p1: *p1, p2: *p2, line: to, height: *height }
+            EntityKind::Dimension {
+                p1: *p1,
+                p2: *p2,
+                line: to,
+                height: *height,
+            }
         }
 
         _ => start.clone(),

@@ -793,7 +793,10 @@ mod tests {
         let e = doc2.iter().next().expect("one entity");
         match &e.kind {
             EntityKind::Dimension {
-                p1, p2, line, height,
+                p1,
+                p2,
+                line,
+                height,
             } => {
                 assert_eq!(*p1, pt_i(0, 0));
                 assert_eq!(*p2, pt_i(10, 0));

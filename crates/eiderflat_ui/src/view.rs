@@ -13,14 +13,15 @@ mod palette;
 mod render;
 mod tessellate;
 use chrome::{
-    about_window, contextual_toolbar, handle_shortcuts, inspector, line_props_dialog,
-    ribbon, settings_dialog, status_pill, top_bar,
+    about_window, contextual_toolbar, handle_shortcuts, inspector, line_props_dialog, ribbon,
+    settings_dialog, status_pill, top_bar,
 };
 use palette::command_bar;
 use render::{
-    HATCH_SELECT, draw_corner_preview, draw_dashed_line, draw_entity, draw_grid, draw_prompt_chip,
-    draw_dimension, draw_scale_bar, draw_transform_ghost, draw_trim_extend_preview, layer_visible,
-    refresh_hatch_cache, refresh_text_cache, resolve_color, resolve_line_weight_px, tool_prompt,
+    HATCH_SELECT, draw_corner_preview, draw_dashed_line, draw_dimension, draw_entity, draw_grid,
+    draw_prompt_chip, draw_scale_bar, draw_transform_ghost, draw_trim_extend_preview,
+    layer_visible, refresh_hatch_cache, refresh_text_cache, resolve_color, resolve_line_weight_px,
+    tool_prompt,
 };
 use tessellate::draw_curve;
 
@@ -1141,8 +1142,12 @@ fn canvas(root_ui: &mut egui::Ui, app: &mut AppState, ui_state: &mut UiState, pa
                 let b = to_screen(end.0, end.1);
                 draw_dashed_line(&painter, a, b, stroke, 6.0, 6.0);
             }
-            let mut labels: Vec<&str> =
-                app.interaction.active_guides.iter().map(|g| g.kind.label()).collect();
+            let mut labels: Vec<&str> = app
+                .interaction
+                .active_guides
+                .iter()
+                .map(|g| g.kind.label())
+                .collect();
             labels.dedup();
             let cc = to_screen(app.cursor_world.0, app.cursor_world.1);
             painter.text(

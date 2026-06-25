@@ -83,8 +83,16 @@ pub fn tangent_circle_ttt(
 #[derive(Clone, Copy)]
 enum Object {
     /// Normalized line `a·x + b·y + c = 0` (unit normal ⇒ signed distance).
-    Line { a: f64, b: f64, c: f64 },
-    Circle { ox: f64, oy: f64, r: f64 },
+    Line {
+        a: f64,
+        b: f64,
+        c: f64,
+    },
+    Circle {
+        ox: f64,
+        oy: f64,
+        r: f64,
+    },
 }
 
 fn as_object(curve: &Curve) -> Option<Object> {
@@ -95,7 +103,11 @@ fn as_object(curve: &Curve) -> Option<Object> {
         }
         Curve::Arc(arc) => {
             let (ox, oy) = arc.center.to_f64();
-            Some(Object::Circle { ox, oy, r: arc.radius })
+            Some(Object::Circle {
+                ox,
+                oy,
+                r: arc.radius,
+            })
         }
         _ => None,
     }
@@ -128,7 +140,12 @@ fn solve_apollonius(objs: &[Object; 3], signs: [f64; 3]) -> Vec<(Point2d, f64)> 
         };
     };
 
-    let Object::Circle { ox: oax, oy: oay, r: ra } = objs[ai] else {
+    let Object::Circle {
+        ox: oax,
+        oy: oay,
+        r: ra,
+    } = objs[ai]
+    else {
         unreachable!()
     };
     let sa = signs[ai];
@@ -206,7 +223,10 @@ pub fn tangent_points_from_point(o: Point2d, r: f64, p: Point2d) -> Vec<Point2d>
     let base = (p.y - o.y).atan2(p.x - o.x);
     let th = (r / d).clamp(-1.0, 1.0).acos();
     if th < EPS {
-        return vec![Point2d::from_f64(o.x + r * base.cos(), o.y + r * base.sin())];
+        return vec![Point2d::from_f64(
+            o.x + r * base.cos(),
+            o.y + r * base.sin(),
+        )];
     }
     [base + th, base - th]
         .iter()
@@ -288,7 +308,10 @@ fn center_loci(curve: &Curve, dist: f64) -> Option<Vec<Locus>> {
         }
         Curve::Arc(a) => {
             let c = a.center.to_f64();
-            let mut loci = vec![Locus::Circle { c, r: a.radius + dist }];
+            let mut loci = vec![Locus::Circle {
+                c,
+                r: a.radius + dist,
+            }];
             let inner = (a.radius - dist).abs();
             if inner > EPS {
                 loci.push(Locus::Circle { c, r: inner });
@@ -453,9 +476,15 @@ mod tests {
         let y = line(0.0, 0.0, 0.0, 10.0);
         let (c, r) = tangent_circle_ttr(&x, &y, 1.0, Point2d::from_f64(5.0, 5.0)).unwrap();
         assert!((r - 1.0).abs() < 1e-9);
-        assert!((c.x - 1.0).abs() < 1e-9 && (c.y - 1.0).abs() < 1e-9, "got {c:?}");
+        assert!(
+            (c.x - 1.0).abs() < 1e-9 && (c.y - 1.0).abs() < 1e-9,
+            "got {c:?}"
+        );
         let (c2, _) = tangent_circle_ttr(&x, &y, 1.0, Point2d::from_f64(-5.0, -5.0)).unwrap();
-        assert!((c2.x + 1.0).abs() < 1e-9 && (c2.y + 1.0).abs() < 1e-9, "got {c2:?}");
+        assert!(
+            (c2.x + 1.0).abs() < 1e-9 && (c2.y + 1.0).abs() < 1e-9,
+            "got {c2:?}"
+        );
     }
 
     #[test]
@@ -473,7 +502,10 @@ mod tests {
         let (c, r) = tangent_circle_ttr(&circ, &l, 1.0, Point2d::from_f64(3.0, 1.0)).unwrap();
         assert!((r - 1.0).abs() < 1e-9);
         assert!((c.y - 1.0).abs() < 1e-6, "centre y should be 1, got {c:?}");
-        assert!(((c.x * c.x + c.y * c.y).sqrt() - 3.0).abs() < 1e-6, "dist to origin 3, got {c:?}");
+        assert!(
+            ((c.x * c.x + c.y * c.y).sqrt() - 3.0).abs() < 1e-6,
+            "dist to origin 3, got {c:?}"
+        );
     }
 
     #[test]
@@ -486,7 +518,10 @@ mod tests {
         let (center, r) = tangent_circle_ttt(&a, &b, &c, Point2d::from_f64(1.5, 1.5)).unwrap();
         let expect = (12.0 - 6.0 * 2.0_f64.sqrt()) / 2.0;
         assert!((r - expect).abs() < 1e-6, "incircle r {expect}, got {r}");
-        assert!((center.x - r).abs() < 1e-6 && (center.y - r).abs() < 1e-6, "got {center:?}");
+        assert!(
+            (center.x - r).abs() < 1e-6 && (center.y - r).abs() < 1e-6,
+            "got {center:?}"
+        );
     }
 
     #[test]
@@ -500,7 +535,10 @@ mod tests {
         let near = Point2d::from_f64(2.0, 2.0 * s / 3.0);
         let (center, r) = tangent_circle_ttt(&a, &b, &c, near).unwrap();
         assert!(r > 0.0);
-        assert!(is_tangent(center, r, &a), "not tangent to a: {center:?} r={r}");
+        assert!(
+            is_tangent(center, r, &a),
+            "not tangent to a: {center:?} r={r}"
+        );
         assert!(is_tangent(center, r, &b), "not tangent to b");
         assert!(is_tangent(center, r, &c), "not tangent to c");
     }
@@ -535,7 +573,11 @@ mod tests {
     fn tangent_points_from_external_point() {
         // Unit circle at origin, point at (2,0): tangent touch points are at
         // x = 1/2, y = ±√3/2 (the classic 60° result).
-        let pts = tangent_points_from_point(Point2d::from_f64(0.0, 0.0), 1.0, Point2d::from_f64(2.0, 0.0));
+        let pts = tangent_points_from_point(
+            Point2d::from_f64(0.0, 0.0),
+            1.0,
+            Point2d::from_f64(2.0, 0.0),
+        );
         assert_eq!(pts.len(), 2);
         for p in &pts {
             assert!((p.x - 0.5).abs() < 1e-9, "touch x should be 0.5, got {p:?}");
@@ -547,7 +589,11 @@ mod tests {
 
     #[test]
     fn point_inside_circle_has_no_tangents() {
-        let pts = tangent_points_from_point(Point2d::from_f64(0.0, 0.0), 2.0, Point2d::from_f64(0.5, 0.0));
+        let pts = tangent_points_from_point(
+            Point2d::from_f64(0.0, 0.0),
+            2.0,
+            Point2d::from_f64(0.5, 0.0),
+        );
         assert!(pts.is_empty());
     }
 

@@ -8,7 +8,6 @@ pub mod selection;
 pub mod snap;
 
 pub use draw as commands;
-pub use infer::{Guide, GuideKind, InferResult, infer_axis};
 pub use grips::{Grip, GripRole, apply_grip, apply_grip_value, grip_value_label, grips_for};
 pub use hatch::{
     boundary_loop, outline_loops as hatch_outline_loops, pattern_dots as hatch_pattern_dots,
@@ -16,5 +15,6 @@ pub use hatch::{
     triangulate as triangulate_hatch, triangulate_contours,
     triangulate_with_tol as triangulate_hatch_with_tol,
 };
+pub use infer::{Guide, GuideKind, InferResult, infer_axis};
 pub use selection::{pick_at, select_by, select_crossing, select_fence, select_window};
 pub use snap::{SnapKind, SnapPoint, SnapSettings, best_snap, find_snaps, find_snaps_excluding};
