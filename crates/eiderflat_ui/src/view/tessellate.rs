@@ -18,9 +18,32 @@ pub(super) fn draw_curve(
             painter.line_segment([to_screen(x0, y0), to_screen(x1, y1)], stroke);
         }
         other => {
-            painter.add(egui::Shape::line(flatten_curve(other, to_screen), stroke));
+            let mut pts = flatten_curve(other, to_screen);
+            // A curve whose ends meet (rectangle, polygon, full circle, closed
+            // spline) is drawn as a *closed* line so the start/end seam gets a
+            // proper corner join. With a plain open `Shape::line` that one
+            // vertex (e.g. a rectangle's bottom-left corner, which is the
+            // polycurve's seam) is butt-capped on both edges and looks unwelded.
+            if is_closed_curve(other) {
+                if pts.len() >= 2 && (pts[0] - pts[pts.len() - 1]).length() < 0.5 {
+                    pts.pop(); // drop the duplicated seam vertex
+                }
+                painter.add(egui::Shape::closed_line(pts, stroke));
+            } else {
+                painter.add(egui::Shape::line(pts, stroke));
+            }
         }
     }
+}
+
+/// Whether a curve's start and end coincide, i.e. it forms a closed loop
+/// (rectangle, polygon, full circle, closed spline). Used to pick a closed vs.
+/// open polyline so the seam vertex joins cleanly.
+fn is_closed_curve(c: &Curve) -> bool {
+    let (t0, t1) = c.domain();
+    let (sx, sy) = c.evaluate_f64(t0);
+    let (ex, ey) = c.evaluate_f64(t1);
+    (sx - ex).hypot(sy - ey) < 1e-9
 }
 
 /// Draw a curve with a line-type dash pattern. `pattern_px` alternates lengths
@@ -178,4 +201,37 @@ pub(super) fn point_seg_dist_sq(p: egui::Pos2, a: egui::Pos2, b: egui::Pos2) -> 
     let cx = a.x + t * abx;
     let cy = a.y + t * aby;
     (p.x - cx).powi(2) + (p.y - cy).powi(2)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use eiderflat_geometry::{LineSeg, Point2d, PolyCurve};
+
+    fn rect_poly() -> Curve {
+        let c = [
+            Point2d::new(0.0, 0.0),
+            Point2d::new(10.0, 0.0),
+            Point2d::new(10.0, 6.0),
+            Point2d::new(0.0, 6.0),
+        ];
+        let segs = (0..4)
+            .map(|i| Curve::Line(LineSeg::from_endpoints(c[i], c[(i + 1) % 4])))
+            .collect();
+        Curve::Poly(Box::new(PolyCurve::new(segs)))
+    }
+
+    #[test]
+    fn rectangle_polycurve_detected_as_closed() {
+        assert!(is_closed_curve(&rect_poly()));
+    }
+
+    #[test]
+    fn rectangle_flatten_ends_coincide() {
+        let id = |x: f64, y: f64| egui::pos2(x as f32, y as f32);
+        let pts = flatten_curve(&rect_poly(), &id);
+        assert!(pts.len() >= 4);
+        let gap = (pts[0] - pts[pts.len() - 1]).length();
+        assert!(gap < 1e-3, "start/end gap = {gap}");
+    }
 }

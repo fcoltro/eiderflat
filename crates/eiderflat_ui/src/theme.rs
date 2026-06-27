@@ -10,7 +10,7 @@ pub mod tok {
     pub const T_LG: f32 = 15.0;
 }
 // ── Planar CAD palette ─────────────────────────────────────────────────────
-// Deep blue-black canvas, translucent "glass" panels, a #3b82f6 blue accent.
+// Deep blue-black canvas, translucent "glass" panels, a #3095ff blue accent.
 pub const CANVAS_BG: Color32 = Color32::from_rgb(10, 12, 16); // #0a0c10
 pub const PANEL_BG: Color32 = Color32::from_rgb(20, 25, 36); // opaque panel base
 // NOTE: egui composites with premultiplied alpha, and `from_rgba_unmultiplied`
@@ -21,10 +21,10 @@ pub const PANEL_BG: Color32 = Color32::from_rgb(20, 25, 36); // opaque panel bas
 pub const PANEL_GLASS: Color32 = Color32::from_rgba_premultiplied(15, 19, 29, 222);
 pub const WIDGET_BG: Color32 = Color32::from_rgba_premultiplied(12, 12, 12, 12); // white @ ~5%
 pub const WIDGET_HOVER: Color32 = Color32::from_rgba_premultiplied(22, 22, 22, 22); // white @ ~9%
-pub const ACCENT: Color32 = Color32::from_rgb(59, 130, 246); // #3b82f6
-pub const ACCENT_BRIGHT: Color32 = Color32::from_rgb(108, 168, 255); // #6ca8ff
-pub const ACCENT_DIM: Color32 = Color32::from_rgba_premultiplied(12, 27, 50, 52); // accent @ ~20%
-pub const SNAP: Color32 = Color32::from_rgb(245, 185, 74); // #f5b94a amber
+pub const ACCENT: Color32 = Color32::from_rgb(48, 149, 255); // #3095ff
+pub const ACCENT_BRIGHT: Color32 = Color32::from_rgb(120, 185, 255); // #78b9ff
+pub const ACCENT_DIM: Color32 = Color32::from_rgba_premultiplied(10, 30, 52, 52); // accent @ ~20%
+pub const SNAP: Color32 = Color32::from_rgb(43, 233, 127); // #2be97f green
 pub const PREVIEW: Color32 = SNAP;
 pub const GUIDE: Color32 = Color32::from_rgb(255, 90, 160); // #ff5aa0 smart-guide magenta
 pub const STATUS_GREEN: Color32 = Color32::from_rgb(55, 211, 153); // #37d399 — all saved

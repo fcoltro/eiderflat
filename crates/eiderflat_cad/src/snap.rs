@@ -51,6 +51,7 @@ impl Default for SnapSettings {
                 SnapKind::Intersection,
                 SnapKind::Perpendicular,
                 SnapKind::Tangent,
+                SnapKind::Node,
             ],
             tolerance: 0.5,
         }

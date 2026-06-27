@@ -50,10 +50,16 @@ pub(super) fn curvature_comb(
     }
 }
 /// A compact, non-editable readout pinned just below-right of the cursor while a
-/// transform tool (Move/Copy/Rotate/Scale) is mid-operation. These tools have no
-/// dynamic-input HUD, so without this there is no live feedback on how far you've
-/// moved or how far you've turned.
+/// transform tool (Move/Copy/Rotate/Scale) is mid-operation. This is the
+/// fallback shown only when dynamic input is off; when it's on, the editable
+/// [`dyn_transform_hud`] takes over with the same values plus type-in fields.
 pub(super) fn cursor_readout(ctx: &egui::Context, app: &AppState, origin: egui::Pos2) {
+    // When dynamic input is on, the editable `dyn_transform_hud` shows these
+    // values (and lets the user type them), so the read-only pill would just
+    // double up. Keep the pill only as the fallback for DYN-off.
+    if app.dyn_on {
+        return;
+    }
     let (cx, cy) = app.cursor_world;
     let text = match &app.tool {
         Tool::Move { base: Some(b), .. } | Tool::Copy { base: Some(b), .. } => {
@@ -111,6 +117,232 @@ pub(super) fn cursor_readout(ctx: &egui::Context, app: &AppState, origin: egui::
                     );
                 });
         });
+}
+
+/// A single-line field for the dynamic-input HUDs. When `select_all` is set
+/// (the frame the HUD first appears) it grabs focus and selects the whole
+/// pre-filled value, so the first keystroke *replaces* the default instead of
+/// appending to it. When only `grab_focus` is set it takes focus without
+/// re-selecting — used to recapture focus if it drifts to nothing, so the user
+/// can always just start typing. Returns the field's `Response`.
+fn hud_field(
+    ui: &mut egui::Ui,
+    id: egui::Id,
+    buf: &mut String,
+    width: f32,
+    hint: &str,
+    select_all: bool,
+    grab_focus: bool,
+) -> egui::Response {
+    let out = egui::TextEdit::singleline(buf)
+        .id(id)
+        .desired_width(width)
+        .hint_text(hint)
+        .show(ui);
+    if select_all {
+        out.response.request_focus();
+        let mut state = out.state;
+        state
+            .cursor
+            .set_char_range(Some(egui::text::CCursorRange::select_all(&out.galley)));
+        state.store(ui.ctx(), id);
+    } else if grab_focus {
+        out.response.request_focus();
+    }
+    out.response.response
+}
+
+/// Editable cursor HUD for the transform tools (Move/Copy/Rotate/Scale) once a
+/// base point has been picked. Mirrors the read-only `cursor_readout` but lets
+/// the user type exact values: ΔX/ΔY for Move/Copy, an angle for Rotate, and a
+/// factor for Scale. Pressing Enter commits the transform.
+///
+/// Rotate honours the cursor side: the typed angle's magnitude turns the
+/// selection the same way the mouse currently sits relative to the base
+/// (cursor above the base → counter-clockwise, below → clockwise), so a typed
+/// value never needs a minus sign to spin the way you're already aiming.
+pub(super) fn dyn_transform_hud(
+    ctx: &egui::Context,
+    app: &mut AppState,
+    ui_state: &mut UiState,
+    origin: egui::Pos2,
+) {
+    enum Kind {
+        Translate,
+        Rotate,
+        Scale,
+    }
+    let info = match &app.tool {
+        Tool::Move { base: Some(b), .. } | Tool::Copy { base: Some(b), .. } => {
+            Some((Kind::Translate, b.to_f64(), None))
+        }
+        Tool::Rotate { base: Some(b), .. } => Some((Kind::Rotate, b.to_f64(), None)),
+        Tool::Scale {
+            base: Some(b),
+            reference,
+            ..
+        } => Some((Kind::Scale, b.to_f64(), Some(*reference))),
+        _ => None,
+    };
+    let (Some((kind, (bx, by), scale_ref)), true) = (info, app.dyn_on) else {
+        ui_state.dyn_tf_active = false;
+        return;
+    };
+
+    let (cx, cy) = app.cursor_world;
+    let first_show = !ui_state.dyn_tf_active;
+    ui_state.dyn_tf_active = true;
+
+    let dx_id = egui::Id::new("dyn_tf_dx");
+    let dy_id = egui::Id::new("dyn_tf_dy");
+    let ang_id = egui::Id::new("dyn_tf_angle");
+    let fac_id = egui::Id::new("dyn_tf_factor");
+
+    // Refresh the live defaults from the cursor while a field is *not* being
+    // edited, exactly like the line/circle HUDs.
+    let (dx, dy) = (cx - bx, cy - by);
+    let cursor_ang = (cy - by).atan2(cx - bx); // signed, -pi..pi
+    if !ctx.memory(|m| m.has_focus(dx_id)) {
+        ui_state.dyn_tf_dx = format!("{dx:.2}");
+    }
+    if !ctx.memory(|m| m.has_focus(dy_id)) {
+        ui_state.dyn_tf_dy = format!("{dy:.2}");
+    }
+    if !ctx.memory(|m| m.has_focus(ang_id)) {
+        ui_state.dyn_tf_angle = format!("{:.1}", cursor_ang.to_degrees());
+    }
+    if !ctx.memory(|m| m.has_focus(fac_id)) {
+        let live_factor = match scale_ref {
+            Some(Some(r)) if r > 1e-9 => ((cx - bx).powi(2) + (cy - by).powi(2)).sqrt() / r,
+            _ => 1.0,
+        };
+        ui_state.dyn_tf_factor = format!("{live_factor:.3}");
+    }
+
+    let cur = app.view.world_to_screen(cx, cy);
+    let hud_pos = pos2(
+        origin.x + cur.0 as f32 + 18.0,
+        origin.y + cur.1 as f32 - 38.0,
+    );
+
+    // Re-grab focus if it has drifted to nothing, so the field is always ready
+    // for typing (a pick-click that set the base can otherwise leave it idle).
+    let nothing_focused = ctx.memory(|m| m.focused().is_none());
+    let grab = first_show || nothing_focused;
+
+    let mut commit = false;
+    egui::Area::new(egui::Id::new("dyn_transform_hud"))
+        .fixed_pos(hud_pos)
+        .order(egui::Order::Foreground)
+        .show(ctx, |ui| {
+            corner_glass_frame().show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    let lbl = |ui: &mut egui::Ui, t: &str| {
+                        ui.label(
+                            egui::RichText::new(t)
+                                .size(12.0)
+                                .color(Color32::from_gray(170)),
+                        );
+                    };
+                    match kind {
+                        Kind::Translate => {
+                            lbl(ui, "ΔX");
+                            hud_field(
+                                ui,
+                                dx_id,
+                                &mut ui_state.dyn_tf_dx,
+                                56.0,
+                                "",
+                                first_show,
+                                grab,
+                            );
+                            lbl(ui, "ΔY");
+                            hud_field(ui, dy_id, &mut ui_state.dyn_tf_dy, 56.0, "", false, false);
+                        }
+                        Kind::Rotate => {
+                            // No leading ∠ glyph — it isn't in the bundled font
+                            // and renders as a tofu box; the trailing ° is enough.
+                            hud_field(
+                                ui,
+                                ang_id,
+                                &mut ui_state.dyn_tf_angle,
+                                56.0,
+                                "angle",
+                                first_show,
+                                grab,
+                            );
+                            lbl(ui, "°");
+                        }
+                        Kind::Scale => {
+                            lbl(ui, "×");
+                            hud_field(
+                                ui,
+                                fac_id,
+                                &mut ui_state.dyn_tf_factor,
+                                56.0,
+                                "factor",
+                                first_show,
+                                grab,
+                            );
+                        }
+                    }
+                });
+            });
+        });
+
+    if ctx.input(|i| i.key_pressed(egui::Key::Enter)) {
+        commit = true;
+    }
+    if !commit {
+        return;
+    }
+
+    match kind {
+        Kind::Translate => {
+            let tdx = ui_state.dyn_tf_dx.trim().parse::<f64>().unwrap_or(dx);
+            let tdy = ui_state.dyn_tf_dy.trim().parse::<f64>().unwrap_or(dy);
+            app.place_tool_point(Point2d::from_f64(bx + tdx, by + tdy));
+            ui_state.dyn_tf_active = false;
+        }
+        Kind::Rotate => {
+            let Ok(mag) = ui_state.dyn_tf_angle.trim().parse::<f64>() else {
+                return;
+            };
+            // Direction follows the cursor side; a bare magnitude spins the way
+            // the mouse is already aiming.
+            let dir = if cursor_ang >= 0.0 { 1.0 } else { -1.0 };
+            let ang = dir * mag.abs().to_radians();
+            // Rotate's `on_point` reads the angle from the base→point vector, so
+            // place a unit point at the desired angle to drive the rotation.
+            app.place_tool_point(Point2d::from_f64(bx + ang.cos(), by + ang.sin()));
+            ui_state.dyn_tf_active = false;
+        }
+        Kind::Scale => {
+            let Ok(factor) = ui_state.dyn_tf_factor.trim().parse::<f64>() else {
+                return;
+            };
+            if factor <= 1e-9 {
+                return;
+            }
+            // Make the second pick land on exactly `factor`: ensure a reference
+            // length exists, then place a point that distance from the base.
+            if let Tool::Scale { reference, .. } = &mut app.tool
+                && reference.is_none()
+            {
+                *reference = Some(1.0);
+            }
+            let r1 = if let Tool::Scale {
+                reference: Some(r), ..
+            } = &app.tool
+            {
+                *r
+            } else {
+                1.0
+            };
+            app.place_tool_point(Point2d::from_f64(bx + factor * r1, by));
+            ui_state.dyn_tf_active = false;
+        }
+    }
 }
 
 pub(super) fn dyn_line_hud(
@@ -588,16 +820,19 @@ pub(super) fn dyn_offset_hud(
                                 .size(12.0)
                                 .color(Color32::from_gray(170)),
                         );
-                        let dr = ui.add(
-                            egui::TextEdit::singleline(&mut ui_state.dyn_offset_dist)
-                                .id(did)
-                                .desired_width(58.0)
-                                .hint_text("distance"),
-                        );
+                        // `first_show` selects the pre-filled default (e.g. the
+                        // "1"), so typing replaces it instead of appending;
+                        // otherwise grab focus when idle so it's ready to type.
                         let nothing_focused = ui.ctx().memory(|m| m.focused().is_none());
-                        if first_show || nothing_focused {
-                            dr.request_focus();
-                        }
+                        hud_field(
+                            ui,
+                            did,
+                            &mut ui_state.dyn_offset_dist,
+                            58.0,
+                            "distance",
+                            first_show,
+                            !first_show && nothing_focused,
+                        );
                     });
                 });
             });

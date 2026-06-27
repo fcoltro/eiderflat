@@ -54,6 +54,11 @@ pub struct UiState {
     pub dyn_ell_active: bool,
     pub dyn_offset_dist: String,
     pub dyn_offset_active: bool,
+    pub dyn_tf_dx: String,
+    pub dyn_tf_dy: String,
+    pub dyn_tf_angle: String,
+    pub dyn_tf_factor: String,
+    pub dyn_tf_active: bool,
     pub dyn_corner_val: String,
     pub dyn_corner_active: bool,
     pub dyn_text_content: String,
@@ -297,6 +302,7 @@ fn canvas(root_ui: &mut egui::Ui, app: &mut AppState, ui_state: &mut UiState, pa
         overlays::dyn_offset_hud(ctx, app, ui_state, origin);
         overlays::dyn_corner_hud(ctx, app, ui_state, origin);
         overlays::dyn_text_hud(ctx, app, ui_state, origin);
+        overlays::dyn_transform_hud(ctx, app, ui_state, origin);
         overlays::cursor_readout(ctx, app, origin);
         let has_own_grips = !app.selection_grips().is_empty();
         let mut bbox_drag_active = false;
@@ -548,6 +554,10 @@ fn canvas(root_ui: &mut egui::Ui, app: &mut AppState, ui_state: &mut UiState, pa
                 || f == Some(egui::Id::new("dyn_offset_dist"))
                 || f == Some(egui::Id::new("dyn_corner_val"))
                 || f == Some(egui::Id::new("dyn_text_field"))
+                || f == Some(egui::Id::new("dyn_tf_dx"))
+                || f == Some(egui::Id::new("dyn_tf_dy"))
+                || f == Some(egui::Id::new("dyn_tf_angle"))
+                || f == Some(egui::Id::new("dyn_tf_factor"))
                 || f == Some(egui::Id::new("palette_input"))
         };
         if !palette_open
@@ -755,6 +765,10 @@ fn canvas(root_ui: &mut egui::Ui, app: &mut AppState, ui_state: &mut UiState, pa
             || focused_id == Some(egui::Id::new("dyn_offset_dist"))
             || focused_id == Some(egui::Id::new("dyn_corner_val"))
             || focused_id == Some(egui::Id::new("dyn_text_field"))
+            || focused_id == Some(egui::Id::new("dyn_tf_dx"))
+            || focused_id == Some(egui::Id::new("dyn_tf_dy"))
+            || focused_id == Some(egui::Id::new("dyn_tf_angle"))
+            || focused_id == Some(egui::Id::new("dyn_tf_factor"))
             || focused_id == Some(egui::Id::new("palette_input"));
         let poly_focus_armed = egui::Id::new("polygon_sides_focus_armed");
         if !app.dyn_on && matches!(app.tool, Tool::Polygon { center: None, .. }) {
@@ -927,7 +941,13 @@ fn canvas(root_ui: &mut egui::Ui, app: &mut AppState, ui_state: &mut UiState, pa
             }
             let (r, g, b) = resolve_color(app, e);
             let selected = selected_set.contains(&e.id);
-            let hovered = !selected && Some(e.id) == hovered_id;
+            // Trim/Extend already show a precise segment/ghost preview of exactly
+            // what changes, so recolouring the *whole* entity on hover is
+            // misleading (it looks like the entire entity will go). Suppress the
+            // full-entity hover highlight for those two tools.
+            let hovered = !selected
+                && Some(e.id) == hovered_id
+                && !matches!(app.tool, Tool::Trim | Tool::Extend);
             let is_hatch = matches!(e.kind, EntityKind::Hatch { .. });
             let color = if selected {
                 if is_hatch {
@@ -936,10 +956,11 @@ fn canvas(root_ui: &mut egui::Ui, app: &mut AppState, ui_state: &mut UiState, pa
                     Color32::from_rgb(0, 200, 255)
                 }
             } else if hovered {
-                // Amber while an entity-pick tool (trim, fillet, tangent, TTR/
-                // TTT, …) is hovering a candidate; cyan for plain selection hover.
+                // Secondary accent while an entity-pick tool (trim, fillet,
+                // tangent, TTR/TTT, …) is hovering a candidate; cyan for plain
+                // selection hover.
                 if app.tool.picks_entities() {
-                    Color32::from_rgb(255, 176, 32)
+                    crate::theme::SNAP
                 } else {
                     Color32::from_rgb(120, 230, 255)
                 }
@@ -1042,7 +1063,7 @@ fn canvas(root_ui: &mut egui::Ui, app: &mut AppState, ui_state: &mut UiState, pa
                 let p = to_screen(tp.x, tp.y);
                 let hot = hoverp.map(|h| (h - p).length() <= 9.0).unwrap_or(false);
                 let col = if hot {
-                    Color32::from_rgb(255, 176, 32)
+                    crate::theme::SNAP
                 } else {
                     crate::theme::ACCENT_BRIGHT
                 };
@@ -1299,8 +1320,53 @@ fn canvas(root_ui: &mut egui::Ui, app: &mut AppState, ui_state: &mut UiState, pa
         }
         let cursor = Point2d::from_f64(app.cursor_world.0, app.cursor_world.1);
         let preview_stroke = Stroke::new(1.5, crate::theme::PREVIEW);
-        for c in app.tool.preview(&cursor) {
-            draw_curve(&painter, &c, &to_screen, preview_stroke);
+        match &app.tool {
+            // Spline: the curve itself reads as the live preview, while the
+            // straight segments joining the control vertices are drawn as the
+            // dashed grey control polygon (matching a selected NURBS's control
+            // lines) so they're clearly the CV hull, not the spline.
+            Tool::Spline { .. } => {
+                let guide = Stroke::new(1.0, Color32::from_rgb(120, 140, 170));
+                for c in app.tool.preview(&cursor) {
+                    match &c {
+                        eiderflat_geometry::Curve::Line(l) => draw_dashed_line(
+                            &painter,
+                            to_screen(l.p0.x, l.p0.y),
+                            to_screen(l.p1.x, l.p1.y),
+                            guide,
+                            5.0,
+                            4.0,
+                        ),
+                        other => draw_curve(&painter, other, &to_screen, preview_stroke),
+                    }
+                }
+            }
+            // Closed shapes: draw the outline as a single closed line so every
+            // corner — including the seam — is welded, matching the committed
+            // entity (no butt-capped gap from separately drawn edges).
+            Tool::Rectangle { first: Some(_) }
+            | Tool::Polygon {
+                center: Some(_),
+                sides: Some(_),
+            } => {
+                let pts: Vec<egui::Pos2> = app
+                    .tool
+                    .preview(&cursor)
+                    .iter()
+                    .filter_map(|c| match c {
+                        eiderflat_geometry::Curve::Line(l) => Some(to_screen(l.p0.x, l.p0.y)),
+                        _ => None,
+                    })
+                    .collect();
+                if pts.len() >= 2 {
+                    painter.add(egui::Shape::closed_line(pts, preview_stroke));
+                }
+            }
+            _ => {
+                for c in app.tool.preview(&cursor) {
+                    draw_curve(&painter, &c, &to_screen, preview_stroke);
+                }
+            }
         }
         // Live dimension previews track the cursor in the dimension layer's
         // colour (green), so they read as the dimension they will become rather
@@ -1418,8 +1484,9 @@ fn canvas(root_ui: &mut egui::Ui, app: &mut AppState, ui_state: &mut UiState, pa
                 let box_stroke = if matches!(app.tool, Tool::Select) {
                     cross
                 } else {
-                    // Amber pick box matches the entity highlight for pick tools.
-                    Stroke::new(1.4, Color32::from_rgb(255, 176, 32))
+                    // Pick box matches the secondary-accent entity highlight for
+                    // pick tools.
+                    Stroke::new(1.4, crate::theme::SNAP)
                 };
                 painter.rect_stroke(
                     egui::Rect::from_center_size(

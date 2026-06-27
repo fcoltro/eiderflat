@@ -2653,52 +2653,60 @@ pub(super) fn tool_hint_panel(ctx: &Context, app: &AppState, canvas_rect: egui::
     // Sit just left of the inspector column, near the bottom. No card background —
     // a backgroundless, half-transparent heads-up hint that stays out of the way.
     // The x offset mirrors the inspector geometry (right margin 12 + width 292).
+    //
+    // Painted straight onto a paint layer (not an `Area`) so it is a true
+    // watermark: it registers no interactive region, so the cursor passes
+    // through it as if it weren't there — clicks, snapping and drawing all reach
+    // the canvas underneath.
     let _ = canvas_rect;
-    egui::Area::new(egui::Id::new("tool_hint_panel"))
-        .anchor(
-            egui::Align2::RIGHT_BOTTOM,
-            egui::vec2(-(12.0 + 292.0 + 12.0), -16.0),
-        )
-        .order(egui::Order::Foreground)
-        .interactable(false)
-        .show(ctx, |ui| {
-            // Non-selectable text so hovering the panel never shows a text caret.
-            ui.style_mut().interaction.selectable_labels = false;
-            ui.spacing_mut().item_spacing = egui::vec2(0.0, 5.0);
-            ui.label(
-                egui::RichText::new(title)
-                    .size(11.5)
-                    .strong()
-                    .color(crate::theme::ACCENT_BRIGHT.gamma_multiply(0.5)),
-            );
-            for (keys, desc) in rows {
-                ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing.x = 6.0;
-                    keycap(ui, keys);
-                    ui.label(
-                        egui::RichText::new(desc)
-                            .size(11.5)
-                            .color(crate::theme::TEXT_DIM.gamma_multiply(0.5)),
-                    );
-                });
-            }
-        });
-}
+    let painter = ctx.layer_painter(egui::LayerId::new(
+        egui::Order::Foreground,
+        egui::Id::new("tool_hint_panel"),
+    ));
+    let title_col = crate::theme::ACCENT_BRIGHT.gamma_multiply(0.5);
+    let key_col = crate::theme::TEXT.gamma_multiply(0.5);
+    let desc_col = crate::theme::TEXT_DIM.gamma_multiply(0.5);
+    let title_font = egui::FontId::proportional(11.5);
+    let key_font = egui::FontId::monospace(11.0);
+    let desc_font = egui::FontId::proportional(11.5);
+    let row_gap = 6.0; // keycap cell → description
+    let line_gap = 5.0; // between stacked lines
+    let cell_min = 46.0; // keeps descriptions aligned
 
-/// Draw a key label (e.g. `Esc`, `Ctrl+V`) for the hint panel: backgroundless,
-/// half-transparent monospace, slightly brighter than the description so it still
-/// reads as the key. A fixed-width cell keeps the descriptions aligned.
-fn keycap(ui: &mut egui::Ui, label: &str) {
-    let col = crate::theme::TEXT.gamma_multiply(0.5);
-    let galley = ui
-        .painter()
-        .layout_no_wrap(label.to_string(), egui::FontId::monospace(11.0), col);
-    let cell_w = galley.size().x.max(46.0);
-    let (rect, _) = ui.allocate_exact_size(
-        egui::vec2(cell_w, galley.size().y.max(16.0)),
-        egui::Sense::hover(),
-    );
-    ui.painter().galley(rect.min, galley, col);
+    // Lay everything out first so we can right/bottom-anchor the block.
+    let title_g = painter.layout_no_wrap(title.to_string(), title_font, title_col);
+    let row_g: Vec<(std::sync::Arc<egui::Galley>, std::sync::Arc<egui::Galley>)> = rows
+        .iter()
+        .map(|(keys, desc)| {
+            (
+                painter.layout_no_wrap(keys.to_string(), key_font.clone(), key_col),
+                painter.layout_no_wrap(desc.to_string(), desc_font.clone(), desc_col),
+            )
+        })
+        .collect();
+
+    let mut width = title_g.size().x;
+    let mut height = title_g.size().y;
+    for (kg, dg) in &row_g {
+        let cell_w = kg.size().x.max(cell_min);
+        width = width.max(cell_w + row_gap + dg.size().x);
+        height += line_gap + kg.size().y.max(16.0).max(dg.size().y);
+    }
+
+    let screen = ctx.content_rect();
+    let right = screen.right() - (12.0 + 292.0 + 12.0);
+    let left = right - width;
+    let mut y = screen.bottom() - 16.0 - height;
+
+    painter.galley(egui::pos2(left, y), title_g.clone(), title_col);
+    y += title_g.size().y + line_gap;
+    for (kg, dg) in row_g {
+        let row_h = kg.size().y.max(16.0).max(dg.size().y);
+        let cell_w = kg.size().x.max(cell_min);
+        painter.galley(egui::pos2(left, y), kg, key_col);
+        painter.galley(egui::pos2(left + cell_w + row_gap, y), dg, desc_col);
+        y += row_h + line_gap;
+    }
 }
 
 /// The hint title and key/gesture rows for the *active* tool, with the empty-

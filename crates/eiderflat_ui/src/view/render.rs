@@ -168,7 +168,7 @@ pub(super) fn tool_prompt(tool: &Tool) -> String {
                 "Specify first control point".into()
             } else {
                 format!(
-                    "Specify next control vertex ({} placed) — Enter/right-click finishes, C closes",
+                    "Specify next control vertex ({} placed) — click the start to close, Enter finishes",
                     pts.len()
                 )
             }
@@ -176,6 +176,8 @@ pub(super) fn tool_prompt(tool: &Tool) -> String {
         Tool::Polyline { pts } => {
             if pts.is_empty() {
                 "Specify start point".into()
+            } else if pts.len() >= 3 {
+                "Specify next point — click the start to close, Enter finishes".into()
             } else {
                 "Specify next point — Enter/right-click finishes".into()
             }

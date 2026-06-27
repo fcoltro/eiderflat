@@ -543,7 +543,7 @@ impl AppState {
             let mut s = self.snap.clone();
             s.tolerance = self.view.pixel_world_size() * self.snap_px;
             let ref_pt = self.tool.reference_point().map(|p| p.to_f64());
-            match dragged_entity {
+            let doc_snap = match dragged_entity {
                 // Skip the entity being edited (all snap kinds) so a grip never
                 // snaps to itself, including the moving edge's "apparent
                 // intersections" with everything it sweeps across.
@@ -551,6 +551,18 @@ impl AppState {
                     .into_iter()
                     .next(),
                 None => best_snap(&self.document, (wx, wy), &s, ref_pt),
+            };
+            // Also snap to the in-progress drawing's own vertices (polyline,
+            // spline, rectangle, …) which aren't in the document yet. Keep
+            // whichever candidate is closer to the cursor.
+            let self_snap = self.nearest_self_snap((wx, wy), s.tolerance);
+            match (doc_snap, self_snap) {
+                (Some(a), Some(b)) => {
+                    let da = (a.pos.0 - wx).hypot(a.pos.1 - wy);
+                    let db = (b.pos.0 - wx).hypot(b.pos.1 - wy);
+                    Some(if db < da { b } else { a })
+                }
+                (a, b) => a.or(b),
             }
         } else {
             None
@@ -630,6 +642,34 @@ impl AppState {
         }
     }
 
+    /// Nearest vertex already placed in the current in-progress tool, returned
+    /// as an Endpoint snap so a drawing can snap onto its own not-yet-committed
+    /// points (e.g. closing a polyline on its first vertex). Gated on the
+    /// Endpoint object-snap being enabled. The `entity` is a placeholder
+    /// (`origin_id`) since these points belong to no committed entity.
+    fn nearest_self_snap(&self, cursor: (f64, f64), tol: f64) -> Option<SnapPoint> {
+        if !self
+            .snap
+            .enabled
+            .contains(&eiderflat_cad::SnapKind::Endpoint)
+        {
+            return None;
+        }
+        let mut best: Option<(f64, (f64, f64))> = None;
+        for p in self.tool.in_progress_points() {
+            let (px, py) = p.to_f64();
+            let d = (px - cursor.0).hypot(py - cursor.1);
+            if d <= tol && best.map(|(bd, _)| d < bd).unwrap_or(true) {
+                best = Some((d, (px, py)));
+            }
+        }
+        best.map(|(_, pos)| SnapPoint {
+            kind: eiderflat_cad::SnapKind::Endpoint,
+            pos,
+            entity: self.origin_id,
+        })
+    }
+
     pub fn resolved_point(&self) -> Point2d {
         match &self.active_snap {
             Some(sp) => Point2d::from_f64(sp.pos.0, sp.pos.1),
@@ -668,13 +708,41 @@ impl AppState {
             return;
         }
 
+        // Clicking back on the start vertex of a polyline/spline welds it closed.
+        if self.try_close_on_start(p) {
+            return;
+        }
+
         let ev = self.tool.on_point(p);
         self.apply_tool_event(ev);
     }
 
     pub fn place_tool_point(&mut self, p: Point2d) {
+        if self.try_close_on_start(p) {
+            return;
+        }
         let ev = self.tool.on_point(p);
         self.apply_tool_event(ev);
+    }
+
+    /// If the active tool is a polyline/spline with at least three vertices and
+    /// `p` lands on its *start* vertex, weld it into a closed loop and commit it
+    /// (a real closed shape, not an open chain whose ends merely touch). Returns
+    /// whether it closed. The cursor self-snaps to the start vertex, so a click
+    /// there lands exactly on it; a click within snap distance also closes so it
+    /// still works with object snap turned off.
+    fn try_close_on_start(&mut self, p: Point2d) -> bool {
+        let close = match &self.tool {
+            Tool::Polyline { pts } | Tool::Spline { pts } => {
+                pts.len() >= 3 && pts[0].dist_f64(&p) <= self.view.pixel_world_size() * self.snap_px
+            }
+            _ => false,
+        };
+        if close {
+            let ev = self.tool.close_and_commit();
+            self.apply_tool_event(ev);
+        }
+        close
     }
 
     fn apply_tool_event(&mut self, ev: ToolEvent) {
@@ -1688,6 +1756,53 @@ mod tests {
 
     fn line(x0: i64, y0: i64, x1: i64, y1: i64) -> EntityKind {
         EntityKind::Curve(Curve::Line(LineSeg::from_endpoints(pt(x0, y0), pt(x1, y1))))
+    }
+
+    #[test]
+    fn polyline_closes_when_clicking_start_vertex() {
+        let mut a = app();
+        a.tool = Tool::Polyline { pts: Vec::new() };
+        a.place_tool_point(pt(0, 0));
+        a.place_tool_point(pt(10, 0));
+        a.place_tool_point(pt(5, 8));
+        // Clicking back on the start vertex welds it into a closed loop.
+        a.place_tool_point(pt(0, 0));
+
+        let poly = a
+            .document
+            .iter()
+            .find_map(|e| match &e.kind {
+                EntityKind::Curve(Curve::Poly(p)) => Some(p.clone()),
+                _ => None,
+            })
+            .expect("a closed polycurve should have been created");
+        // 3 vertices closed → 3 segments (the third is the closing edge).
+        assert_eq!(poly.segments.len(), 3);
+        let first = poly.segments.first().unwrap().as_line().unwrap();
+        let last = poly.segments.last().unwrap().as_line().unwrap();
+        assert!(
+            first.p0.dist_f64(&last.p1) < 1e-9,
+            "ends must coincide (welded)"
+        );
+        // The tool resets for the next polyline.
+        assert!(matches!(a.tool, Tool::Polyline { ref pts } if pts.is_empty()));
+    }
+
+    #[test]
+    fn polyline_does_not_close_on_a_non_start_point() {
+        let mut a = app();
+        a.tool = Tool::Polyline { pts: Vec::new() };
+        a.place_tool_point(pt(0, 0));
+        a.place_tool_point(pt(10, 0));
+        a.place_tool_point(pt(5, 8));
+        // A normal next point keeps drawing (no premature close/commit).
+        a.place_tool_point(pt(12, 8));
+        assert!(matches!(a.tool, Tool::Polyline { ref pts } if pts.len() == 4));
+        assert!(
+            !a.document
+                .iter()
+                .any(|e| matches!(&e.kind, EntityKind::Curve(Curve::Poly(_))))
+        );
     }
 
     #[test]

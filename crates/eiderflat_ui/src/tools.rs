@@ -961,6 +961,26 @@ impl Tool {
         }
     }
 
+    /// Vertices already placed in the current, not-yet-committed tool. Used for
+    /// self-snapping so a drawing can snap back onto its own points — e.g.
+    /// closing a polyline on its start vertex, or aligning a new rectangle/
+    /// polygon corner to an earlier one. These points live only in the tool
+    /// (not the document), so the normal object snap can't see them.
+    pub fn in_progress_points(&self) -> Vec<Point2d> {
+        match self {
+            Tool::Polyline { pts } | Tool::Spline { pts } => pts.clone(),
+            Tool::Arc3 { pts } | Tool::CircleThreePoint { pts } | Tool::DimAngular { pts } => {
+                pts.clone()
+            }
+            Tool::Line { last: Some(p) } => vec![*p],
+            Tool::Rectangle { first: Some(p) } => vec![*p],
+            Tool::Polygon {
+                center: Some(c), ..
+            } => vec![*c],
+            _ => Vec::new(),
+        }
+    }
+
     pub fn commit(&mut self) -> ToolEvent {
         match self {
             Tool::Polyline { pts } => {
