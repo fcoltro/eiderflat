@@ -903,10 +903,7 @@ fn canvas(root_ui: &mut egui::Ui, app: &mut AppState, ui_state: &mut UiState, pa
                 painter.rect_filled(handle_rect, 0.0, Color32::from_rgb(0, 200, 255));
             }
         }
-        let to_screen = |wx: f64, wy: f64| {
-            let (sx, sy) = app.view.world_to_screen(wx, wy);
-            pos2(origin.x + sx as f32, origin.y + sy as f32)
-        };
+        let to_screen = |wx: f64, wy: f64| render::world_to_screen_pos(app, origin, wx, wy);
         painter.rect_filled(rect, 0.0, crate::theme::CANVAS_BG);
         if app.grid_on {
             draw_grid(&painter, app, rect, &to_screen);
@@ -1011,7 +1008,7 @@ fn canvas(root_ui: &mut egui::Ui, app: &mut AppState, ui_state: &mut UiState, pa
             }
         }
         if matches!(app.tool, Tool::Select) && app.interaction.corner_action.is_none() {
-            let guide = Stroke::new(1.0, Color32::from_rgb(120, 140, 170));
+            let guide = Stroke::new(1.0, crate::theme::CONTROL_LINE);
             for (_, ctrl, _weights) in app.selected_nurbs_all() {
                 let pts: Vec<egui::Pos2> = ctrl.iter().map(|p| to_screen(p.x, p.y)).collect();
                 for w in pts.windows(2) {
@@ -1326,7 +1323,7 @@ fn canvas(root_ui: &mut egui::Ui, app: &mut AppState, ui_state: &mut UiState, pa
             // dashed grey control polygon (matching a selected NURBS's control
             // lines) so they're clearly the CV hull, not the spline.
             Tool::Spline { .. } => {
-                let guide = Stroke::new(1.0, Color32::from_rgb(120, 140, 170));
+                let guide = Stroke::new(1.0, crate::theme::CONTROL_LINE);
                 for c in app.tool.preview(&cursor) {
                     match &c {
                         eiderflat_geometry::Curve::Line(l) => draw_dashed_line(

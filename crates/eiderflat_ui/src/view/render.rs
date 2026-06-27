@@ -411,13 +411,33 @@ pub(super) fn draw_scale_bar(painter: &egui::Painter, app: &AppState, rect: egui
         crate::theme::ACCENT_BRIGHT,
     );
 }
+/// Map a world point to its on-screen position for the given draw `origin` (the
+/// canvas top-left). This is the body every per-frame `to_screen` closure shares;
+/// call sites keep a thin closure (`|x, y| world_to_screen_pos(app, origin, x, y)`)
+/// for ergonomics.
+pub(super) fn world_to_screen_pos(
+    app: &AppState,
+    origin: egui::Pos2,
+    wx: f64,
+    wy: f64,
+) -> egui::Pos2 {
+    let (sx, sy) = app.view.world_to_screen(wx, wy);
+    pos2(origin.x + sx as f32, origin.y + sy as f32)
+}
+
+/// Format `v` with up to `prec` decimals, dropping trailing zeros and any bare
+/// trailing dot (`1.5000 -> "1.5"`, `2.0 -> "2"`). Used wherever a number is
+/// shown to the user as a clean, editable default.
+pub(super) fn trim_decimals(v: f64, prec: usize) -> String {
+    let s = format!("{v:.prec$}");
+    s.trim_end_matches('0').trim_end_matches('.').to_string()
+}
+
 pub(super) fn format_distance(d: f64) -> String {
     if d >= 1.0 && (d.fract()).abs() < 1e-9 {
         format!("{}", d.round() as i64)
     } else {
-        let s = format!("{:.6}", d);
-        let s = s.trim_end_matches('0').trim_end_matches('.');
-        s.to_string()
+        trim_decimals(d, 6)
     }
 }
 
@@ -739,10 +759,7 @@ pub(super) fn draw_entity(
     hatch_loops: Option<&[Vec<Point2d>]>,
     text_tris: Option<&[[Point2d; 3]]>,
 ) {
-    let to_screen = |wx: f64, wy: f64| {
-        let (sx, sy) = app.view.world_to_screen(wx, wy);
-        pos2(origin.x + sx as f32, origin.y + sy as f32)
-    };
+    let to_screen = |wx: f64, wy: f64| world_to_screen_pos(app, origin, wx, wy);
 
     if e.id == app.origin_id {
         let origin_screen = to_screen(0.0, 0.0);

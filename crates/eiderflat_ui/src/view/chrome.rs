@@ -1120,18 +1120,7 @@ pub(super) fn settings_dialog(ctx: &Context, app: &mut AppState, ui_state: &mut 
                     });
 
                     settings_card(ui, "OBJECT SNAPS", |ui| {
-                        let kinds = [
-                            (eiderflat_cad::SnapKind::Endpoint, "Endpoint"),
-                            (eiderflat_cad::SnapKind::Midpoint, "Midpoint"),
-                            (eiderflat_cad::SnapKind::Center, "Center"),
-                            (eiderflat_cad::SnapKind::Quadrant, "Quadrant"),
-                            (eiderflat_cad::SnapKind::Intersection, "Intersection"),
-                            (eiderflat_cad::SnapKind::Perpendicular, "Perpendicular"),
-                            (eiderflat_cad::SnapKind::Tangent, "Tangent"),
-                            (eiderflat_cad::SnapKind::Nearest, "Nearest"),
-                            (eiderflat_cad::SnapKind::Node, "Node"),
-                            (eiderflat_cad::SnapKind::Insertion, "Insertion"),
-                        ];
+                        let kinds = eiderflat_cad::SNAP_KINDS;
                         ui.columns(2, |cols| {
                             for (i, (kind, label)) in kinds.into_iter().enumerate() {
                                 let ui = &mut cols[i % 2];
@@ -2187,18 +2176,7 @@ fn snap_master(ui: &mut egui::Ui, app: &mut AppState) {
     let trigger_hovered = sresp.hovered() || aresp.hovered();
 
     if open {
-        let kinds = [
-            (eiderflat_cad::SnapKind::Endpoint, "Endpoint"),
-            (eiderflat_cad::SnapKind::Midpoint, "Midpoint"),
-            (eiderflat_cad::SnapKind::Center, "Center"),
-            (eiderflat_cad::SnapKind::Quadrant, "Quadrant"),
-            (eiderflat_cad::SnapKind::Intersection, "Intersection"),
-            (eiderflat_cad::SnapKind::Perpendicular, "Perpendicular"),
-            (eiderflat_cad::SnapKind::Tangent, "Tangent"),
-            (eiderflat_cad::SnapKind::Nearest, "Nearest"),
-            (eiderflat_cad::SnapKind::Node, "Node"),
-            (eiderflat_cad::SnapKind::Insertion, "Insertion"),
-        ];
+        let kinds = eiderflat_cad::SNAP_KINDS;
         let popup = egui::Area::new(egui::Id::new("snap_kinds_popup_area"))
             .order(egui::Order::Foreground)
             .fixed_pos(union.left_top() - egui::vec2(0.0, 8.0))

@@ -30,6 +30,11 @@ pub const GUIDE: Color32 = Color32::from_rgb(255, 90, 160); // #ff5aa0 smart-gui
 pub const STATUS_GREEN: Color32 = Color32::from_rgb(55, 211, 153); // #37d399 — all saved
 pub const STATUS_AMBER: Color32 = Color32::from_rgb(245, 185, 74); // #f5b94a — unsaved changes
 pub const STATUS_RED: Color32 = Color32::from_rgb(240, 96, 96); // #f06060 — never saved
+/// Muted grey for the small field labels in the cursor dynamic-input HUDs.
+pub const HUD_LABEL: Color32 = Color32::from_gray(170);
+/// Dashed control-polygon / control-line grey (selected NURBS hull, live spline
+/// control lines).
+pub const CONTROL_LINE: Color32 = Color32::from_rgb(120, 140, 170);
 pub const TEXT: Color32 = Color32::from_rgb(233, 239, 248); // #e9eff8
 pub const TEXT_DIM: Color32 = Color32::from_rgb(140, 152, 172); // ~rgba(233,239,248,0.5)
 pub const OUTLINE: Color32 = Color32::from_rgba_premultiplied(16, 16, 16, 16); // white @ ~6%

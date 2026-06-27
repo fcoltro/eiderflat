@@ -17,10 +17,7 @@ pub(super) fn curvature_comb(
     scale: f64,
     samples: usize,
 ) {
-    let to_screen = |wx: f64, wy: f64| {
-        let (sx, sy) = app.view.world_to_screen(wx, wy);
-        pos2(origin.x + sx as f32, origin.y + sy as f32)
-    };
+    let to_screen = |wx: f64, wy: f64| super::render::world_to_screen_pos(app, origin, wx, wy);
     let (t0, t1) = curve.domain();
     let n = samples.max(2);
     let tooth = Stroke::new(1.0, Color32::from_rgb(190, 120, 255));
@@ -152,6 +149,38 @@ fn hud_field(
     out.response.response
 }
 
+/// A muted label for a dynamic-input HUD field (e.g. `L`, `∠`, `R`).
+fn hud_label(ui: &mut egui::Ui, text: &str) {
+    ui.label(
+        egui::RichText::new(text)
+            .size(12.0)
+            .color(crate::theme::HUD_LABEL),
+    );
+}
+
+/// Screen position for a cursor-anchored HUD: just below-right of the cursor,
+/// offset vertically by `dy` (negative sits the panel above the cursor).
+fn cursor_hud_pos(app: &AppState, origin: egui::Pos2, dy: f32) -> egui::Pos2 {
+    let (cx, cy) = app.cursor_world;
+    let cur = app.view.world_to_screen(cx, cy);
+    pos2(origin.x + cur.0 as f32 + 18.0, origin.y + cur.1 as f32 + dy)
+}
+
+/// The shared chrome for a dynamic-input HUD: a foreground glass panel pinned at
+/// `pos`, laying its contents out in a single horizontal row. Callers fill the
+/// row (labels + [`hud_field`]s) in `add`; commit/parse logic stays at the call
+/// site (after this returns) so it can borrow the tool mutably.
+fn cursor_hud(ctx: &egui::Context, id: &str, pos: egui::Pos2, add: impl FnOnce(&mut egui::Ui)) {
+    egui::Area::new(egui::Id::new(id))
+        .fixed_pos(pos)
+        .order(egui::Order::Foreground)
+        .show(ctx, |ui| {
+            corner_glass_frame().show(ui, |ui| {
+                ui.horizontal(|ui| add(ui));
+            });
+        });
+}
+
 /// Editable cursor HUD for the transform tools (Move/Copy/Rotate/Scale) once a
 /// base point has been picked. Mirrors the read-only `cursor_readout` but lets
 /// the user type exact values: ΔX/ΔY for Move/Copy, an angle for Rotate, and a
@@ -167,6 +196,7 @@ pub(super) fn dyn_transform_hud(
     ui_state: &mut UiState,
     origin: egui::Pos2,
 ) {
+    #[derive(Clone, Copy)]
     enum Kind {
         Translate,
         Rotate,
@@ -219,77 +249,56 @@ pub(super) fn dyn_transform_hud(
         ui_state.dyn_tf_factor = format!("{live_factor:.3}");
     }
 
-    let cur = app.view.world_to_screen(cx, cy);
-    let hud_pos = pos2(
-        origin.x + cur.0 as f32 + 18.0,
-        origin.y + cur.1 as f32 - 38.0,
-    );
-
     // Re-grab focus if it has drifted to nothing, so the field is always ready
     // for typing (a pick-click that set the base can otherwise leave it idle).
     let nothing_focused = ctx.memory(|m| m.focused().is_none());
     let grab = first_show || nothing_focused;
 
-    let mut commit = false;
-    egui::Area::new(egui::Id::new("dyn_transform_hud"))
-        .fixed_pos(hud_pos)
-        .order(egui::Order::Foreground)
-        .show(ctx, |ui| {
-            corner_glass_frame().show(ui, |ui| {
-                ui.horizontal(|ui| {
-                    let lbl = |ui: &mut egui::Ui, t: &str| {
-                        ui.label(
-                            egui::RichText::new(t)
-                                .size(12.0)
-                                .color(Color32::from_gray(170)),
-                        );
-                    };
-                    match kind {
-                        Kind::Translate => {
-                            lbl(ui, "ΔX");
-                            hud_field(
-                                ui,
-                                dx_id,
-                                &mut ui_state.dyn_tf_dx,
-                                56.0,
-                                "",
-                                first_show,
-                                grab,
-                            );
-                            lbl(ui, "ΔY");
-                            hud_field(ui, dy_id, &mut ui_state.dyn_tf_dy, 56.0, "", false, false);
-                        }
-                        Kind::Rotate => {
-                            // No leading ∠ glyph — it isn't in the bundled font
-                            // and renders as a tofu box; the trailing ° is enough.
-                            hud_field(
-                                ui,
-                                ang_id,
-                                &mut ui_state.dyn_tf_angle,
-                                56.0,
-                                "angle",
-                                first_show,
-                                grab,
-                            );
-                            lbl(ui, "°");
-                        }
-                        Kind::Scale => {
-                            lbl(ui, "×");
-                            hud_field(
-                                ui,
-                                fac_id,
-                                &mut ui_state.dyn_tf_factor,
-                                56.0,
-                                "factor",
-                                first_show,
-                                grab,
-                            );
-                        }
-                    }
-                });
-            });
-        });
+    let pos = cursor_hud_pos(app, origin, -38.0);
+    cursor_hud(ctx, "dyn_transform_hud", pos, |ui| match kind {
+        Kind::Translate => {
+            hud_label(ui, "ΔX");
+            hud_field(
+                ui,
+                dx_id,
+                &mut ui_state.dyn_tf_dx,
+                56.0,
+                "",
+                first_show,
+                grab,
+            );
+            hud_label(ui, "ΔY");
+            hud_field(ui, dy_id, &mut ui_state.dyn_tf_dy, 56.0, "", false, false);
+        }
+        Kind::Rotate => {
+            // No leading ∠ glyph — it isn't in the bundled font and renders as a
+            // tofu box; the trailing ° is enough.
+            hud_field(
+                ui,
+                ang_id,
+                &mut ui_state.dyn_tf_angle,
+                56.0,
+                "angle",
+                first_show,
+                grab,
+            );
+            hud_label(ui, "°");
+        }
+        Kind::Scale => {
+            hud_label(ui, "×");
+            hud_field(
+                ui,
+                fac_id,
+                &mut ui_state.dyn_tf_factor,
+                56.0,
+                "factor",
+                first_show,
+                grab,
+            );
+        }
+    });
 
+    let mut commit = false;
     if ctx.input(|i| i.key_pressed(egui::Key::Enter)) {
         commit = true;
     }
@@ -370,50 +379,27 @@ pub(super) fn dyn_line_hud(
             ui_state.dyn_angle = format!("{:.1}", live_ang);
         }
 
-        let cur = app.view.world_to_screen(cx, cy);
-        let hud_pos = pos2(
-            origin.x + cur.0 as f32 + 18.0,
-            origin.y + cur.1 as f32 - 38.0,
-        );
         let first_show = !ui_state.dyn_active;
         let mut commit = false;
-        egui::Area::new(egui::Id::new("dyn_input_hud"))
-            .fixed_pos(hud_pos)
-            .order(egui::Order::Foreground)
-            .show(ctx, |ui| {
-                corner_glass_frame().show(ui, |ui| {
-                    ui.horizontal(|ui| {
-                        ui.label(
-                            egui::RichText::new("L")
-                                .size(12.0)
-                                .color(Color32::from_gray(170)),
-                        );
-                        let lr = ui.add(
-                            egui::TextEdit::singleline(&mut ui_state.dyn_length)
-                                .id(len_id)
-                                .desired_width(58.0),
-                        );
-                        ui.label(
-                            egui::RichText::new("∠")
-                                .size(12.0)
-                                .color(Color32::from_gray(170)),
-                        );
-                        let ar = ui.add(
-                            egui::TextEdit::singleline(&mut ui_state.dyn_angle)
-                                .id(ang_id)
-                                .desired_width(48.0),
-                        );
-                        if first_show {
-                            lr.request_focus();
-                        }
-                        if ui.input(|i| i.key_pressed(egui::Key::Enter))
-                            && (lr.lost_focus() || ar.lost_focus())
-                        {
-                            commit = true;
-                        }
-                    });
-                });
-            });
+        let pos = cursor_hud_pos(app, origin, -38.0);
+        cursor_hud(ctx, "dyn_input_hud", pos, |ui| {
+            hud_label(ui, "L");
+            let lr = hud_field(
+                ui,
+                len_id,
+                &mut ui_state.dyn_length,
+                58.0,
+                "",
+                false,
+                first_show,
+            );
+            hud_label(ui, "∠");
+            let ar = hud_field(ui, ang_id, &mut ui_state.dyn_angle, 48.0, "", false, false);
+            if ui.input(|i| i.key_pressed(egui::Key::Enter)) && (lr.lost_focus() || ar.lost_focus())
+            {
+                commit = true;
+            }
+        });
         ui_state.dyn_active = true;
         if commit {
             let cmd = format!(
@@ -441,8 +427,6 @@ pub(super) fn dyn_circle_hud(
         None
     };
     if let (true, Some((cx, cy))) = (app.dyn_on, circle_center) {
-        let (crx, cry) = app.cursor_world;
-
         let rad_id = egui::Id::new("dyn_radius");
         let first_show = !ui_state.dyn_circle_active;
         if first_show {
@@ -458,35 +442,23 @@ pub(super) fn dyn_circle_hud(
             return;
         }
 
-        let cur = app.view.world_to_screen(crx, cry);
-        let hud_pos = pos2(
-            origin.x + cur.0 as f32 + 18.0,
-            origin.y + cur.1 as f32 - 38.0,
-        );
-        egui::Area::new(egui::Id::new("dyn_circle_hud"))
-            .fixed_pos(hud_pos)
-            .order(egui::Order::Foreground)
-            .show(ctx, |ui| {
-                corner_glass_frame().show(ui, |ui| {
-                    ui.horizontal(|ui| {
-                        ui.label(
-                            egui::RichText::new("R")
-                                .size(12.0)
-                                .color(Color32::from_gray(170)),
-                        );
-                        let rr = ui.add(
-                            egui::TextEdit::singleline(&mut ui_state.dyn_radius)
-                                .id(rad_id)
-                                .desired_width(58.0)
-                                .hint_text("radius"),
-                        );
-                        let nothing_focused = ui.ctx().memory(|m| m.focused().is_none());
-                        if first_show || nothing_focused {
-                            rr.request_focus();
-                        }
-                    });
-                });
-            });
+        let pos = cursor_hud_pos(app, origin, -38.0);
+        cursor_hud(ctx, "dyn_circle_hud", pos, |ui| {
+            hud_label(ui, "R");
+            let rr = hud_field(
+                ui,
+                rad_id,
+                &mut ui_state.dyn_radius,
+                58.0,
+                "radius",
+                false,
+                false,
+            );
+            let nothing_focused = ui.ctx().memory(|m| m.focused().is_none());
+            if first_show || nothing_focused {
+                rr.request_focus();
+            }
+        });
     } else {
         ui_state.dyn_circle_active = false;
     }
@@ -513,37 +485,24 @@ pub(super) fn dyn_polygon_hud(
             ui_state.dyn_poly_sides = sides.map(|n| n.to_string()).unwrap_or_default();
         }
 
-        let (cx, cy) = app.cursor_world;
-        let cur = app.view.world_to_screen(cx, cy);
-        let hud_pos = pos2(
-            origin.x + cur.0 as f32 + 18.0,
-            origin.y + cur.1 as f32 - 38.0,
-        );
         let first_show = !ui_state.dyn_poly_active;
-        egui::Area::new(egui::Id::new("dyn_poly_hud"))
-            .fixed_pos(hud_pos)
-            .order(egui::Order::Foreground)
-            .show(ctx, |ui| {
-                corner_glass_frame().show(ui, |ui| {
-                    ui.horizontal(|ui| {
-                        ui.label(
-                            egui::RichText::new("Sides")
-                                .size(12.0)
-                                .color(Color32::from_gray(170)),
-                        );
-                        let r = ui.add(
-                            egui::TextEdit::singleline(&mut ui_state.dyn_poly_sides)
-                                .id(sid)
-                                .desired_width(40.0)
-                                .hint_text("3+"),
-                        );
-                        let nothing_focused = ui.ctx().memory(|m| m.focused().is_none());
-                        if first_show || nothing_focused {
-                            r.request_focus();
-                        }
-                    });
-                });
-            });
+        let pos = cursor_hud_pos(app, origin, -38.0);
+        cursor_hud(ctx, "dyn_poly_hud", pos, |ui| {
+            hud_label(ui, "Sides");
+            let r = hud_field(
+                ui,
+                sid,
+                &mut ui_state.dyn_poly_sides,
+                40.0,
+                "3+",
+                false,
+                false,
+            );
+            let nothing_focused = ui.ctx().memory(|m| m.focused().is_none());
+            if first_show || nothing_focused {
+                r.request_focus();
+            }
+        });
         ui_state.dyn_poly_active = true;
         let parsed = ui_state
             .dyn_poly_sides
@@ -613,40 +572,20 @@ pub(super) fn dyn_rect_hud(
         }
 
         let on_height = ui_state.dyn_rect_stage_h;
-        let cur = app.view.world_to_screen(crx, cry);
-        let hud_pos = pos2(
-            origin.x + cur.0 as f32 + 18.0,
-            origin.y + cur.1 as f32 - 38.0,
-        );
-        egui::Area::new(egui::Id::new("dyn_rect_hud"))
-            .fixed_pos(hud_pos)
-            .order(egui::Order::Foreground)
-            .show(ctx, |ui| {
-                corner_glass_frame().show(ui, |ui| {
-                    ui.horizontal(|ui| {
-                        let (label, buf, hint) = if on_height {
-                            ("H", &mut ui_state.dyn_rect_height, "height, Enter")
-                        } else {
-                            ("W", &mut ui_state.dyn_rect_width, "width, Enter")
-                        };
-                        ui.label(
-                            egui::RichText::new(label)
-                                .size(12.0)
-                                .color(Color32::from_gray(170)),
-                        );
-                        let r = ui.add(
-                            egui::TextEdit::singleline(buf)
-                                .id(field_id)
-                                .desired_width(70.0)
-                                .hint_text(hint),
-                        );
-                        let nothing_focused = ui.ctx().memory(|m| m.focused().is_none());
-                        if focus_field || nothing_focused {
-                            r.request_focus();
-                        }
-                    });
-                });
-            });
+        let pos = cursor_hud_pos(app, origin, -38.0);
+        cursor_hud(ctx, "dyn_rect_hud", pos, |ui| {
+            let (label, buf, hint) = if on_height {
+                ("H", &mut ui_state.dyn_rect_height, "height, Enter")
+            } else {
+                ("W", &mut ui_state.dyn_rect_width, "width, Enter")
+            };
+            hud_label(ui, label);
+            let r = hud_field(ui, field_id, buf, 70.0, hint, false, false);
+            let nothing_focused = ui.ctx().memory(|m| m.focused().is_none());
+            if focus_field || nothing_focused {
+                r.request_focus();
+            }
+        });
     } else {
         ui_state.dyn_rect_active = false;
     }
@@ -728,55 +667,25 @@ pub(super) fn dyn_ellipse_hud(
             return;
         }
 
-        let cur = app.view.world_to_screen(crx, cry);
-        let hud_pos = pos2(
-            origin.x + cur.0 as f32 + 18.0,
-            origin.y + cur.1 as f32 - 52.0,
-        );
-        egui::Area::new(egui::Id::new("dyn_ell_hud"))
-            .fixed_pos(hud_pos)
-            .order(egui::Order::Foreground)
-            .show(ctx, |ui| {
-                corner_glass_frame().show(ui, |ui| {
-                    if axis_end.is_none() {
-                        ui.horizontal(|ui| {
-                            ui.label(
-                                egui::RichText::new("A")
-                                    .size(12.0)
-                                    .color(Color32::from_gray(170)),
-                            );
-                            let mr = ui.add(
-                                egui::TextEdit::singleline(&mut ui_state.dyn_ell_major)
-                                    .id(maj_id)
-                                    .desired_width(54.0)
-                                    .hint_text("major (aim with cursor)"),
-                            );
-                            let nothing_focused = ui.ctx().memory(|m| m.focused().is_none());
-                            if first_show || nothing_focused {
-                                mr.request_focus();
-                            }
-                        });
-                    } else {
-                        ui.horizontal(|ui| {
-                            ui.label(
-                                egui::RichText::new("B")
-                                    .size(12.0)
-                                    .color(Color32::from_gray(170)),
-                            );
-                            let br = ui.add(
-                                egui::TextEdit::singleline(&mut ui_state.dyn_ell_minor)
-                                    .id(min_id)
-                                    .desired_width(54.0)
-                                    .hint_text("minor"),
-                            );
-                            let nothing_focused = ui.ctx().memory(|m| m.focused().is_none());
-                            if first_show || nothing_focused {
-                                br.request_focus();
-                            }
-                        });
-                    }
-                });
-            });
+        let pos = cursor_hud_pos(app, origin, -52.0);
+        cursor_hud(ctx, "dyn_ell_hud", pos, |ui| {
+            let (label, id, buf, hint) = if axis_end.is_none() {
+                (
+                    "A",
+                    maj_id,
+                    &mut ui_state.dyn_ell_major,
+                    "major (aim with cursor)",
+                )
+            } else {
+                ("B", min_id, &mut ui_state.dyn_ell_minor, "minor")
+            };
+            hud_label(ui, label);
+            let r = hud_field(ui, id, buf, 54.0, hint, false, false);
+            let nothing_focused = ui.ctx().memory(|m| m.focused().is_none());
+            if first_show || nothing_focused {
+                r.request_focus();
+            }
+        });
     } else {
         ui_state.dyn_ell_active = false;
     }
@@ -796,46 +705,27 @@ pub(super) fn dyn_offset_hud(
     if let (true, Some(dist)) = (app.dyn_on, dist) {
         let first_show = !ui_state.dyn_offset_active;
         if first_show {
-            ui_state.dyn_offset_dist = format!("{:.4}", dist)
-                .trim_end_matches('0')
-                .trim_end_matches('.')
-                .to_string();
+            ui_state.dyn_offset_dist = super::render::trim_decimals(dist, 4);
         }
         let did = egui::Id::new("dyn_offset_dist");
 
-        let (crx, cry) = app.cursor_world;
-        let cur = app.view.world_to_screen(crx, cry);
-        let hud_pos = pos2(
-            origin.x + cur.0 as f32 + 18.0,
-            origin.y + cur.1 as f32 - 38.0,
-        );
-        egui::Area::new(egui::Id::new("dyn_offset_hud"))
-            .fixed_pos(hud_pos)
-            .order(egui::Order::Foreground)
-            .show(ctx, |ui| {
-                corner_glass_frame().show(ui, |ui| {
-                    ui.horizontal(|ui| {
-                        ui.label(
-                            egui::RichText::new("Dist")
-                                .size(12.0)
-                                .color(Color32::from_gray(170)),
-                        );
-                        // `first_show` selects the pre-filled default (e.g. the
-                        // "1"), so typing replaces it instead of appending;
-                        // otherwise grab focus when idle so it's ready to type.
-                        let nothing_focused = ui.ctx().memory(|m| m.focused().is_none());
-                        hud_field(
-                            ui,
-                            did,
-                            &mut ui_state.dyn_offset_dist,
-                            58.0,
-                            "distance",
-                            first_show,
-                            !first_show && nothing_focused,
-                        );
-                    });
-                });
-            });
+        let pos = cursor_hud_pos(app, origin, -38.0);
+        cursor_hud(ctx, "dyn_offset_hud", pos, |ui| {
+            hud_label(ui, "Dist");
+            // `first_show` selects the pre-filled default (e.g. the "1") so
+            // typing replaces it instead of appending; otherwise grab focus when
+            // idle so it's ready to type.
+            let nothing_focused = ui.ctx().memory(|m| m.focused().is_none());
+            hud_field(
+                ui,
+                did,
+                &mut ui_state.dyn_offset_dist,
+                58.0,
+                "distance",
+                first_show,
+                !first_show && nothing_focused,
+            );
+        });
         ui_state.dyn_offset_active = true;
         if let Ok(d) = ui_state.dyn_offset_dist.trim().parse::<f64>()
             && d > 1e-9
@@ -872,42 +762,26 @@ pub(super) fn dyn_corner_hud(
 
     let first_show = !ui_state.dyn_corner_active;
     if first_show {
-        ui_state.dyn_corner_val = format!("{value:.4}")
-            .trim_end_matches('0')
-            .trim_end_matches('.')
-            .to_string();
+        ui_state.dyn_corner_val = super::render::trim_decimals(value, 4);
     }
     let id = egui::Id::new("dyn_corner_val");
-    let (crx, cry) = app.cursor_world;
-    let cur = app.view.world_to_screen(crx, cry);
-    let hud_pos = pos2(
-        origin.x + cur.0 as f32 + 18.0,
-        origin.y + cur.1 as f32 - 38.0,
-    );
-    egui::Area::new(egui::Id::new("dyn_corner_hud"))
-        .fixed_pos(hud_pos)
-        .order(egui::Order::Foreground)
-        .show(ctx, |ui| {
-            corner_glass_frame().show(ui, |ui| {
-                ui.horizontal(|ui| {
-                    ui.label(
-                        egui::RichText::new(label)
-                            .size(12.0)
-                            .color(Color32::from_gray(170)),
-                    );
-                    let r = ui.add(
-                        egui::TextEdit::singleline(&mut ui_state.dyn_corner_val)
-                            .id(id)
-                            .desired_width(58.0)
-                            .hint_text("value, then pick lines"),
-                    );
-                    let nothing_focused = ui.ctx().memory(|m| m.focused().is_none());
-                    if first_show || nothing_focused {
-                        r.request_focus();
-                    }
-                });
-            });
-        });
+    let pos = cursor_hud_pos(app, origin, -38.0);
+    cursor_hud(ctx, "dyn_corner_hud", pos, |ui| {
+        hud_label(ui, label);
+        let r = hud_field(
+            ui,
+            id,
+            &mut ui_state.dyn_corner_val,
+            58.0,
+            "value, then pick lines",
+            false,
+            false,
+        );
+        let nothing_focused = ui.ctx().memory(|m| m.focused().is_none());
+        if first_show || nothing_focused {
+            r.request_focus();
+        }
+    });
     ui_state.dyn_corner_active = true;
     // Push the typed value back into the tool so the pick uses it.
     if let Ok(v) = ui_state.dyn_corner_val.trim().parse::<f64>()
@@ -1020,7 +894,7 @@ fn height_glyph(ui: &mut egui::Ui) {
     let (rect, _) = ui.allocate_exact_size(egui::vec2(11.0, 16.0), egui::Sense::hover());
     let x = rect.center().x;
     let (top, bot) = (rect.top() + 2.0, rect.bottom() - 2.0);
-    let s = egui::Stroke::new(1.3, Color32::from_gray(170));
+    let s = egui::Stroke::new(1.3, crate::theme::HUD_LABEL);
     let p = ui.painter();
     p.line_segment([pos2(x, top), pos2(x, bot)], s);
     for (y, dy) in [(top, 3.5_f32), (bot, -3.5_f32)] {

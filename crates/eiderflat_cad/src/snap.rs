@@ -27,6 +27,22 @@ impl SnapKind {
     }
 }
 
+/// Every object-snap kind paired with its UI label, in display order. A single
+/// source of truth so the settings panel and the status-bar snap popup never
+/// drift apart (and a newly added kind shows up in both automatically).
+pub const SNAP_KINDS: [(SnapKind, &str); 10] = [
+    (SnapKind::Endpoint, "Endpoint"),
+    (SnapKind::Midpoint, "Midpoint"),
+    (SnapKind::Center, "Center"),
+    (SnapKind::Quadrant, "Quadrant"),
+    (SnapKind::Intersection, "Intersection"),
+    (SnapKind::Perpendicular, "Perpendicular"),
+    (SnapKind::Tangent, "Tangent"),
+    (SnapKind::Nearest, "Nearest"),
+    (SnapKind::Node, "Node"),
+    (SnapKind::Insertion, "Insertion"),
+];
+
 #[derive(Clone, Debug)]
 pub struct SnapPoint {
     pub kind: SnapKind,

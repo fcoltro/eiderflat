@@ -17,4 +17,6 @@ pub use hatch::{
 };
 pub use infer::{Guide, GuideKind, InferResult, infer_axis};
 pub use selection::{pick_at, select_by, select_crossing, select_fence, select_window};
-pub use snap::{SnapKind, SnapPoint, SnapSettings, best_snap, find_snaps, find_snaps_excluding};
+pub use snap::{
+    SNAP_KINDS, SnapKind, SnapPoint, SnapSettings, best_snap, find_snaps, find_snaps_excluding,
+};
