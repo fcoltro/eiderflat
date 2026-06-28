@@ -2477,4 +2477,41 @@ mod tests {
             "single unified tool handles multi-line via \\n"
         );
     }
+
+    #[test]
+    fn reconstrain_tangency_tolerates_deleted_target() {
+        use eiderflat_document::TangentRef;
+        use eiderflat_geometry::CircularArc;
+        let mut a = app();
+        let t1 = a.document.add(line(0, 0, 10, 0));
+        let t2 = a.document.add(line(0, 10, 10, 10));
+        let arc = a
+            .document
+            .add(EntityKind::Curve(Curve::Arc(CircularArc::new(
+                pt(5, 5),
+                1.0,
+                0.0,
+                std::f64::consts::TAU,
+            ))));
+        if let Some(e) = a.document.get_mut(arc) {
+            e.tangents = vec![
+                TangentRef {
+                    target: t1,
+                    near: pt(5, 0),
+                },
+                TangentRef {
+                    target: t2,
+                    near: pt(5, 10),
+                },
+            ];
+        }
+        // Drop one tangent target, leaving a dangling reference.
+        a.document.remove(t2);
+        // Must not panic, and must leave the arc untouched (cannot re-solve).
+        a.reconstrain_tangency(arc);
+        assert!(matches!(
+            a.document.get(arc).and_then(|e| e.as_curve()),
+            Some(Curve::Arc(_))
+        ));
+    }
 }
