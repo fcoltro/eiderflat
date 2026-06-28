@@ -1598,17 +1598,17 @@ fn group_entries(id: u8) -> Vec<(crate::icons::Icon, &'static str, Act)> {
                 Act::Tool(Tool::Circle { center: None }),
             ),
             (
-                Icon::Circle,
+                Icon::Circle2P,
                 "2 points (diameter)",
                 Act::Tool(Tool::CircleTwoPoint { first: None }),
             ),
             (
-                Icon::Circle,
+                Icon::Circle3P,
                 "3 points",
                 Act::Tool(Tool::CircleThreePoint { pts: vec![] }),
             ),
             (
-                Icon::Circle,
+                Icon::CircleTtr,
                 "Tangent, tangent, radius",
                 Act::Tool(Tool::CircleTtr {
                     radius: 1.0,
@@ -1616,7 +1616,7 @@ fn group_entries(id: u8) -> Vec<(crate::icons::Icon, &'static str, Act)> {
                 }),
             ),
             (
-                Icon::Circle,
+                Icon::CircleTtt,
                 "Tangent, tangent, tangent",
                 Act::Tool(Tool::CircleTtt { picks: vec![] }),
             ),
@@ -1624,7 +1624,7 @@ fn group_entries(id: u8) -> Vec<(crate::icons::Icon, &'static str, Act)> {
         2 => vec![
             (Icon::Arc, "3 points", Act::Tool(Tool::Arc3 { pts: vec![] })),
             (
-                Icon::Arc,
+                Icon::ArcStartCenterEnd,
                 "Start, center, end",
                 Act::Tool(Tool::ArcStartCenterEnd {
                     start: None,
@@ -1632,7 +1632,7 @@ fn group_entries(id: u8) -> Vec<(crate::icons::Icon, &'static str, Act)> {
                 }),
             ),
             (
-                Icon::Arc,
+                Icon::ArcCenterStartEnd,
                 "Center, start, end",
                 Act::Tool(Tool::ArcCenterStartEnd {
                     center: None,
@@ -1647,12 +1647,12 @@ fn group_entries(id: u8) -> Vec<(crate::icons::Icon, &'static str, Act)> {
                 Act::Tool(Tool::Dimension { p1: None, p2: None }),
             ),
             (
-                Icon::Dimension,
+                Icon::DimAngle,
                 "Angular (3 points)",
                 Act::Tool(Tool::DimAngular { pts: vec![] }),
             ),
             (
-                Icon::Dimension,
+                Icon::DimAngle,
                 "Angular (2 lines)",
                 Act::Tool(Tool::DimAngularLines {
                     a: None,
@@ -1660,7 +1660,7 @@ fn group_entries(id: u8) -> Vec<(crate::icons::Icon, &'static str, Act)> {
                 }),
             ),
             (
-                Icon::Dimension,
+                Icon::DimRadius,
                 "Radius",
                 Act::Tool(Tool::DimRadial {
                     diameter: false,
@@ -1669,7 +1669,7 @@ fn group_entries(id: u8) -> Vec<(crate::icons::Icon, &'static str, Act)> {
                 }),
             ),
             (
-                Icon::Dimension,
+                Icon::DimDiameter,
                 "Diameter",
                 Act::Tool(Tool::DimRadial {
                     diameter: true,
