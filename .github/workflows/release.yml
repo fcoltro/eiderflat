@@ -24,8 +24,11 @@ jobs:
           - name: windows-x86_64
             os: windows-latest
             target: x86_64-pc-windows-msvc
+          # Cross-compiled from an Apple Silicon runner: the Intel `macos-13`
+          # image is being retired, and the arm64 Xcode SDK builds the x86_64
+          # slice fine (we only package the binary here, never run it).
           - name: macos-x86_64
-            os: macos-13
+            os: macos-14
             target: x86_64-apple-darwin
           - name: macos-aarch64
             os: macos-14
