@@ -195,7 +195,6 @@ fn mark_entries(
 
 fn trace(nodes: &mut [Node]) -> Vec<Vec<Point2d>> {
     let mut result = Vec::new();
-    // Each unvisited crossing seeds a new output loop.
     while let Some(start) = (0..nodes.len()).find(|&i| nodes[i].intersection && !nodes[i].visited) {
         let mut loop_pts: Vec<Point2d> = Vec::new();
         let mut cur = start;

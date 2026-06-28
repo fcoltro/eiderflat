@@ -100,8 +100,6 @@ pub fn pick_at(doc: &Document, x: f64, y: f64, tol: f64) -> Option<EntityId> {
     None
 }
 
-/// Hit-test an aligned dimension: its extension lines, its dimension line, and
-/// the text region — not the empty interior of its bounding box.
 fn dimension_hit(
     p1: Point2d,
     p2: Point2d,
@@ -125,14 +123,12 @@ fn dimension_hit(
     let d1 = (lx + t1 * ux, ly + t1 * uy);
     let d2 = (lx + t2 * ux, ly + t2 * uy);
     let p = (x, y);
-    // Extension lines and the dimension line.
     if point_seg_dist(p, (x1, y1), d1) <= tol
         || point_seg_dist(p, (x2, y2), d2) <= tol
         || point_seg_dist(p, d1, d2) <= tol
     {
         return true;
     }
-    // Text region: a disc around the text centre (just off the dimension line).
     let mid = ((d1.0 + d2.0) * 0.5, (d1.1 + d2.1) * 0.5);
     let (nx, ny) = (-uy, ux);
     let gap = text_h * 0.5;
@@ -249,7 +245,6 @@ mod tests {
     #[test]
     fn dimension_picks_on_lines_not_interior() {
         let mut doc = Document::new();
-        // Horizontal dimension: p1=(0,0), p2=(10,0), line offset up at y=4.
         let id = doc.add(EntityKind::Dimension {
             p1: pt(0, 0),
             p2: pt(10, 0),
@@ -257,11 +252,8 @@ mod tests {
             height: 1.0,
             override_text: None,
         });
-        // On the dimension line (y≈4) → hit.
         assert_eq!(pick_at(&doc, 5.0, 4.0, 0.2), Some(id));
-        // On an extension line (x≈0, between y=0 and y=4) → hit.
         assert_eq!(pick_at(&doc, 0.0, 2.0, 0.2), Some(id));
-        // In the empty interior (between the extension lines, off both rules).
         assert_eq!(pick_at(&doc, 5.0, 2.0, 0.2), None);
     }
 

@@ -40,7 +40,6 @@ pub fn project_point_onto_curve(curve: &Curve, px: f64, py: f64) -> ProjectionRe
             let (cx, cy) = a.center.to_f64();
             let r = a.radius;
             let angle = (py - cy).atan2(px - cx);
-            // Clamp to arc domain
             let angle_clamped = clamp_angle(angle, a.start_angle, a.end_angle);
             let qx = cx + r * angle_clamped.cos();
             let qy = cy + r * angle_clamped.sin();
@@ -91,7 +90,6 @@ fn clamp_angle(angle: f64, start: f64, end: f64) -> f64 {
     if a <= span {
         start + a
     } else {
-        // Closest endpoint
         let d_start = a.min(pi2 - a);
         let d_end = a - span;
         if d_start < d_end { start } else { end }
@@ -125,9 +123,6 @@ fn golden_section_projection_fn(
 
     let mut a = (best_t - dt).max(t0);
     let mut b = (best_t + dt).min(t1);
-    // Golden-section search that carries the two interior probes across
-    // iterations, so each step needs only one new curve evaluation (the
-    // expensive part for splines) instead of two.
     let phi = (5f64.sqrt() - 1.0) / 2.0;
     let mut c = b - phi * (b - a);
     let mut d = a + phi * (b - a);

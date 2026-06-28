@@ -1,14 +1,6 @@
-//! Shared dimension geometry and labelling — the single source of truth for the
-//! computations that the on-canvas renderer and the DXF/SVG exporters both need.
-//! Keeping the angular-sweep selection and the measured-value/label logic here
-//! avoids the two diverging (they previously each reimplemented it).
-
 use crate::{DimStyle, EntityKind, Units};
 use eiderflat_geometry::{Point2d, wrap_pi};
 
-/// The resolved arc of an angular dimension: where the dimension arc starts, how
-/// far it sweeps (signed), and its radius. The sector containing `line` is the
-/// one that gets labelled, so reflex angles work.
 #[derive(Clone, Copy, Debug)]
 pub struct AngularSweep {
     pub start: f64,
@@ -16,8 +8,6 @@ pub struct AngularSweep {
     pub radius: f64,
 }
 
-/// Compute the labelled sector for an angular dimension with vertex `center`,
-/// ray points `p1`/`p2`, and arc-placement point `line`.
 pub fn angular_sweep(center: Point2d, p1: Point2d, p2: Point2d, line: Point2d) -> AngularSweep {
     let (cx, cy) = center.to_f64();
     let ang = |p: Point2d| {
@@ -26,7 +16,6 @@ pub fn angular_sweep(center: Point2d, p1: Point2d, p2: Point2d, line: Point2d) -
     };
     let start = ang(p1);
     let mut sweep = wrap_pi(ang(p2) - start);
-    // If `line` sits in the opposite (reflex) sector, label that one instead.
     let d = wrap_pi(ang(line) - start);
     let within =
         (sweep >= 0.0 && (0.0..=sweep).contains(&d)) || (sweep < 0.0 && (sweep..=0.0).contains(&d));
@@ -45,32 +34,20 @@ pub fn angular_sweep(center: Point2d, p1: Point2d, p2: Point2d, line: Point2d) -
     }
 }
 
-/// Pick the orientation of a smart linear dimension from where the dimension
-/// line is being placed relative to the two measured points:
-/// - `None` → **aligned** (parallel to `p1`→`p2`); the dimension line is dragged
-///   off diagonally.
-/// - `Some(false)` → **horizontal** (measures the X distance); dragged above/below.
-/// - `Some(true)` → **vertical** (measures the Y distance); dragged to the side.
-///
-/// The 2:1 dominance threshold gives each orthogonal direction a clear zone while
-/// leaving a diagonal cone for aligned.
 pub fn linear_orientation(p1: Point2d, p2: Point2d, line: Point2d) -> Option<bool> {
     let mid = p1.midpoint(&p2);
     let (mx, my) = mid.to_f64();
     let (lx, ly) = line.to_f64();
     let (ox, oy) = ((lx - mx).abs(), (ly - my).abs());
     if ox > 2.0 * oy {
-        Some(true) // placed to the side → vertical dimension
+        Some(true)
     } else if oy > 2.0 * ox {
-        Some(false) // placed above/below → horizontal dimension
+        Some(false)
     } else {
-        None // diagonal → aligned
+        None
     }
 }
 
-/// The numeric quantity a dimension measures: length for linear/ortho, degrees
-/// for angular, radius for radial, diameter for a radial flagged `diameter`.
-/// `None` for non-dimension entities.
 pub fn measured_value(kind: &EntityKind) -> Option<f64> {
     Some(match kind {
         EntityKind::Dimension { p1, p2, .. } => p1.dist_f64(p2),
@@ -107,9 +84,6 @@ pub fn measured_value(kind: &EntityKind) -> Option<f64> {
     })
 }
 
-/// The text a dimension should display: its user override when set, otherwise the
-/// measured value formatted with the document units and the style's precision
-/// (radial values carry an `R`/`⌀` prefix, angular a `°` suffix).
 pub fn label_text(kind: &EntityKind, style: &DimStyle, units: Units) -> Option<String> {
     let ovr = override_text(kind);
     if let Some(t) = ovr {
@@ -126,7 +100,6 @@ pub fn label_text(kind: &EntityKind, style: &DimStyle, units: Units) -> Option<S
     })
 }
 
-/// Borrow a dimension's text override, if any.
 pub fn override_text(kind: &EntityKind) -> Option<&str> {
     match kind {
         EntityKind::Dimension { override_text, .. }
@@ -147,14 +120,12 @@ mod tests {
 
     #[test]
     fn right_angle_sweep_is_90_degrees() {
-        // Rays +X and +Y, arc placed in the first quadrant → 90°.
         let s = angular_sweep(p(0.0, 0.0), p(10.0, 0.0), p(0.0, 10.0), p(3.0, 3.0));
         assert!((s.sweep.abs().to_degrees() - 90.0).abs() < 1e-6);
     }
 
     #[test]
     fn reflex_side_selects_270() {
-        // Same rays, but arc placed in the opposite sector → 270°.
         let s = angular_sweep(p(0.0, 0.0), p(10.0, 0.0), p(0.0, 10.0), p(-3.0, -3.0));
         assert!((s.sweep.abs().to_degrees() - 270.0).abs() < 1e-6);
     }

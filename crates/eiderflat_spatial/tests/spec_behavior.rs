@@ -61,7 +61,6 @@ fn query_point_returns_leaf() {
         leaf.is_some(),
         "point inside model bounds should land in a leaf"
     );
-    // Point outside the model bounds → None
     assert!(qt.query_point(100.0, 100.0).is_none());
 }
 

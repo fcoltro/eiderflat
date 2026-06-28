@@ -14,7 +14,6 @@ impl CubicBezier {
         CubicBezier { p0, p1, p2, p3 }
     }
 
-    /// Evaluation at parameter t ∈ [0,1].
     pub fn evaluate_exact(&self, t: f64) -> Point2d {
         let (x, y) = self.evaluate_f64(t);
         Point2d::new(x, y)
@@ -23,11 +22,9 @@ impl CubicBezier {
     pub fn split_at_exact(&self, t: f64) -> (CubicBezier, CubicBezier) {
         let lerp = |a: &Point2d, b: &Point2d| a.lerp(b, t);
 
-        // Level 1
         let q0 = lerp(&self.p0, &self.p1);
         let q1 = lerp(&self.p1, &self.p2);
         let q2 = lerp(&self.p2, &self.p3);
-        // Level 2
         let r0 = lerp(&q0, &q1);
         let r1 = lerp(&q1, &q2);
         let s = lerp(&r0, &r1);

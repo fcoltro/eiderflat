@@ -421,7 +421,6 @@ pub fn trim_preview(
     py: f64,
 ) -> Option<Curve> {
     let curve = doc.get(target)?.as_curve()?.clone();
-    // Full circle/ellipse: preview the arc that the wrapping-survivor trim removes.
     if let Some((removed, _survivor)) = closed_conic_trim(doc, &curve, target, cutters, px, py) {
         return Some(removed);
     }
@@ -1008,9 +1007,6 @@ fn trim_entity_for_corner(
     angle: Option<f64>,
     vtx: (f64, f64),
 ) {
-    // Trim the end that meets the corner — the one nearer the corner vertex.
-    // (Picking the end nearer the tangent point fails on acute corners, where
-    // the tangent point sits past the midpoint toward the far endpoint.)
     match edge {
         CornerEdge::Line { .. } => {
             if let Some(la) = line_endpoints(doc, id) {
@@ -1038,8 +1034,6 @@ fn trim_entity_for_corner(
     }
 }
 
-/// The corner where two edges meet: the lines' (extended) intersection, else the
-/// closest pair of edge endpoints. Used to decide which end of each edge to trim.
 fn corner_vertex(a: CornerEdge, b: CornerEdge) -> (f64, f64) {
     if let (CornerEdge::Line { p0: a0, p1: a1 }, CornerEdge::Line { p0: b0, p1: b1 }) = (a, b)
         && let Some(v) = infinite_line_intersection((a0, a1), (b0, b1))
@@ -1561,12 +1555,10 @@ mod tests {
     #[test]
     fn trim_with_bezier_cutters_is_fast_and_correct() {
         let mut doc = Document::new();
-        // Horizontal target line, each spline crossing it exactly once.
         let target = draw::line(&mut doc, pt(0, 0), pt(10, 0));
         let c1 = draw::bezier(&mut doc, pt(2, -3), pt(2, -1), pt(3, 1), pt(3, 3));
         let c2 = draw::bezier(&mut doc, pt(7, -3), pt(7, -1), pt(8, 1), pt(8, 3));
         let start = std::time::Instant::now();
-        // Pick the middle (x≈5): keep the two outer pieces.
         let survivors = trim(&mut doc, target, &[c1, c2], 5.0, 0.0);
         assert!(
             start.elapsed().as_millis() < 500,
@@ -1633,7 +1625,6 @@ mod tests {
             .collect();
         spans.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
         assert!((spans[0].0 - 0.0).abs() < 1e-6 && (spans[0].1 - 2.0).abs() < 1e-6);
-        // The right side must remain ONE piece [5,10] — still crossing x=8.
         assert!(
             (spans[1].0 - 5.0).abs() < 1e-6 && (spans[1].1 - 10.0).abs() < 1e-6,
             "right side must stay contiguous across the x=8 cutter, got {:?}",
@@ -1705,7 +1696,6 @@ mod tests {
     #[test]
     fn trim_same_line_twice() {
         let mut doc = Document::new();
-        // Horizontal line crossed by verticals at x = 2 and 5.
         let target = draw::line(&mut doc, pt(0, 0), pt(10, 0));
         let v: Vec<_> = [2, 5]
             .iter()
@@ -1749,7 +1739,6 @@ mod tests {
         assert_eq!(survivors.len(), 2, "both line cutters must register");
         for id in &survivors {
             if let Some(Curve::Arc(a)) = doc.get(*id).and_then(|e| e.as_curve()) {
-                // Each survivor must stop at one of the cut points (±3, 4).
                 let hits_cut = [a.start_point(), a.end_point()]
                     .iter()
                     .any(|(x, y)| (x.abs() - 3.0).abs() < 1e-6 && (y - 4.0).abs() < 1e-6);

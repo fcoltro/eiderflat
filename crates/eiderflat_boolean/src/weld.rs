@@ -153,7 +153,6 @@ fn snap_endpoints(c: &Curve, s: (f64, f64), e: (f64, f64)) -> Curve {
     }
 }
 
-/// (start, end) of a curve in f64.
 fn endpoints_f64(c: &Curve) -> ((f64, f64), (f64, f64)) {
     let (t0, t1) = c.domain();
     (c.evaluate_f64(t0), c.evaluate_f64(t1))
@@ -163,7 +162,6 @@ fn set_arc_angles(start: &mut f64, end: &mut f64, new_start: f64, new_end: f64) 
     let tau = std::f64::consts::TAU;
     let s = new_start;
     let mut e = new_end;
-    // Keep e in (s, s + tau].
     while e <= s {
         e += tau;
     }

@@ -5,14 +5,8 @@ use egui::{Color32, Stroke, pos2, vec2};
 use eiderflat_document::{Color, EntityId, EntityKind, LineTypeRef};
 use eiderflat_geometry::{Curve, CurveSegment, Point2d};
 
-/// Hairline width used when an entity has no assigned weight (the default), or
-/// when line-weight display is turned off. Line weights are otherwise shown at a
-/// fixed on-screen scale (the `lineweight_scale` setting, px per mm), like
-/// AutoCAD's lineweight display, so a heavy line reads as heavy at any zoom.
 pub(super) const HAIRLINE_PX: f32 = 1.5;
 
-/// Selection highlight colour for a hatch — a saturated blue, distinct from the
-/// cyan used for every other selected entity.
 pub(super) const HATCH_SELECT: Color32 = Color32::from_rgb(64, 120, 255);
 
 pub(super) fn tool_prompt(tool: &Tool) -> String {
@@ -87,12 +81,6 @@ pub(super) fn tool_prompt(tool: &Tool) -> String {
             (Some(_), Some(_)) => {
                 "Place the dimension line — aside for vertical, above/below for horizontal".into()
             }
-        },
-        Tool::DimAngular { pts } => match pts.len() {
-            0 => "Specify the angle vertex".into(),
-            1 => "Specify a point on the first side".into(),
-            2 => "Specify a point on the second side".into(),
-            _ => "Click to place the dimension arc".into(),
         },
         Tool::DimAngularLines { a, geom } => {
             if geom.is_some() {
@@ -252,8 +240,6 @@ pub(super) fn draw_grid(
     rect: egui::Rect,
     to_screen: &impl Fn(f64, f64) -> egui::Pos2,
 ) {
-    // Subtle background gradient: a faint lift toward the top, fading into the
-    // flat canvas colour at the bottom (mirrors the reference mockup).
     {
         let top = Color32::from_rgb(17, 21, 29);
         let bot = crate::theme::CANVAS_BG;
@@ -272,8 +258,6 @@ pub(super) fn draw_grid(
         return;
     }
     let (x0, y0, x1, y1) = app.view.visible_bounds();
-    // Minor/major line colours come from settings; every Nth line is "major" and
-    // the world axes are brighter still.
     let rgb = |c: (u8, u8, u8)| Color32::from_rgb(c.0, c.1, c.2);
     let minor = Stroke::new(1.0, rgb(app.grid_minor_rgb));
     let major_line = Stroke::new(1.0, rgb(app.grid_major_rgb));
@@ -284,7 +268,6 @@ pub(super) fn draw_grid(
     let iy0 = (y0 / major).floor() as i64;
 
     if app.grid_dots {
-        // Dotted grid: a dot at every intersection, bigger on major crossings.
         let mut i = ix0;
         let mut gx = ix0 as f64 * major;
         while gx <= x1 {
@@ -334,7 +317,6 @@ pub(super) fn draw_grid(
         }
     }
 
-    // World axes on top of the grid.
     if x0 <= 0.0 && x1 >= 0.0 {
         let a = to_screen(0.0, y0);
         painter.line_segment([pos2(a.x, rect.top()), pos2(a.x, rect.bottom())], axis);
@@ -376,7 +358,6 @@ pub(super) fn draw_scale_bar(painter: &egui::Painter, app: &AppState, rect: egui
     let x1 = rect.right() - margin;
     let x0 = x1 - bar_px;
     let cap = 5.0;
-    // Blue scale bar with a soft dark shadow so it stays legible over drawings.
     let bar = Stroke::new(2.0, crate::theme::ACCENT);
     let shadow = Stroke::new(3.5, Color32::from_rgba_unmultiplied(0, 0, 0, 150));
     for s in [shadow, bar] {
@@ -384,7 +365,6 @@ pub(super) fn draw_scale_bar(painter: &egui::Painter, app: &AppState, rect: egui
         painter.line_segment([pos2(x0, y - cap), pos2(x0, y + cap)], s);
         painter.line_segment([pos2(x1, y - cap), pos2(x1, y + cap)], s);
     }
-    // Value sits in a darker rounded chip, centred above the bar.
     let tx = (x0 + x1) / 2.0;
     let galley = painter.layout_no_wrap(
         label.clone(),
@@ -411,10 +391,6 @@ pub(super) fn draw_scale_bar(painter: &egui::Painter, app: &AppState, rect: egui
         crate::theme::ACCENT_BRIGHT,
     );
 }
-/// Map a world point to its on-screen position for the given draw `origin` (the
-/// canvas top-left). This is the body every per-frame `to_screen` closure shares;
-/// call sites keep a thin closure (`|x, y| world_to_screen_pos(app, origin, x, y)`)
-/// for ergonomics.
 pub(super) fn world_to_screen_pos(
     app: &AppState,
     origin: egui::Pos2,
@@ -425,9 +401,6 @@ pub(super) fn world_to_screen_pos(
     pos2(origin.x + sx as f32, origin.y + sy as f32)
 }
 
-/// Format `v` with up to `prec` decimals, dropping trailing zeros and any bare
-/// trailing dot (`1.5000 -> "1.5"`, `2.0 -> "2"`). Used wherever a number is
-/// shown to the user as a clean, editable default.
 pub(super) fn trim_decimals(v: f64, prec: usize) -> String {
     let s = format!("{v:.prec$}");
     s.trim_end_matches('0').trim_end_matches('.').to_string()
@@ -577,9 +550,6 @@ pub(super) fn resolve_color(app: &AppState, e: &eiderflat_document::Entity) -> (
     }
 }
 
-/// The on-screen base line width (px) for an entity, resolved from its weight
-/// (or its layer's weight when it is "by layer"). Falls back to a hairline when
-/// the effective weight is zero — the default "no weight" look.
 pub(super) fn resolve_line_weight_px(app: &AppState, e: &eiderflat_document::Entity) -> f32 {
     if !app.show_lineweights {
         return HAIRLINE_PX;
@@ -594,11 +564,7 @@ pub(super) fn resolve_line_weight_px(app: &AppState, e: &eiderflat_document::Ent
     (mm * app.lineweight_scale as f32).max(HAIRLINE_PX)
 }
 
-/// The dash pattern (screen px, sign-encoded) for an entity's line type,
-/// resolved through "by layer" and scaled to the current zoom. An empty vector
-/// means a solid line.
 pub(super) fn resolve_line_pattern(app: &AppState, e: &eiderflat_document::Entity) -> Vec<f32> {
-    // Resolve the named line type, following "by layer" to the layer's type.
     let name = match &e.line_type {
         LineTypeRef::Named(n) => Some(n.clone()),
         LineTypeRef::ByLayer | LineTypeRef::ByBlock => {
@@ -623,8 +589,6 @@ pub(super) fn resolve_line_pattern(app: &AppState, e: &eiderflat_document::Entit
     if def.pattern.is_empty() {
         return Vec::new();
     }
-    // Pattern lengths are in drawing units; convert to screen pixels so dashes
-    // track the zoom (longer when zoomed in).
     let px_per_world = (1.0 / app.view.pixel_world_size()) as f32;
     def.pattern
         .iter()
@@ -644,9 +608,6 @@ pub(super) fn refresh_hatch_cache(app: &AppState, cache: &mut super::HatchCache)
         } = &e.kind
         {
             live.insert(e.id);
-            // The bucket is part of the signature, so this recomputes (and only
-            // recomputes) when the geometry or the zoom level changes — keeping
-            // the fill and outline crisp as you zoom in.
             let sig = hatch_signature(boundary, holes, bucket as i64);
             if cache.get(&e.id).map(|(s, _, _)| *s) != Some(sig) {
                 let tris = eiderflat_cad::triangulate_hatch_with_tol(boundary, holes, tol);
@@ -674,9 +635,6 @@ pub(super) fn refresh_text_cache(app: &AppState, cache: &mut super::TextCache) {
         } = &e.kind
         {
             live.insert(e.id);
-            // Bucket is part of the signature, so the glyph fill re-triangulates
-            // (and only then) when the text, font, placement, or zoom changes —
-            // keeping the outline crisp as you zoom in without per-frame cost.
             let sig = text_signature(
                 content,
                 *height,
@@ -783,7 +741,6 @@ pub(super) fn draw_entity(
             ],
             stroke_x,
         );
-        // X Label
         painter.text(
             pos2(origin_screen.x + 24.0, origin_screen.y),
             egui::Align2::CENTER_CENTER,
@@ -792,7 +749,6 @@ pub(super) fn draw_entity(
             stroke_x.color,
         );
 
-        // Y axis line:
         painter.line_segment(
             [origin_screen, pos2(origin_screen.x, origin_screen.y - 18.0)],
             stroke_y,
@@ -843,11 +799,6 @@ pub(super) fn draw_entity(
             rotation,
             font,
         } => {
-            // Placed text is drawn from its exact filled vector outlines (same
-            // geometry as the "outline text" command), triangulated and cached
-            // per zoom level by `refresh_text_cache`. This avoids the galley's
-            // pixel-snapped raster, which pixelated at extreme zoom and never
-            // matched the outline exactly in spacing/corners.
             if let Some(tris) = text_tris.filter(|t| !t.is_empty()) {
                 let mut mesh = egui::epaint::Mesh::default();
                 for t in tris {
@@ -859,9 +810,6 @@ pub(super) fn draw_entity(
                 }
                 painter.add(egui::Shape::mesh(mesh));
             } else if !content.is_empty() {
-                // Fallback (cache not yet populated, or the font produced no
-                // outline, e.g. a missing glyph): draw a quantized galley so the
-                // text is never invisible. Mirrors the old raster path.
                 let (x, y) = anchor.to_f64();
                 const MIN_PX: f32 = 8.0;
                 const MAX_PX: f32 = 512.0;
@@ -899,8 +847,6 @@ pub(super) fn draw_entity(
             pattern,
         } => {
             use eiderflat_document::HatchPattern;
-            // A selected hatch reads as blue (fill + pattern) so it's obviously
-            // distinct from the cyan used for selected lines/curves.
             let fill_col = if selected {
                 Color32::from_rgba_unmultiplied(64, 120, 255, 130)
             } else {
@@ -940,10 +886,6 @@ pub(super) fn draw_entity(
                     }
                 }
             }
-            // Stroke the outline from the cached, pre-flattened loops when we
-            // have them (avoids re-flattening every boundary curve each frame —
-            // critical for heavy boundaries such as outlined text). Fall back to
-            // adaptive per-curve drawing only when no cache is available.
             match hatch_loops {
                 Some(loops) => {
                     for ring in loops {
@@ -1046,10 +988,6 @@ pub(super) fn draw_entity(
     }
 }
 
-/// Draw an aligned linear dimension: extension lines from the two measured
-/// points out to the dimension line, the dimension line with arrowheads, and
-/// the measured length as text — rotated to sit along the dimension line and
-/// sized/fonted by the document's dimension style.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn draw_dimension(
     painter: &egui::Painter,
@@ -1070,8 +1008,6 @@ pub(super) fn draw_dimension(
         return;
     }
     let (ux, uy) = (dx / len, dy / len);
-    // Project each measured point onto the dimension line (through `line`,
-    // parallel to p1→p2) to get the dimension-line endpoints.
     let t1 = (x1 - lx) * ux + (y1 - ly) * uy;
     let t2 = (x2 - lx) * ux + (y2 - ly) * uy;
     let d1 = (lx + t1 * ux, ly + t1 * uy);
@@ -1086,7 +1022,6 @@ pub(super) fn draw_dimension(
     let style = &app.document.settings.dim_style;
     let zoom = app.view.zoom as f32;
 
-    // Extension lines (measured point → dimension line) and the dimension line.
     painter.line_segment([s1, sd1], stroke);
     painter.line_segment([s2, sd2], stroke);
     painter.line_segment([sd1, sd2], stroke);
@@ -1094,7 +1029,6 @@ pub(super) fn draw_dimension(
     arrowhead(painter, sd1, sd2, arrow_px, color);
     arrowhead(painter, sd2, sd1, arrow_px, color);
 
-    // Measured length (or the user's override), laid along the dimension line.
     let label = match ovr {
         Some(t) => t.to_string(),
         None => format_measure(len, app.document.settings.units, style.precision),
@@ -1106,13 +1040,10 @@ pub(super) fn draw_dimension(
 
     let dir = (sd2 - sd1).normalized();
     let mut angle = dir.y.atan2(dir.x);
-    // Flip so text never reads upside down.
     use std::f32::consts::FRAC_PI_2;
     if !(-FRAC_PI_2..=FRAC_PI_2).contains(&angle) {
         angle += std::f32::consts::PI;
     }
-    // Sit the text just off the dimension line, on the side away from the
-    // measured geometry.
     let mut perp = vec2(-dir.y, dir.x);
     let mid = pos2((sd1.x + sd2.x) * 0.5, (sd1.y + sd2.y) * 0.5);
     let mid_meas = pos2((s1.x + s2.x) * 0.5, (s1.y + s2.y) * 0.5);
@@ -1121,17 +1052,12 @@ pub(super) fn draw_dimension(
     }
     let gap = text_px * 0.5 + 3.0;
     let center = mid + perp * gap;
-    // TextShape rotates the galley around its top-left `pos`; offset so the
-    // galley's centre lands on `center`.
     let rot = egui::emath::Rot2::from_angle(angle);
     let mut shape = egui::epaint::TextShape::new(center - rot * (size * 0.5), galley, color);
     shape.angle = angle;
     painter.add(shape);
 }
 
-/// Draw an axis-locked (horizontal or vertical) linear dimension. The dimension
-/// line runs horizontally through `line.y` (or vertically through `line.x`),
-/// measuring only the horizontal (or vertical) component of `p1`→`p2`.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn draw_ortho_dim(
     painter: &egui::Painter,
@@ -1147,8 +1073,6 @@ pub(super) fn draw_ortho_dim(
     let (x1, y1) = p1.to_f64();
     let (x2, y2) = p2.to_f64();
     let (lx, ly) = line.to_f64();
-    // Dimension-line endpoints: share the offset axis, keep each point's own
-    // coordinate on the measured axis.
     let (d1, d2, measured) = if vertical {
         ((lx, y1), (lx, y2), (y2 - y1).abs())
     } else {
@@ -1173,7 +1097,6 @@ pub(super) fn draw_ortho_dim(
     arrowhead(painter, sd1, sd2, arrow_px, color);
     arrowhead(painter, sd2, sd1, arrow_px, color);
 
-    // Upright text centred just off the dimension line, away from the geometry.
     let label = match ovr {
         Some(t) => t.to_string(),
         None => format_measure(measured, app.document.settings.units, style.precision),
@@ -1184,7 +1107,6 @@ pub(super) fn draw_ortho_dim(
     let mid = pos2((sd1.x + sd2.x) * 0.5, (sd1.y + sd2.y) * 0.5);
     let mid_meas = pos2((s1.x + s2.x) * 0.5, (s1.y + s2.y) * 0.5);
     let gap = text_px * 0.5 + 3.0;
-    // Push the text to the side of the dimension line away from the measured pts.
     let perp = if vertical {
         let s = if mid.x >= mid_meas.x { 1.0 } else { -1.0 };
         vec2(s * (gap + galley.size().x * 0.5), 0.0)
@@ -1196,9 +1118,6 @@ pub(super) fn draw_ortho_dim(
     painter.galley(center - galley.size() * 0.5, galley, color);
 }
 
-/// Draw an angular dimension: extension lines from the two ray points out to the
-/// dimension arc, the arc itself with arrowheads at both ends, and the measured
-/// angle as text centred on the arc. The arc radius/side follow `line`.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn draw_angular_dim(
     painter: &egui::Painter,
@@ -1212,20 +1131,16 @@ pub(super) fn draw_angular_dim(
     color: Color32,
 ) {
     let (cx, cy) = center.to_f64();
-    // Sweep/sector and radius are resolved by the shared dimension kernel so the
-    // renderer and the exporters stay in lock-step.
     let sw = eiderflat_document::angular_sweep(center, p1, p2, line);
     let (start, sweep, r) = (sw.start, sw.sweep, sw.radius);
 
     let stroke = Stroke::new(1.0, color);
-    // Extension lines from each ray point out to the arc.
     let arc_pt = |ang: f64| (cx + r * ang.cos(), cy + r * ang.sin());
     let (e1x, e1y) = arc_pt(start);
     let (e2x, e2y) = arc_pt(start + sweep);
     painter.line_segment([to_screen(p1.x, p1.y), to_screen(e1x, e1y)], stroke);
     painter.line_segment([to_screen(p2.x, p2.y), to_screen(e2x, e2y)], stroke);
 
-    // The dimension arc, flattened into a screen polyline.
     let steps = 48.max((sweep.abs() / 0.05) as usize).min(512);
     let mut pts: Vec<egui::Pos2> = Vec::with_capacity(steps + 1);
     for i in 0..=steps {
@@ -1235,7 +1150,6 @@ pub(super) fn draw_angular_dim(
     }
     painter.add(egui::Shape::line(pts.clone(), stroke));
 
-    // Arrowheads tangent to the arc at each end.
     let style = &app.document.settings.dim_style;
     let arrow_px = (style.arrow_size as f32 * app.view.zoom as f32).clamp(4.0, 60.0);
     if pts.len() >= 2 {
@@ -1244,7 +1158,6 @@ pub(super) fn draw_angular_dim(
         arrowhead(painter, pts[n - 1], pts[n - 2], arrow_px, color);
     }
 
-    // Angle text at the arc midpoint, pushed slightly outward.
     let mid_a = start + sweep * 0.5;
     let (mx, my) = (cx + r * mid_a.cos(), cy + r * mid_a.sin());
     let deg = sweep.abs().to_degrees();
@@ -1262,9 +1175,6 @@ pub(super) fn draw_angular_dim(
     painter.galley(pos, galley, color);
 }
 
-/// Draw a radius or diameter dimension: a leader line from the centre out through
-/// the circle edge (the full chord for a diameter), an arrowhead at the edge, and
-/// the `R`/`⌀` value as text by the leader.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn draw_radial_dim(
     painter: &egui::Painter,
@@ -1285,7 +1195,6 @@ pub(super) fn draw_radial_dim(
     let (ux, uy) = ((ex - cx) / r, (ey - cy) / r);
     let stroke = Stroke::new(1.0, color);
 
-    // Leader: centre→edge for a radius; the full diameter chord otherwise.
     let near = if diameter {
         (cx - ux * r, cy - uy * r)
     } else {
@@ -1314,8 +1223,6 @@ pub(super) fn draw_radial_dim(
     let text_px = (style.text_height as f32 * app.view.zoom as f32).clamp(9.0, 200.0);
     let font_id = crate::fonts::text_font_id(painter.ctx(), style.font.as_deref(), text_px);
     let galley = painter.layout_no_wrap(label, font_id, color);
-    // Anchor the label just past the leader's outer end, in screen space, so it
-    // stays attached to the leader tip at any zoom (no world-unit gap).
     let leader_dir = (s_edge - s_near).normalized();
     let anchor = s_edge + leader_dir * 6.0;
     let off = if leader_dir.x >= 0.0 {
@@ -1326,7 +1233,6 @@ pub(super) fn draw_radial_dim(
     painter.galley(anchor + off, galley, color);
 }
 
-/// Filled arrowhead at `tip`, pointing along `from`→`tip`, `size` px long.
 fn arrowhead(
     painter: &egui::Painter,
     tip: egui::Pos2,
@@ -1349,9 +1255,6 @@ fn arrowhead(
     ));
 }
 
-/// Format a measured length with the document's unit suffix, to `prec` decimals.
-/// Thin wrapper over [`eiderflat_document::Units::format_measure`], the shared
-/// implementation used by both the renderer and the exporters.
 fn format_measure(value: f64, units: eiderflat_document::Units, prec: usize) -> String {
     units.format_measure(value, prec)
 }

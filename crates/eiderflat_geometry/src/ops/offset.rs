@@ -171,7 +171,6 @@ fn solve2(a: &mut [Vec<f64>], b1: &mut [f64], b2: &mut [f64]) -> Option<()> {
         a.swap(col, piv);
         b1.swap(col, piv);
         b2.swap(col, piv);
-        // Eliminate below the pivot.
         for r in (col + 1)..n {
             let f = a[r][col] / a[col][col];
             if f == 0.0 {

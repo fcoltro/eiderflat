@@ -1,12 +1,6 @@
-//! Small numeric helpers shared across the kernel and every crate that consumes
-//! it: angle normalisation and point/segment distance. Centralising these keeps
-//! the many ad-hoc reimplementations (degree wraps, sweep wraps, point-to-line
-//! distances) consistent and in one tested place.
-
 const TAU: f64 = std::f64::consts::TAU;
 const PI: f64 = std::f64::consts::PI;
 
-/// Normalise a radian angle into the half-open range `(-π, π]`.
 pub fn wrap_pi(mut a: f64) -> f64 {
     while a <= -PI {
         a += TAU;
@@ -17,7 +11,6 @@ pub fn wrap_pi(mut a: f64) -> f64 {
     a
 }
 
-/// Normalise a radian angle into `[0, 2π)`.
 pub fn wrap_tau(mut a: f64) -> f64 {
     while a < 0.0 {
         a += TAU;
@@ -28,7 +21,6 @@ pub fn wrap_tau(mut a: f64) -> f64 {
     a
 }
 
-/// Normalise a degree angle into `[0, 360)`.
 pub fn wrap_deg360(mut a: f64) -> f64 {
     while a < 0.0 {
         a += 360.0;
@@ -39,14 +31,10 @@ pub fn wrap_deg360(mut a: f64) -> f64 {
     a
 }
 
-/// Normalise `a` into the turn that begins at `start`: `[start, start + 2π)`.
-/// Used to bring an arc parameter into a primitive's own angular domain.
 pub fn wrap_from(a: f64, start: f64) -> f64 {
     start + wrap_tau(a - start)
 }
 
-/// Squared distance from point `p` to the segment `a`–`b` (avoids a `sqrt` on hot
-/// paths such as hit-testing). Degenerate segments fall back to point distance.
 pub fn point_segment_dist_sq(p: (f64, f64), a: (f64, f64), b: (f64, f64)) -> f64 {
     let (dx, dy) = (b.0 - a.0, b.1 - a.1);
     let len_sq = dx * dx + dy * dy;
@@ -59,7 +47,6 @@ pub fn point_segment_dist_sq(p: (f64, f64), a: (f64, f64), b: (f64, f64)) -> f64
     (p.0 - fx).powi(2) + (p.1 - fy).powi(2)
 }
 
-/// Distance from point `p` to the segment `a`–`b`.
 pub fn point_segment_dist(p: (f64, f64), a: (f64, f64), b: (f64, f64)) -> f64 {
     point_segment_dist_sq(p, a, b).sqrt()
 }
@@ -97,11 +84,8 @@ mod tests {
 
     #[test]
     fn point_segment_distance_basics() {
-        // Foot of perpendicular inside the segment.
         assert!((point_segment_dist((1.0, 1.0), (0.0, 0.0), (2.0, 0.0)) - 1.0).abs() < 1e-12);
-        // Past the end → distance to the endpoint.
         assert!((point_segment_dist((3.0, 0.0), (0.0, 0.0), (2.0, 0.0)) - 1.0).abs() < 1e-12);
-        // Degenerate segment → point distance.
         assert!((point_segment_dist((3.0, 4.0), (0.0, 0.0), (0.0, 0.0)) - 5.0).abs() < 1e-12);
     }
 }

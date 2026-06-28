@@ -5,10 +5,6 @@ use crate::tools::Tool;
 use egui::{Color32, Stroke, pos2};
 use eiderflat_geometry::{Curve, CurveSegment, Point2d, curvature_at, normal_at};
 
-/// Draw a curvature comb for `curve`: teeth normal to the curve whose length is
-/// proportional to curvature, with an envelope through the tips. Reveals
-/// smoothness/inflections on splines and arcs. `scale` is the world-unit tooth
-/// length per unit curvature; `samples` is the tooth count.
 pub(super) fn curvature_comb(
     painter: &egui::Painter,
     app: &AppState,
@@ -17,43 +13,62 @@ pub(super) fn curvature_comb(
     scale: f64,
     samples: usize,
 ) {
+    if let Curve::Poly(poly) = curve {
+        for seg in &poly.segments {
+            if seg.as_line().is_none() {
+                curvature_comb(painter, app, seg, origin, scale, samples);
+            }
+        }
+        return;
+    }
+    if curve.as_line().is_some() {
+        return;
+    }
+
     let to_screen = |wx: f64, wy: f64| super::render::world_to_screen_pos(app, origin, wx, wy);
     let (t0, t1) = curve.domain();
     let n = samples.max(2);
     let tooth = Stroke::new(1.0, Color32::from_rgb(190, 120, 255));
     let envelope = Stroke::new(1.5, Color32::from_rgb(150, 90, 230));
-    let mut tips: Vec<egui::Pos2> = Vec::with_capacity(n + 1);
+    let bb = curve.bounding_box();
+    let (w, h) = (bb.max.x - bb.min.x, bb.max.y - bb.min.y);
+    let diag = (w * w + h * h).sqrt();
+    let min_tooth = diag * 1e-3;
+    let max_tooth = (w.min(h) * 0.5).max(scale);
+
+    let mut run: Vec<egui::Pos2> = Vec::new();
+    let flush = |run: &mut Vec<egui::Pos2>| {
+        if run.len() >= 2 {
+            painter.add(egui::Shape::line(run.clone(), envelope));
+        }
+        run.clear();
+    };
     for i in 0..=n {
         let t = t0 + (t1 - t0) * i as f64 / n as f64;
         let k = match curvature_at(curve, t) {
             Some(k) if k.is_finite() => k,
-            _ => continue,
+            _ => {
+                flush(&mut run);
+                continue;
+            }
         };
-        let (x, y) = curve.evaluate_f64(t);
         let (nx, ny) = normal_at(curve, t);
         let nlen = (nx * nx + ny * ny).sqrt();
-        if nlen < 1e-12 {
+        let mut d = -k * scale;
+        if nlen < 1e-12 || d.abs() < min_tooth {
+            flush(&mut run);
             continue;
         }
-        // Tooth points toward the centre of curvature (along -normal*sign(k)).
-        let d = -k * scale;
+        d = d.clamp(-max_tooth, max_tooth);
+        let (x, y) = curve.evaluate_f64(t);
         let base = to_screen(x, y);
         let tip = to_screen(x + nx / nlen * d, y + ny / nlen * d);
         painter.line_segment([base, tip], tooth);
-        tips.push(tip);
+        run.push(tip);
     }
-    if tips.len() >= 2 {
-        painter.add(egui::Shape::line(tips, envelope));
-    }
+    flush(&mut run);
 }
-/// A compact, non-editable readout pinned just below-right of the cursor while a
-/// transform tool (Move/Copy/Rotate/Scale) is mid-operation. This is the
-/// fallback shown only when dynamic input is off; when it's on, the editable
-/// [`dyn_transform_hud`] takes over with the same values plus type-in fields.
 pub(super) fn cursor_readout(ctx: &egui::Context, app: &AppState, origin: egui::Pos2) {
-    // When dynamic input is on, the editable `dyn_transform_hud` shows these
-    // values (and lets the user type them), so the read-only pill would just
-    // double up. Keep the pill only as the fallback for DYN-off.
     if app.dyn_on {
         return;
     }
@@ -116,12 +131,6 @@ pub(super) fn cursor_readout(ctx: &egui::Context, app: &AppState, origin: egui::
         });
 }
 
-/// A single-line field for the dynamic-input HUDs. When `select_all` is set
-/// (the frame the HUD first appears) it grabs focus and selects the whole
-/// pre-filled value, so the first keystroke *replaces* the default instead of
-/// appending to it. When only `grab_focus` is set it takes focus without
-/// re-selecting — used to recapture focus if it drifts to nothing, so the user
-/// can always just start typing. Returns the field's `Response`.
 fn hud_field(
     ui: &mut egui::Ui,
     id: egui::Id,
@@ -149,7 +158,6 @@ fn hud_field(
     out.response.response
 }
 
-/// A muted label for a dynamic-input HUD field (e.g. `L`, `∠`, `R`).
 fn hud_label(ui: &mut egui::Ui, text: &str) {
     ui.label(
         egui::RichText::new(text)
@@ -158,18 +166,12 @@ fn hud_label(ui: &mut egui::Ui, text: &str) {
     );
 }
 
-/// Screen position for a cursor-anchored HUD: just below-right of the cursor,
-/// offset vertically by `dy` (negative sits the panel above the cursor).
 fn cursor_hud_pos(app: &AppState, origin: egui::Pos2, dy: f32) -> egui::Pos2 {
     let (cx, cy) = app.cursor_world;
     let cur = app.view.world_to_screen(cx, cy);
     pos2(origin.x + cur.0 as f32 + 18.0, origin.y + cur.1 as f32 + dy)
 }
 
-/// The shared chrome for a dynamic-input HUD: a foreground glass panel pinned at
-/// `pos`, laying its contents out in a single horizontal row. Callers fill the
-/// row (labels + [`hud_field`]s) in `add`; commit/parse logic stays at the call
-/// site (after this returns) so it can borrow the tool mutably.
 fn cursor_hud(ctx: &egui::Context, id: &str, pos: egui::Pos2, add: impl FnOnce(&mut egui::Ui)) {
     egui::Area::new(egui::Id::new(id))
         .fixed_pos(pos)
@@ -181,15 +183,6 @@ fn cursor_hud(ctx: &egui::Context, id: &str, pos: egui::Pos2, add: impl FnOnce(&
         });
 }
 
-/// Editable cursor HUD for the transform tools (Move/Copy/Rotate/Scale) once a
-/// base point has been picked. Mirrors the read-only `cursor_readout` but lets
-/// the user type exact values: ΔX/ΔY for Move/Copy, an angle for Rotate, and a
-/// factor for Scale. Pressing Enter commits the transform.
-///
-/// Rotate honours the cursor side: the typed angle's magnitude turns the
-/// selection the same way the mouse currently sits relative to the base
-/// (cursor above the base → counter-clockwise, below → clockwise), so a typed
-/// value never needs a minus sign to spin the way you're already aiming.
 pub(super) fn dyn_transform_hud(
     ctx: &egui::Context,
     app: &mut AppState,
@@ -228,10 +221,8 @@ pub(super) fn dyn_transform_hud(
     let ang_id = egui::Id::new("dyn_tf_angle");
     let fac_id = egui::Id::new("dyn_tf_factor");
 
-    // Refresh the live defaults from the cursor while a field is *not* being
-    // edited, exactly like the line/circle HUDs.
     let (dx, dy) = (cx - bx, cy - by);
-    let cursor_ang = (cy - by).atan2(cx - bx); // signed, -pi..pi
+    let cursor_ang = (cy - by).atan2(cx - bx);
     if !ctx.memory(|m| m.has_focus(dx_id)) {
         ui_state.dyn_tf_dx = format!("{dx:.2}");
     }
@@ -249,8 +240,6 @@ pub(super) fn dyn_transform_hud(
         ui_state.dyn_tf_factor = format!("{live_factor:.3}");
     }
 
-    // Re-grab focus if it has drifted to nothing, so the field is always ready
-    // for typing (a pick-click that set the base can otherwise leave it idle).
     let nothing_focused = ctx.memory(|m| m.focused().is_none());
     let grab = first_show || nothing_focused;
 
@@ -271,8 +260,6 @@ pub(super) fn dyn_transform_hud(
             hud_field(ui, dy_id, &mut ui_state.dyn_tf_dy, 56.0, "", false, false);
         }
         Kind::Rotate => {
-            // No leading ∠ glyph — it isn't in the bundled font and renders as a
-            // tofu box; the trailing ° is enough.
             hud_field(
                 ui,
                 ang_id,
@@ -317,12 +304,8 @@ pub(super) fn dyn_transform_hud(
             let Ok(mag) = ui_state.dyn_tf_angle.trim().parse::<f64>() else {
                 return;
             };
-            // Direction follows the cursor side; a bare magnitude spins the way
-            // the mouse is already aiming.
             let dir = if cursor_ang >= 0.0 { 1.0 } else { -1.0 };
             let ang = dir * mag.abs().to_radians();
-            // Rotate's `on_point` reads the angle from the base→point vector, so
-            // place a unit point at the desired angle to drive the rotation.
             app.place_tool_point(Point2d::from_f64(bx + ang.cos(), by + ang.sin()));
             ui_state.dyn_tf_active = false;
         }
@@ -333,8 +316,6 @@ pub(super) fn dyn_transform_hud(
             if factor <= 1e-9 {
                 return;
             }
-            // Make the second pick land on exactly `factor`: ensure a reference
-            // length exists, then place a point that distance from the base.
             if let Tool::Scale { reference, .. } = &mut app.tool
                 && reference.is_none()
             {
@@ -469,7 +450,6 @@ pub(super) fn dyn_polygon_hud(
     ui_state: &mut UiState,
     origin: egui::Pos2,
 ) {
-    // `Some(sides)` here is the current Option<usize> count (None until entered).
     let sides = if let Tool::Polygon {
         center: None,
         sides,
@@ -556,9 +536,6 @@ pub(super) fn dyn_rect_hud(
             } else if let Ok(h) = ui_state.dyn_rect_height.trim().parse::<f64>() {
                 let w = ui_state.dyn_rect_width.trim().parse::<f64>().unwrap_or(0.0);
                 if h.abs() > 1e-9 && w.abs() > 1e-9 {
-                    // Grow the rectangle toward whichever quadrant the cursor is
-                    // in, so the typed width/height never need a minus sign:
-                    // aim up-left and a "10 × 5" box is drawn up and to the left.
                     let sx = if crx >= fx { 1.0 } else { -1.0 };
                     let sy = if cry >= fy { 1.0 } else { -1.0 };
                     app.place_tool_point(Point2d::from_f64(fx + w.abs() * sx, fy + h.abs() * sy));
@@ -712,9 +689,6 @@ pub(super) fn dyn_offset_hud(
         let pos = cursor_hud_pos(app, origin, -38.0);
         cursor_hud(ctx, "dyn_offset_hud", pos, |ui| {
             hud_label(ui, "Dist");
-            // `first_show` selects the pre-filled default (e.g. the "1") so
-            // typing replaces it instead of appending; otherwise grab focus when
-            // idle so it's ready to type.
             let nothing_focused = ui.ctx().memory(|m| m.focused().is_none());
             hud_field(
                 ui,
@@ -740,15 +714,12 @@ pub(super) fn dyn_offset_hud(
         ui_state.dyn_offset_active = false;
     }
 }
-/// Radius/distance entry for the Fillet and Chamfer tools — a field at the cursor
-/// so the value can be typed before (or between) the two picks, like Offset.
 pub(super) fn dyn_corner_hud(
     ctx: &egui::Context,
     app: &mut AppState,
     ui_state: &mut UiState,
     origin: egui::Pos2,
 ) {
-    // (label, current value) for whichever value-then-pick tool is active.
     let info = match &app.tool {
         Tool::Fillet { radius, .. } => Some(("Radius", *radius)),
         Tool::Chamfer { dist, .. } => Some(("Dist", *dist)),
@@ -783,7 +754,6 @@ pub(super) fn dyn_corner_hud(
         }
     });
     ui_state.dyn_corner_active = true;
-    // Push the typed value back into the tool so the pick uses it.
     if let Ok(v) = ui_state.dyn_corner_val.trim().parse::<f64>()
         && v > 1e-9
     {

@@ -1,13 +1,8 @@
-//! Shared decomposition of dimension entities into plain export primitives —
-//! line segments plus a text label — so the DXF and SVG exporters can emit
-//! dimensions as ordinary geometry (no native DIMENSION blocks required).
-
 use eiderflat_document::{DimStyle, EntityKind, Units};
 use eiderflat_geometry::Point2d;
 
 pub(crate) struct DimText {
     pub content: String,
-    /// Lower-left-ish insertion point, in world coordinates.
     pub anchor: Point2d,
     pub height: f64,
     pub rotation_deg: f64,
@@ -18,15 +13,11 @@ pub(crate) struct DimPrimitives {
     pub text: Option<DimText>,
 }
 
-/// Decompose a dimension entity into export primitives. Returns `None` for any
-/// non-dimension entity.
 pub(crate) fn dimension_primitives(
     kind: &EntityKind,
     style: &DimStyle,
     units: Units,
 ) -> Option<DimPrimitives> {
-    // The label text (override or formatted value) comes from the shared kernel,
-    // so exported dimensions match what the canvas shows — including overrides.
     let label = eiderflat_document::label_text(kind, style, units)?;
     match kind {
         EntityKind::Dimension { p1, p2, line, .. } => Some(linear(
@@ -87,8 +78,6 @@ fn pt(p: P) -> Point2d {
     Point2d::from_f64(p.0, p.1)
 }
 
-/// Two short segments forming a `V` arrowhead with its tip at `tip`, opening back
-/// along the `tip → from` direction.
 fn arrow(tip: P, from: P, size: f64, out: &mut Vec<(Point2d, Point2d)>) {
     let (dx, dy) = (tip.0 - from.0, tip.1 - from.1);
     let len = (dx * dx + dy * dy).sqrt();
@@ -111,7 +100,6 @@ fn linear(
     label: String,
 ) -> DimPrimitives {
     let mut segs = Vec::new();
-    // Dimension-line endpoints and the text direction.
     let (d1, d2, dir): (P, P, P) = match ortho {
         Some(true) => ((line.0, p1.1), (line.0, p2.1), (0.0, 1.0)),
         Some(false) => ((p1.0, line.1), (p2.0, line.1), (1.0, 0.0)),
@@ -135,7 +123,6 @@ fn linear(
     arrow(d1, d2, asz, &mut segs);
     arrow(d2, d1, asz, &mut segs);
 
-    // Upright text rotation along the dimension line.
     let mut rot = dir.1.atan2(dir.0);
     use std::f64::consts::FRAC_PI_2;
     if !(-FRAC_PI_2..=FRAC_PI_2).contains(&rot) {
@@ -156,7 +143,6 @@ fn linear(
 
 fn angular(center: P, p1: P, p2: P, line: P, style: &DimStyle, label: String) -> DimPrimitives {
     let (cx, cy) = center;
-    // Resolve the labelled sector with the shared dimension kernel.
     let sw = eiderflat_document::angular_sweep(pt(center), pt(p1), pt(p2), pt(line));
     let (start, sweep, r) = (sw.start, sw.sweep, sw.radius);
 
@@ -166,7 +152,6 @@ fn angular(center: P, p1: P, p2: P, line: P, style: &DimStyle, label: String) ->
     let e2 = arc_pt(start + sweep);
     segs.push((pt(p1), pt(e1)));
     segs.push((pt(p2), pt(e2)));
-    // Flatten the arc.
     let steps = 32.max((sweep.abs() / 0.1) as usize).min(256);
     let mut prev = e1;
     for i in 1..=steps {
@@ -176,7 +161,6 @@ fn angular(center: P, p1: P, p2: P, line: P, style: &DimStyle, label: String) ->
         prev = cur;
     }
     let asz = style.arrow_size.max(1e-6);
-    // Approximate tangents using the first/last arc chords.
     let near_start = arc_pt(start + sweep.signum() * 0.05);
     let near_end = arc_pt(start + sweep - sweep.signum() * 0.05);
     arrow(e1, near_start, asz, &mut segs);

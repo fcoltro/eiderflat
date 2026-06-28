@@ -45,7 +45,6 @@ pub fn export_svg(doc: &Document) -> String {
     s
 }
 
-/// Emit a decomposed dimension as SVG `<line>`s plus a `<text>` label.
 fn dimension_to_svg(
     prims: &crate::dim::DimPrimitives,
     fx: &impl Fn(f64) -> f64,
@@ -67,7 +66,6 @@ fn dimension_to_svg(
     if let Some(t) = &prims.text {
         let (tx, ty) = (fx(t.anchor.x), fy(t.anchor.y));
         let transform = if t.rotation_deg.abs() > 1e-6 {
-            // SVG y-axis points down, so the on-screen rotation negates.
             format!(
                 " transform=\"rotate({:.4} {:.6} {:.6})\"",
                 -t.rotation_deg, tx, ty
@@ -703,7 +701,6 @@ mod tests {
             override_text: None,
         });
         let svg = export_svg(&doc);
-        // Dimension geometry + value text both make it into the SVG.
         assert!(svg.contains("<line"), "dimension lines exported");
         assert!(svg.contains("<text"), "dimension value text exported");
         assert!(svg.contains('\u{00d8}'), "diameter symbol in the label");
@@ -773,7 +770,6 @@ mod tests {
     fn import_external_path_lines() {
         let svg = "<svg viewBox=\"0 0 10 10\"><path d=\"M 0 0 L 10 0 L 10 10 Z\"/></svg>";
         let doc = import_svg(svg);
-        // M,L,L,Z → 3 line segments
         assert_eq!(doc.len(), 3);
     }
 

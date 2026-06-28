@@ -28,9 +28,6 @@ impl Units {
         }
     }
 
-    /// Format a measured value with this unit's suffix to `precision` decimals,
-    /// e.g. `12.50 mm`. The single source of truth for dimension/measurement
-    /// labels across the renderer and the DXF/SVG exporters.
     pub fn format_measure(self, value: f64, precision: usize) -> String {
         let s = self.short_name();
         if s.is_empty() {
@@ -67,18 +64,11 @@ pub struct NamedView {
     pub zoom: f64,
 }
 
-/// Drawing-wide dimension style: how dimensions are drawn (text size, arrow
-/// size, text font, and the number of decimal places in measured values).
-/// Shared by all dimension entities.
 #[derive(Clone, Debug, PartialEq)]
 pub struct DimStyle {
-    /// Dimension text height, in drawing units.
     pub text_height: f64,
-    /// Arrowhead length, in drawing units.
     pub arrow_size: f64,
-    /// Text font family; `None` uses the application default.
     pub font: Option<String>,
-    /// Decimal places shown in measured values (lengths, radii, angles).
     pub precision: usize,
 }
 
@@ -93,7 +83,6 @@ impl Default for DimStyle {
     }
 }
 
-/// The layer dimensions are placed on; created on demand.
 pub const DIMENSION_LAYER: &str = "Dimensions";
 
 #[derive(Clone, Debug)]

@@ -75,19 +75,15 @@ fn mirror_arc_keeps_radius_flips_center() {
             "center y should flip to -4"
         );
         assert!((a.radius - 5.0).abs() < 1e-6, "radius preserved");
-        // Reflection reverses sweep orientation, so the still-CCW mirrored arc
-        // must keep the same included angle (it stays a quarter arc, not the
-        // 270-degree complement) and its endpoints swap: the mirrored START is
-        // the reflection of the original END, and vice versa.
         assert!(
             (a.included_angle() - std::f64::consts::FRAC_PI_2).abs() < 1e-6,
             "included angle changed, expected a quarter arc: {}",
             a.included_angle()
         );
-        let (ms_x, ms_y) = a.evaluate_f64(a.domain().0); // mirrored start
-        let (me_x, me_y) = a.evaluate_f64(a.domain().1); // mirrored end
-        let (os_x, os_y) = arc.evaluate_f64(arc.domain().0); // original start
-        let (oe_x, oe_y) = arc.evaluate_f64(arc.domain().1); // original end
+        let (ms_x, ms_y) = a.evaluate_f64(a.domain().0);
+        let (me_x, me_y) = a.evaluate_f64(a.domain().1);
+        let (os_x, os_y) = arc.evaluate_f64(arc.domain().0);
+        let (oe_x, oe_y) = arc.evaluate_f64(arc.domain().1);
         assert!(
             (ms_x - oe_x).abs() < 1e-6 && (ms_y + oe_y).abs() < 1e-6,
             "mirrored start ({},{}) is not the reflection of original end ({},{})",

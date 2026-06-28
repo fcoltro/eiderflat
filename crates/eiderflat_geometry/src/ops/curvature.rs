@@ -12,21 +12,24 @@ pub fn normal_at(curve: &Curve, t: f64) -> (f64, f64) {
 pub fn curvature_at(curve: &Curve, t: f64) -> Option<f64> {
     let (t0, t1) = curve.domain();
     let (lo, hi) = (t0.min(t1), t0.max(t1));
-    let h = (hi - lo).max(1e-9) * 1e-4;
-    let tm = (t - h).clamp(lo, hi);
-    let tp = (t + h).clamp(lo, hi);
-    let dt = (tp - tm).max(1e-12);
+    let span = (hi - lo).max(1e-9);
+    let h = span * 1e-4;
+    let tc = t.clamp(lo + h, hi - h);
+    let (xm, ym) = curve.evaluate_f64(tc - h);
+    let (xc, yc) = curve.evaluate_f64(tc);
+    let (xp, yp) = curve.evaluate_f64(tc + h);
 
-    let (dx, dy) = curve.tangent_f64(t);
-    let (txm, tym) = curve.tangent_f64(tm);
-    let (txp, typ) = curve.tangent_f64(tp);
-    let (ddx, ddy) = ((txp - txm) / dt, (typ - tym) / dt);
+    let dx = (xp - xm) / (2.0 * h);
+    let dy = (yp - ym) / (2.0 * h);
+    let ddx = (xp - 2.0 * xc + xm) / (h * h);
+    let ddy = (yp - 2.0 * yc + ym) / (h * h);
 
     let speed_sq = dx * dx + dy * dy;
     if speed_sq < 1e-20 {
         return None;
     }
-    Some((dx * ddy - dy * ddx) / speed_sq.powf(1.5))
+    let k = (dx * ddy - dy * ddx) / speed_sq.powf(1.5);
+    k.is_finite().then_some(k)
 }
 
 #[cfg(test)]

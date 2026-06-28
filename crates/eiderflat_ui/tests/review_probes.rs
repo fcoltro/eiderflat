@@ -23,7 +23,6 @@ fn line_tool_snaps_to_existing_endpoint() {
 
     let (s1x, s1y) = a.view.world_to_screen(0.05, 0.05);
     a.canvas_click(s1x, s1y);
-    // Click slightly off (10,0).
     let (s2x, s2y) = a.view.world_to_screen(10.05, -0.03);
     a.canvas_click(s2x, s2y);
 

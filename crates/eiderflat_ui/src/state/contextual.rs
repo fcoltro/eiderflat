@@ -37,7 +37,6 @@ impl CornerGeom {
         match kind {
             CornerKind::Chamfer => min_len * 0.98,
             CornerKind::Fillet => {
-                // tangent length t = r / tan(θ/2) must be ≤ min_len ⇒ r ≤ min_len·tan(θ/2)
                 let half = self.interior_angle() * 0.5;
                 (min_len * half.tan()).max(1e-6)
             }
@@ -52,7 +51,6 @@ impl CornerGeom {
 
 fn poly_uniform_max_size(group: &[CornerGeom], kind: CornerKind) -> f64 {
     use std::collections::HashMap;
-    // Index the corners by their leading segment so neighbours can be paired up.
     let by_seg: HashMap<usize, &CornerGeom> = group
         .iter()
         .filter_map(|c| c.poly_seg.map(|i| (i, c)))
@@ -86,11 +84,6 @@ fn poly_uniform_max_size(group: &[CornerGeom], kind: CornerKind) -> f64 {
     (cap * 0.98).max(1e-3)
 }
 
-/// Uniform cap for filleting/chamfering several separate lines at once (e.g. the
-/// three sides of a triangle). Besides each corner's own limit, a line shared by
-/// two corners must hold both tangents (or both chamfer cuts) from its two ends:
-/// t₁ + t₂ ≤ length. Without this the combined trims overrun the line and mangle
-/// it. Mirrors `poly_uniform_max_size` for the non-poly case.
 fn line_group_max_size(group: &[CornerGeom], kind: CornerKind) -> f64 {
     use std::collections::HashMap;
     let mut cap = group
@@ -98,8 +91,6 @@ fn line_group_max_size(group: &[CornerGeom], kind: CornerKind) -> f64 {
         .map(|c| c.max_size(kind))
         .fold(f64::INFINITY, f64::min);
 
-    // Per-entity tangent/cut budget consumed at each corner that uses it.
-    // factor is what one unit of size costs along that edge.
     let factor = |c: &CornerGeom| match kind {
         CornerKind::Chamfer => 1.0,
         CornerKind::Fillet => 1.0 / (c.interior_angle() * 0.5).tan(),

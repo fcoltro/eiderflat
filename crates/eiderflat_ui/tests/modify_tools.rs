@@ -103,10 +103,6 @@ fn fillet_triangle_caps_radius_across_shared_edges() {
     use eiderflat_ui::state::CornerKind;
     use std::collections::HashMap;
 
-    // Three separate lines forming a right triangle. Each side is shared by two
-    // corners, so the uniform fillet radius must be small enough that both
-    // tangents fit on every side. Without that the trims overrun and mangle the
-    // sides (lines shoot far past the triangle).
     let mut a = app();
     let i1 = a.add_entity(line(0, 0, 10, 0));
     let i2 = a.add_entity(line(10, 0, 0, 10));
@@ -118,7 +114,6 @@ fn fillet_triangle_caps_radius_across_shared_edges() {
 
     let cap = a.corner_group_cap(&corners[0], CornerKind::Fillet);
 
-    // Sum the tangent lengths each corner consumes on every edge it touches.
     let mut budget: HashMap<_, (f64, f64)> = HashMap::new();
     for c in &corners {
         let t = cap / (c.interior_angle() * 0.5).tan();
@@ -135,8 +130,6 @@ fn fillet_triangle_caps_radius_across_shared_edges() {
         );
     }
 
-    // End to end: a huge requested radius is clamped, yielding one arc per
-    // corner with every endpoint still inside the triangle's bounding box.
     a.begin_corner_action(corners[0]);
     a.set_corner_size(1e6);
     a.apply_corner_action();
@@ -160,10 +153,6 @@ fn fillet_triangle_caps_radius_across_shared_edges() {
 
 #[test]
 fn fillet_triangle_arcs_connect_to_trimmed_lines() {
-    // A scalene triangle with an acute corner. The fillet at an acute corner has
-    // a long tangent reach, so each side must be trimmed at the end that meets
-    // the corner — not the end nearer the tangent point. Otherwise an arc ends
-    // up disconnected from its lines (the reported bug).
     let mut a = app();
     let i1 = a.add_entity(line(0, 0, 40, 2));
     let i2 = a.add_entity(line(40, 2, 15, 25));
@@ -176,7 +165,6 @@ fn fillet_triangle_arcs_connect_to_trimmed_lines() {
     a.set_corner_size(1e6);
     a.apply_corner_action();
 
-    // Collect endpoints of every line and arc.
     let mut line_pts: Vec<(f64, f64)> = Vec::new();
     let mut arc_pts: Vec<(f64, f64)> = Vec::new();
     let mut n_arcs = 0;
@@ -195,14 +183,12 @@ fn fillet_triangle_arcs_connect_to_trimmed_lines() {
         }
     }
     assert_eq!(n_arcs, 3, "one fillet arc per corner");
-    // Every arc endpoint must coincide with a (trimmed) line endpoint.
     for ap in &arc_pts {
         let connected = line_pts
             .iter()
             .any(|lp| (lp.0 - ap.0).hypot(lp.1 - ap.1) < 1e-6);
         assert!(connected, "fillet arc endpoint {ap:?} is disconnected");
     }
-    // And the trimmed sides must keep positive length (no over-trim/flip).
     for e in a.document.iter() {
         if let EntityKind::Curve(Curve::Line(l)) = &e.kind {
             let (p0, p1) = (l.p0.to_f64(), l.p1.to_f64());
@@ -218,11 +204,9 @@ fn fillet_triangle_arcs_connect_to_trimmed_lines() {
 fn grip_drag_tracks_the_lines_original_axis() {
     let mut a = app();
     a.track_on = true;
-    // A line along the x-axis, plus an unrelated line whose axis must NOT show.
     let l1 = a.add_entity(line(0, 0, 10, 0));
     a.add_entity(line(3, 5, 3, 12));
 
-    // Grab the (10,0) endpoint grip and start dragging it.
     a.selection = vec![l1];
     let grip = a
         .selection_grips()
@@ -232,9 +216,6 @@ fn grip_drag_tracks_the_lines_original_axis() {
         .expect("line should expose an endpoint grip at (10,0)");
     a.begin_grip_drag(l1, grip);
 
-    // Move the cursor a hair off the original axis, past the end. It should lock
-    // back onto y=0 (colinear with where the line was), with one Extension guide
-    // and nothing from the other line.
     let tol = a.view.pixel_world_size() * 10.0;
     let (sx, sy) = a.view.world_to_screen(14.0, tol * 0.5);
     a.pointer_moved(sx, sy);

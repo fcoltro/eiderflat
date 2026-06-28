@@ -73,8 +73,6 @@ impl LineTypeDef {
         }
     }
     pub fn dotted() -> Self {
-        // A zero-length "dash" is drawn as a dot by the renderer; the gap sets
-        // the spacing between dots.
         LineTypeDef {
             name: "Dotted".into(),
             description: ". . . .".into(),

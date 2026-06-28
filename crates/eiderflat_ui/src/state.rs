@@ -42,51 +42,27 @@ pub struct AppState {
     pub hatch_pattern: eiderflat_document::HatchPattern,
     pub saved_depth: usize,
     pub zoom_target: Option<(f64, f64, f64)>,
-    /// Line type/weight applied to newly created entities (edited in the line
-    /// properties dialog). Default `ByLayer`, matching `Entity::new`.
     pub default_line_type: LineTypeRef,
     pub default_line_weight: LineWeight,
-    /// Show a curvature comb on selected curves, and its tooth scale.
     pub comb_on: bool,
     pub comb_scale: f64,
-    /// Object-snap pick radius, in screen pixels.
     pub snap_px: f64,
-    /// Polar/angle-guide increment, in degrees.
     pub polar_step: f64,
-    /// Mouse-wheel zoom speed multiplier.
     pub zoom_speed: f64,
-    /// Zoom toward the cursor (true) or the view centre (false).
     pub zoom_to_cursor: bool,
-    /// Invert the mouse-wheel zoom direction.
     pub invert_zoom: bool,
-    /// Draw a full-canvas crosshair at the cursor (vs. a small cursor).
     pub crosshair: bool,
-    /// Cursor aperture / pick-box size, in screen pixels.
     pub pick_box: f64,
-    /// Render line weights (false → everything at hairline width).
     pub show_lineweights: bool,
-    /// On-screen pixels per millimetre of line weight.
     pub lineweight_scale: f64,
-    /// Dotted grid (true) vs. lined grid (false).
     pub grid_dots: bool,
-    /// Emphasise every Nth grid line (major lines).
     pub grid_major_every: u32,
-    /// Minor and major grid line colours.
     pub grid_minor_rgb: (u8, u8, u8),
     pub grid_major_rgb: (u8, u8, u8),
-    /// In-app clipboard: entities captured by Copy/Cut, pasted at the cursor.
-    /// Independent of the OS clipboard; lives only for the running session.
     pub clipboard: Vec<Entity>,
-    /// Transient (per-frame): the dock tool the cursor is hovering, so the
-    /// tool-hint panel can preview that tool's tips. Reset each frame by the dock.
     pub hint_tool: Option<Tool>,
 }
 
-/// User interface preferences that persist across sessions (the snap/tracking
-/// toggles and the last-used text font). Document data is *not* here — that
-/// lives in the saved file. Serialized with a tiny hand-rolled `key=value`
-/// format to keep the crate serde-free; the app shell stores the string via
-/// eframe's storage.
 #[derive(Clone, Debug, PartialEq)]
 pub struct UiPrefs {
     pub snap_on: bool,
@@ -115,7 +91,6 @@ pub struct UiPrefs {
 }
 
 impl Default for UiPrefs {
-    /// Matches the fresh-state defaults in [`AppState::new`].
     fn default() -> Self {
         UiPrefs {
             snap_on: true,
@@ -145,7 +120,6 @@ impl Default for UiPrefs {
     }
 }
 
-/// Parse an `"r,g,b"` triple of 0–255 ints, used by the prefs colour fields.
 fn parse_rgb(s: &str) -> Option<(u8, u8, u8)> {
     let p: Vec<u8> = s.split(',').filter_map(|v| v.trim().parse().ok()).collect();
     (p.len() == 3).then(|| (p[0], p[1], p[2]))
@@ -259,7 +233,6 @@ impl UiPrefs {
 }
 
 impl AppState {
-    /// Snapshot the current UI preferences for persistence.
     pub fn ui_prefs(&self) -> UiPrefs {
         UiPrefs {
             snap_on: self.snap_on,
@@ -288,7 +261,6 @@ impl AppState {
         }
     }
 
-    /// Apply restored (or reset-to-default) UI preferences.
     pub fn apply_prefs(&mut self, p: &UiPrefs) {
         self.snap_on = p.snap_on;
         self.grid_on = p.grid_on;
@@ -313,8 +285,6 @@ impl AppState {
         self.grid_minor_rgb = p.grid_minor_rgb;
         self.grid_major_rgb = p.grid_major_rgb;
         self.text_font = p.text_font.clone();
-        // Ortho and polar are mutually exclusive; if a stale state has both on,
-        // let ortho win (it's the more restrictive constraint).
         if self.ortho_on {
             self.polar_on = false;
         }
@@ -327,8 +297,6 @@ pub struct InteractionState {
     pub bbox_drag: Option<BboxDrag>,
     pub corner_action: Option<CornerAction>,
     pub active_guide: Option<((f64, f64), f64)>,
-    /// Inference/tracking guides the cursor is currently locked onto (drawn as
-    /// dashed construction lines). Empty when not tracking.
     pub active_guides: Vec<Guide>,
 }
 
@@ -360,23 +328,24 @@ pub enum BboxHandle {
     RotateSE,
 }
 
-/// Seed a fresh document with the usual CAD layer set (layer "0" already exists
-/// as the default drawing layer; we add the common companions on top).
 fn seed_default_layers(doc: &mut eiderflat_document::Document) {
     use eiderflat_document::Layer;
     for layer in [
         Layer::new("Dimensions").with_color(46, 204, 113),
-        Layer::new("Centerlines").with_color(232, 134, 108),
-        Layer::new("Construction").with_color(169, 140, 255),
-        Layer::new("Hidden").with_color(150, 160, 178),
+        Layer::new("Centerlines")
+            .with_color(232, 134, 108)
+            .with_line_type("Center"),
+        Layer::new("Construction")
+            .with_color(169, 140, 255)
+            .with_line_type("Dotted"),
+        Layer::new("Hidden")
+            .with_color(150, 160, 178)
+            .with_line_type("Dashed"),
     ] {
         doc.layers.add(layer);
     }
 }
 
-/// The two endpoints of a straight line entity, in world coordinates. `None`
-/// for anything that isn't a single line segment (axis tracking only applies to
-/// lines).
 fn line_endpoints(kind: &EntityKind) -> Option<((f64, f64), (f64, f64))> {
     match kind {
         EntityKind::Curve(Curve::Line(l)) => Some((l.p0.to_f64(), l.p1.to_f64())),
@@ -439,13 +408,10 @@ impl AppState {
         }
     }
 
-    /// Whether anything is selected (drives enable-state of selection-only UI).
     pub fn has_selection(&self) -> bool {
         self.selection.iter().any(|&id| id != self.origin_id)
     }
 
-    /// Copy the current selection into the in-app clipboard. Returns the number
-    /// of entities captured.
     pub fn clipboard_copy(&mut self) -> usize {
         let items: Vec<Entity> = self
             .selection
@@ -460,20 +426,16 @@ impl AppState {
         n
     }
 
-    /// Copy then erase the selection (clipboard cut).
     pub fn clipboard_cut(&mut self) {
         if self.clipboard_copy() > 0 {
             self.erase_selection();
         }
     }
 
-    /// Paste the clipboard so its bounding-box centre lands on the cursor; the
-    /// pasted entities become the new selection. A no-op on an empty clipboard.
     pub fn clipboard_paste(&mut self) {
         if self.clipboard.is_empty() {
             return;
         }
-        // Combined bounding box of the clipboard, to anchor the paste at the cursor.
         let bbox = self
             .clipboard
             .iter()
@@ -499,8 +461,6 @@ impl AppState {
         self.tool = Tool::Select;
     }
 
-    /// Apply the current new-entity line defaults to a just-created entity.
-    /// Dimensions are also moved onto their own (auto-created) layer.
     fn apply_new_entity_defaults(&mut self, id: EntityId) {
         let (lt, lw) = (
             self.default_line_type.clone(),
@@ -533,9 +493,6 @@ impl AppState {
     pub fn pointer_moved(&mut self, sx: f64, sy: f64) {
         let (wx, wy) = self.view.screen_to_world(sx, sy);
 
-        // While dragging a grip the active tool is `Select` (which normally
-        // wants no snapping), but the user still expects the grip to snap onto
-        // other entities — so treat grip editing as a snapping context too.
         let dragged_entity = self.interaction.grip_drag.as_ref().map(|d| d.entity_id);
         let allow_snap = self.tool.wants_point_snap() || dragged_entity.is_some();
 
@@ -544,17 +501,11 @@ impl AppState {
             s.tolerance = self.view.pixel_world_size() * self.snap_px;
             let ref_pt = self.tool.reference_point().map(|p| p.to_f64());
             let doc_snap = match dragged_entity {
-                // Skip the entity being edited (all snap kinds) so a grip never
-                // snaps to itself, including the moving edge's "apparent
-                // intersections" with everything it sweeps across.
                 Some(ex) => find_snaps_excluding(&self.document, (wx, wy), &s, ref_pt, Some(ex))
                     .into_iter()
                     .next(),
                 None => best_snap(&self.document, (wx, wy), &s, ref_pt),
             };
-            // Also snap to the in-progress drawing's own vertices (polyline,
-            // spline, rectangle, …) which aren't in the document yet. Keep
-            // whichever candidate is closer to the cursor.
             let self_snap = self.nearest_self_snap((wx, wy), s.tolerance);
             match (doc_snap, self_snap) {
                 (Some(a), Some(b)) => {
@@ -625,10 +576,6 @@ impl AppState {
             }
         }
 
-        // Line-extension guide, kept entirely separate from the object-snapping
-        // above. It only acts while grip-dragging a line endpoint, and only when
-        // no snap already claimed the cursor: lock onto the dragged line's
-        // *original* axis so the endpoint stays colinear with where the line was.
         if self.track_on
             && self.active_snap.is_none()
             && let Some(drag) = self.interaction.grip_drag.as_ref()
@@ -642,11 +589,6 @@ impl AppState {
         }
     }
 
-    /// Nearest vertex already placed in the current in-progress tool, returned
-    /// as an Endpoint snap so a drawing can snap onto its own not-yet-committed
-    /// points (e.g. closing a polyline on its first vertex). Gated on the
-    /// Endpoint object-snap being enabled. The `entity` is a placeholder
-    /// (`origin_id`) since these points belong to no committed entity.
     fn nearest_self_snap(&self, cursor: (f64, f64), tol: f64) -> Option<SnapPoint> {
         if !self
             .snap
@@ -708,7 +650,6 @@ impl AppState {
             return;
         }
 
-        // Clicking back on the start vertex of a polyline/spline welds it closed.
         if self.try_close_on_start(p) {
             return;
         }
@@ -725,12 +666,6 @@ impl AppState {
         self.apply_tool_event(ev);
     }
 
-    /// If the active tool is a polyline/spline with at least three vertices and
-    /// `p` lands on its *start* vertex, weld it into a closed loop and commit it
-    /// (a real closed shape, not an open chain whose ends merely touch). Returns
-    /// whether it closed. The cursor self-snaps to the start vertex, so a click
-    /// there lands exactly on it; a click within snap distance also closes so it
-    /// still works with object snap turned off.
     fn try_close_on_start(&mut self, p: Point2d) -> bool {
         let close = match &self.tool {
             Tool::Polyline { pts } | Tool::Spline { pts } => {
@@ -1184,8 +1119,6 @@ impl AppState {
         self.history.snapshot(&self.document);
     }
 
-    /// The text override of a dimension entity (`None` for non-dimensions or when
-    /// no override is set).
     pub fn dim_override(&self, id: EntityId) -> Option<String> {
         match &self.document.get(id)?.kind {
             EntityKind::Dimension { override_text, .. }
@@ -1196,8 +1129,6 @@ impl AppState {
         }
     }
 
-    /// Set (or clear, with `None`/empty) a dimension's text override. No-op for
-    /// non-dimension entities.
     pub fn set_dim_override(&mut self, id: EntityId, text: Option<String>) {
         let text = text.filter(|t| !t.trim().is_empty());
         if let Some(e) = self.document.get_mut(id) {
@@ -1426,7 +1357,6 @@ impl AppState {
         format!("eiderFLAT — {name}{star}")
     }
 
-    /// Bare document name (with a trailing `*` when dirty) for the top-bar pill.
     pub fn document_label(&self) -> String {
         let name = self
             .current_file_path
@@ -1598,10 +1528,6 @@ impl AppState {
         self.reconstrain_tangency(id);
     }
 
-    /// Re-solve a tangent-constrained circle so it stays tangent to its target
-    /// entities after a grip edit. 3 targets fully fix the circle; 2 leave the
-    /// radius free (re-solve the centre for the dragged radius); 1 keeps the
-    /// circle touching as the centre moves (radius = distance to the target).
     fn reconstrain_tangency(&mut self, id: EntityId) {
         let Some(e) = self.document.get(id) else {
             return;
@@ -1624,7 +1550,7 @@ impl AppState {
             })
             .collect();
         if curves.len() != tangents.len() {
-            return; // a target was deleted — leave the circle as the grip left it
+            return;
         }
         let solved = match curves.len() {
             3 => eiderflat_geometry::tangent_circle_ttt(&curves[0], &curves[1], &curves[2], center),
@@ -1648,8 +1574,6 @@ impl AppState {
         }
     }
 
-    /// Remove the tangency constraint on `id` whose index is `which` (the user
-    /// clicked its tangent icon). The circle keeps its current geometry.
     pub fn remove_tangent(&mut self, id: EntityId, which: usize) {
         self.history.snapshot(&self.document);
         if let Some(e) = self.document.get_mut(id)
@@ -1659,8 +1583,6 @@ impl AppState {
         }
     }
 
-    /// Tangent constraints of `id` paired with the tangent point on the circle
-    /// (the point on the circle nearest each target), for drawing/clicking icons.
     pub fn tangent_markers(&self, id: EntityId) -> Vec<(usize, Point2d)> {
         let Some(e) = self.document.get(id) else {
             return vec![];
@@ -1674,8 +1596,6 @@ impl AppState {
             .filter_map(|(i, tr)| {
                 let target = self.document.get(tr.target)?.as_curve()?;
                 let (cx, cy) = arc.center.to_f64();
-                // Tangent point = where the line centre→(closest point on target)
-                // crosses the circle.
                 let foot = eiderflat_geometry::project_point_onto_curve(target, cx, cy).point;
                 let (fx, fy) = foot;
                 let (dx, dy) = (fx - cx, fy - cy);
@@ -1765,7 +1685,6 @@ mod tests {
         a.place_tool_point(pt(0, 0));
         a.place_tool_point(pt(10, 0));
         a.place_tool_point(pt(5, 8));
-        // Clicking back on the start vertex welds it into a closed loop.
         a.place_tool_point(pt(0, 0));
 
         let poly = a
@@ -1776,7 +1695,6 @@ mod tests {
                 _ => None,
             })
             .expect("a closed polycurve should have been created");
-        // 3 vertices closed → 3 segments (the third is the closing edge).
         assert_eq!(poly.segments.len(), 3);
         let first = poly.segments.first().unwrap().as_line().unwrap();
         let last = poly.segments.last().unwrap().as_line().unwrap();
@@ -1784,7 +1702,6 @@ mod tests {
             first.p0.dist_f64(&last.p1) < 1e-9,
             "ends must coincide (welded)"
         );
-        // The tool resets for the next polyline.
         assert!(matches!(a.tool, Tool::Polyline { ref pts } if pts.is_empty()));
     }
 
@@ -1795,7 +1712,6 @@ mod tests {
         a.place_tool_point(pt(0, 0));
         a.place_tool_point(pt(10, 0));
         a.place_tool_point(pt(5, 8));
-        // A normal next point keeps drawing (no premature close/commit).
         a.place_tool_point(pt(12, 8));
         assert!(matches!(a.tool, Tool::Polyline { ref pts } if pts.len() == 4));
         assert!(
@@ -1810,7 +1726,6 @@ mod tests {
         use eiderflat_geometry::CircularArc;
         let mut a = app();
         a.snap_on = false;
-        // Two axes and a radius-2 circle at (2,2) tangent to both.
         let l1 = a.document.add(line(0, 0, 10, 0));
         let l2 = a.document.add(line(0, 0, 0, 10));
         let cid = a
@@ -1834,13 +1749,11 @@ mod tests {
             ];
         }
         a.selection = vec![cid];
-        // Two tangent markers, sitting on the circle (radius 2 from the centre).
         let markers = a.tangent_markers(cid);
         assert_eq!(markers.len(), 2);
         for (_, p) in &markers {
             assert!((p.dist_f64(&Point2d::from_f64(2.0, 2.0)) - 2.0).abs() < 1e-6);
         }
-        // Clicking one icon removes that constraint.
         a.remove_tangent(cid, 0);
         assert_eq!(a.tangent_markers(cid).len(), 1);
     }
@@ -1852,8 +1765,6 @@ mod tests {
         a.selection = vec![id];
         assert_eq!(a.clipboard_copy(), 1);
 
-        // Paste with the cursor at (50, 20): the copy's bbox centre (5, 0) lands
-        // there, so the pasted segment is the original shifted by (45, 20).
         a.cursor_world = (50.0, 20.0);
         let before = a.document.len();
         a.clipboard_paste();
@@ -1918,7 +1829,6 @@ mod tests {
             text_font: Some("Arial".into()),
         };
         assert_eq!(UiPrefs::deserialize(&p.serialize()), p);
-        // No font → None survives the round-trip.
         let q = UiPrefs {
             text_font: None,
             ..Default::default()
@@ -1932,7 +1842,7 @@ mod tests {
         a.tool = crate::tools::Tool::Dimension { p1: None, p2: None };
         a.place_tool_point(Point2d::from_f64(0.0, 0.0));
         a.place_tool_point(Point2d::from_f64(10.0, 0.0));
-        a.place_tool_point(Point2d::from_f64(0.0, 3.0)); // commits the dimension
+        a.place_tool_point(Point2d::from_f64(0.0, 3.0));
         let dim = a
             .document
             .iter()
@@ -1943,29 +1853,9 @@ mod tests {
     }
 
     #[test]
-    fn angular_dimension_tool_creates_angular_dim() {
-        let mut a = app();
-        a.snap_on = false;
-        a.tool = crate::tools::Tool::DimAngular { pts: vec![] };
-        a.place_tool_point(Point2d::from_f64(0.0, 0.0)); // vertex
-        a.place_tool_point(Point2d::from_f64(10.0, 0.0)); // ray 1
-        a.place_tool_point(Point2d::from_f64(0.0, 10.0)); // ray 2
-        a.place_tool_point(Point2d::from_f64(5.0, 5.0)); // arc location → commit
-        let dim = a
-            .document
-            .iter()
-            .find(|e| matches!(e.kind, eiderflat_document::EntityKind::AngularDim { .. }))
-            .expect("an angular dimension");
-        // Lands on the Dimensions layer like other dimensions.
-        let layer = a.document.layers.get(dim.layer).expect("its layer");
-        assert_eq!(layer.name, eiderflat_document::DIMENSION_LAYER);
-    }
-
-    #[test]
     fn radial_dimension_tool_dimensions_a_circle() {
         let mut a = app();
         a.snap_on = false;
-        // A circle centred at (0,0), radius 5.
         let circle = a.document.add(EntityKind::Curve(Curve::Arc(
             eiderflat_geometry::CircularArc::new(
                 Point2d::from_f64(0.0, 0.0),
@@ -1979,15 +1869,12 @@ mod tests {
             center: None,
             radius: 0.0,
         };
-        // First click picks the circle; aim near it so pick_at resolves.
         let (sx, sy) = a.view.world_to_screen(5.0, 0.0);
         a.canvas_click(sx, sy);
-        // The tool now carries the circle's centre + radius.
         assert!(
             matches!(a.tool, crate::tools::Tool::DimRadial { center: Some(_), radius, .. } if (radius - 5.0).abs() < 1e-9),
             "circle pick set centre+radius"
         );
-        // Second click aims the leader and commits.
         let (lx, ly) = a.view.world_to_screen(0.0, 6.0);
         a.canvas_click(lx, ly);
         let made = a
@@ -2002,7 +1889,6 @@ mod tests {
     fn angular_from_two_lines_creates_dim_at_intersection() {
         let mut a = app();
         a.snap_on = false;
-        // Two lines meeting at the origin: along +X and along +Y.
         a.document
             .add(EntityKind::Curve(Curve::Line(LineSeg::from_endpoints(
                 Point2d::from_f64(0.0, 0.0),
@@ -2017,7 +1903,6 @@ mod tests {
             a: None,
             geom: None,
         };
-        // Pick line 1, pick line 2, then place the arc.
         let (s1x, s1y) = a.view.world_to_screen(5.0, 0.0);
         a.canvas_click(s1x, s1y);
         let (s2x, s2y) = a.view.world_to_screen(0.0, 5.0);
@@ -2048,7 +1933,6 @@ mod tests {
     #[test]
     fn apply_prefs_keeps_ortho_polar_exclusive() {
         let mut a = app();
-        // stale: both ortho and polar on
         let p = UiPrefs {
             ortho_on: true,
             polar_on: true,
@@ -2252,7 +2136,6 @@ mod tests {
     fn grip_drag_snaps_to_other_entity() {
         let mut a = app();
         a.snap_on = true;
-        // Two lines; line2's endpoint sits at (5, 5).
         let l1 = a.add_entity(EntityKind::Curve(Curve::Line(LineSeg::from_endpoints(
             pt(0, 0),
             pt(10, 0),
@@ -2261,7 +2144,6 @@ mod tests {
             pt(5, 5),
             pt(20, 5),
         ))));
-        // Select line1 and start dragging one of its endpoint grips.
         a.selection = vec![l1];
         let grip = a
             .selection_grips()
@@ -2270,8 +2152,6 @@ mod tests {
             .map(|(_, g)| g)
             .expect("line should expose grips");
         a.begin_grip_drag(l1, grip);
-        // Move the cursor onto line2's endpoint — the grip must snap there even
-        // though the active tool is Select.
         let (sx, sy) = a.view.world_to_screen(5.0, 5.0);
         a.pointer_moved(sx, sy);
         assert!(
@@ -2342,7 +2222,6 @@ mod tests {
         let (s2x, s2y) = a.view.world_to_screen(3.0, 4.0);
         a.pointer_moved(s2x, s2y);
 
-        // Enter a distance of 10.0
         a.run_command("10.0");
 
         assert_eq!(a.document.len(), 2);

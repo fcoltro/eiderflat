@@ -16,56 +16,38 @@ pub enum Tool {
     Arc3 {
         pts: Vec<Point2d>,
     },
-    /// Arc by start point, then centre, then end point (CCW from start to end).
     ArcStartCenterEnd {
         start: Option<Point2d>,
         center: Option<Point2d>,
     },
-    /// Arc by centre, then start point, then end point (CCW from start to end).
     ArcCenterStartEnd {
         center: Option<Point2d>,
         start: Option<Point2d>,
     },
-    /// Circle by two diameter endpoints.
     CircleTwoPoint {
         first: Option<Point2d>,
     },
-    /// Circle through three points.
     CircleThreePoint {
         pts: Vec<Point2d>,
     },
-    /// Circle of a given radius tangent to two picked entities (TTR).
     CircleTtr {
         radius: f64,
         first: Option<EntityId>,
     },
-    /// Circle tangent to three picked entities (TTT).
     CircleTtt {
         picks: Vec<EntityId>,
     },
-    /// Line tangent to a circle/arc — from a point, or common to two circles.
     TangentLine {
         first: Option<TanAnchor>,
     },
-    /// Aligned linear dimension: pick two points, then the dimension-line offset.
     Dimension {
         p1: Option<Point2d>,
         p2: Option<Point2d>,
     },
-    /// Angular dimension: pick the vertex, a point on each ray, then the arc
-    /// location. `pts` accumulates [vertex, ray1, ray2]; the 4th click places it.
-    DimAngular {
-        pts: Vec<Point2d>,
-    },
-    /// Angular dimension from two picked lines: pick line A, pick line B (their
-    /// intersection is the vertex), then click to place the dimension arc. `geom`
-    /// holds (vertex, ray-point-A, ray-point-B) once both lines are picked.
     DimAngularLines {
         a: Option<EntityId>,
         geom: Option<(Point2d, Point2d, Point2d)>,
     },
-    /// Radius/diameter dimension: pick a circle or arc (sets `center`), then click
-    /// to aim the leader. `diameter` chooses ⌀ vs R.
     DimRadial {
         diameter: bool,
         center: Option<Point2d>,
@@ -136,9 +118,6 @@ pub enum Tool {
     Hatch,
 }
 
-/// First pick of the tangent-line tool: a free start point, or a picked
-/// circle/arc (with the point it was clicked at, used to choose between the
-/// possible tangents).
 #[derive(Clone, Debug)]
 pub enum TanAnchor {
     Point(Point2d),
@@ -169,7 +148,6 @@ impl Tool {
             Tool::CircleTtt { .. } => "CIRCLE TTT",
             Tool::TangentLine { .. } => "TANGENT",
             Tool::Dimension { .. } => "DIMENSION",
-            Tool::DimAngular { .. } => "DIM ANGULAR",
             Tool::DimAngularLines { .. } => "DIM ANGULAR (2 lines)",
             Tool::DimRadial { diameter: true, .. } => "DIM DIAMETER",
             Tool::DimRadial { .. } => "DIM RADIUS",
@@ -198,9 +176,6 @@ impl Tool {
         matches!(self, Tool::Line { .. })
     }
 
-    /// Tools driven by clicking existing entities (rather than placing free
-    /// points). The canvas shows a pick box and highlights the entity under the
-    /// cursor for these.
     pub fn picks_entities(&self) -> bool {
         matches!(
             self,
@@ -358,8 +333,6 @@ impl Tool {
                 }
                 (Some(a), Some(b)) => {
                     *self = Tool::Dimension { p1: None, p2: None };
-                    // Smart orientation: the placement point decides aligned vs
-                    // horizontal vs vertical (see `linear_orientation`).
                     let kind = match eiderflat_document::linear_orientation(a, b, p) {
                         None => EntityKind::Dimension {
                             p1: a,
@@ -381,60 +354,29 @@ impl Tool {
                 }
             },
 
-            Tool::DimAngular { pts } => {
-                // Collect vertex, ray-1 point, ray-2 point; the 4th click places
-                // the dimension arc and commits. Snapshot first so the `*self`
-                // reassignment doesn't overlap the `pts` borrow.
-                let ready = (pts.len() >= 3).then(|| (pts[0], pts[1], pts[2]));
-                match ready {
-                    None => {
-                        pts.push(p);
-                        ToolEvent::Pending
-                    }
-                    Some((center, a, b)) => {
-                        *self = Tool::DimAngular { pts: vec![] };
-                        ToolEvent::Create(vec![EntityKind::AngularDim {
-                            center,
-                            p1: a,
-                            p2: b,
-                            line: p,
-                            height: 2.5,
-                            override_text: None,
-                        }])
-                    }
+            Tool::DimAngularLines { geom, .. } => match *geom {
+                Some((center, a, b)) => {
+                    *self = Tool::DimAngularLines {
+                        a: None,
+                        geom: None,
+                    };
+                    ToolEvent::Create(vec![EntityKind::AngularDim {
+                        center,
+                        p1: a,
+                        p2: b,
+                        line: p,
+                        height: 2.5,
+                        override_text: None,
+                    }])
                 }
-            }
-
-            Tool::DimAngularLines { geom, .. } => {
-                // Both lines are picked in `handle_modify_click`; this free-point
-                // click places the arc and commits.
-                match *geom {
-                    Some((center, a, b)) => {
-                        *self = Tool::DimAngularLines {
-                            a: None,
-                            geom: None,
-                        };
-                        ToolEvent::Create(vec![EntityKind::AngularDim {
-                            center,
-                            p1: a,
-                            p2: b,
-                            line: p,
-                            height: 2.5,
-                            override_text: None,
-                        }])
-                    }
-                    None => ToolEvent::Pending,
-                }
-            }
+                None => ToolEvent::Pending,
+            },
 
             Tool::DimRadial {
                 diameter,
                 center,
                 radius,
             } => {
-                // The circle/arc pick is handled in `handle_modify_click`, which
-                // fills in `center`/`radius`. This click aims the leader at `p`
-                // (a point on the circle in the cursor direction) and commits.
                 let snap = center.map(|c| (c, *radius, *diameter));
                 match snap {
                     Some((c, r, dia)) => {
@@ -690,7 +632,6 @@ impl Tool {
                 *p1 = None;
                 *p2 = None;
             }
-            Tool::DimAngular { pts } => pts.clear(),
             Tool::DimAngularLines { a, geom } => {
                 *a = None;
                 *geom = None;
@@ -742,7 +683,6 @@ impl Tool {
             Tool::CircleTtt { picks } => !picks.is_empty(),
             Tool::TangentLine { first } => first.is_some(),
             Tool::Dimension { p1, .. } => p1.is_some(),
-            Tool::DimAngular { pts } => !pts.is_empty(),
             Tool::DimAngularLines { a, geom } => a.is_some() || geom.is_some(),
             Tool::DimRadial { center, .. } => center.is_some(),
             Tool::Ellipse { center, .. } => center.is_some(),
@@ -827,8 +767,6 @@ impl Tool {
                 p1: Some(a),
                 p2: None,
             } => vec![Curve::Line(LineSeg::from_endpoints(*a, *cursor))],
-            // With both points placed, the full dimension preview (extension
-            // lines, arrows, text) is drawn by the canvas instead of a curve.
             Tool::CircleTwoPoint { first: Some(a) } => {
                 let d = a.dist_f64(cursor);
                 if d < 1e-9 {
@@ -954,24 +892,16 @@ impl Tool {
                 _ => None,
             },
             Tool::Dimension { p1, p2 } => (*p2).or(*p1),
-            Tool::DimAngular { pts } => pts.last().cloned(),
             Tool::DimAngularLines { geom, .. } => geom.map(|(v, _, _)| v),
             Tool::DimRadial { center, .. } => *center,
             Tool::Select => None,
         }
     }
 
-    /// Vertices already placed in the current, not-yet-committed tool. Used for
-    /// self-snapping so a drawing can snap back onto its own points — e.g.
-    /// closing a polyline on its start vertex, or aligning a new rectangle/
-    /// polygon corner to an earlier one. These points live only in the tool
-    /// (not the document), so the normal object snap can't see them.
     pub fn in_progress_points(&self) -> Vec<Point2d> {
         match self {
             Tool::Polyline { pts } | Tool::Spline { pts } => pts.clone(),
-            Tool::Arc3 { pts } | Tool::CircleThreePoint { pts } | Tool::DimAngular { pts } => {
-                pts.clone()
-            }
+            Tool::Arc3 { pts } | Tool::CircleThreePoint { pts } => pts.clone(),
             Tool::Line { last: Some(p) } => vec![*p],
             Tool::Rectangle { first: Some(p) } => vec![*p],
             Tool::Polygon {
@@ -1086,9 +1016,6 @@ fn closed_polycurve(curves: Vec<Curve>) -> EntityKind {
     EntityKind::Curve(Curve::Poly(Box::new(PolyCurve::new(curves))))
 }
 
-/// Build the CCW arc from `start` to `end` about `center`. The end point is
-/// projected onto the circle through `start`, so it need only give a direction.
-/// Returns `None` if `start` coincides with `center`.
 fn arc_start_center_end(start: &Point2d, center: &Point2d, end: &Point2d) -> Option<CircularArc> {
     let r = center.dist_f64(start);
     if r < 1e-9 {
@@ -1384,7 +1311,6 @@ mod tests {
         assert!(matches!(t.on_point(pt(5, 5)), ToolEvent::Pending));
         assert!(matches!(t.on_point(pt(10, 0)), ToolEvent::Pending));
 
-        // Close and Commit
         match t.close_and_commit() {
             ToolEvent::Create(es) => {
                 assert_eq!(es.len(), 1);

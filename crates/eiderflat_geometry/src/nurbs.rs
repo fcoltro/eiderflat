@@ -527,7 +527,6 @@ mod tests {
         for seg in &segs {
             for i in 0..=12 {
                 let p = seg.evaluate(i as f64 / 12.0);
-                // Map back into the ellipse frame.
                 let (dx, dy) = (p.x - 1.0, p.y + 2.0);
                 let u = dx * cos + dy * sin;
                 let v = -dx * sin + dy * cos;
@@ -680,7 +679,7 @@ mod tests {
             pt(8.0, 0.0),
             pt(10.0, 4.0),
         ];
-        let target = (6.0, 4.0); // cvs[2]
+        let target = (6.0, 4.0);
         let min_dist = |nc: &NurbsCurve| {
             (0..=40)
                 .map(|i| {

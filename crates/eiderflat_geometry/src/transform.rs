@@ -184,7 +184,6 @@ impl Transform2d {
         let new_radius = a.radius * self.scale_factor();
         let rot = self.rotation_angle();
         let (start, end) = if self.is_reflection() {
-            // Reflection reverses sweep direction, so swap endpoints.
             (-a.end_angle + rot, -a.start_angle + rot)
         } else {
             (a.start_angle + rot, a.end_angle + rot)
@@ -200,7 +199,6 @@ impl Transform2d {
         let rot = self.rotation_angle();
         let new_rotation = e.rotation + rot;
         let (start, end) = if self.is_reflection() {
-            // Reflection reverses sweep direction, so swap endpoints.
             (-e.end_angle + rot, -e.start_angle + rot)
         } else {
             (e.start_angle + rot, e.end_angle + rot)
@@ -228,7 +226,6 @@ mod tests {
     fn scale_about_center() {
         let t = Transform2d::scale_about(&pt(1, 1), 2.0, 2.0);
         assert_eq!(t.apply_point(&pt(3, 3)), pt(5, 5));
-        // Center is fixed
         assert_eq!(t.apply_point(&pt(1, 1)), pt(1, 1));
     }
 
@@ -294,17 +291,12 @@ mod tests {
 
     #[test]
     fn mirror_arc_reverses_sweep() {
-        // Quarter arc in the upper-right quadrant, swept CCW from angle 0 to pi/2:
-        // geometric start (2, 0), geometric end (0, 2).
         let arc = CircularArc::new(pt(0, 0), 2.0, 0.0, std::f64::consts::FRAC_PI_2);
         let mirrored = match Transform2d::mirror_x().apply_curve(&Curve::Arc(arc)) {
             Curve::Arc(a) => a,
             _ => panic!("expected arc"),
         };
 
-        // Reflection across the x-axis negates y and reverses sweep orientation,
-        // so the mirrored (still-CCW) arc starts at the reflected original END
-        // (0, -2) and ends at the reflected original START (2, 0).
         let (sx, sy) = mirrored.evaluate_f64(mirrored.start_angle);
         let (ex, ey) = mirrored.evaluate_f64(mirrored.end_angle);
         assert!(
@@ -318,8 +310,6 @@ mod tests {
             (ex, ey)
         );
 
-        // And it must remain a quarter turn, not the 270-degree complement that
-        // results from negating the angles without swapping them.
         assert!(
             (mirrored.included_angle() - std::f64::consts::FRAC_PI_2).abs() < 1e-6,
             "included angle {}",

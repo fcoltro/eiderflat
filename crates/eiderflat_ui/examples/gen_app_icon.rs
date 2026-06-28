@@ -1,14 +1,3 @@
-//! Regenerates the executable / launcher icons from the app symbol SVG.
-//!
-//!     cargo run -p eiderflat_ui --example gen_app_icon
-//!
-//! Writes into `apps/eiderflat_app/assets/`:
-//!   - `eiderflat.ico`  — embedded into the Windows .exe by the app build script
-//!   - `eiderflat.png`  — 512px, source for the macOS .icns and Linux icon
-//!   - `eiderflat.svg`  — scalable Linux icon (a copy of the symbol artwork)
-//!
-//! Re-run after changing `crates/eiderflat_ui/assets/logotype/symbol.svg`.
-
 use std::path::Path;
 
 fn main() {

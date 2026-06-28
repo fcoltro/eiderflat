@@ -50,20 +50,13 @@ pub enum EntityKind {
         fill: (u8, u8, u8),
         pattern: HatchPattern,
     },
-    /// Aligned linear dimension between two points. The dimension line is
-    /// parallel to `p1`→`p2` and passes through `line`, which sets the offset
-    /// distance and side; the measured value is the distance `p1`→`p2`.
     Dimension {
         p1: Point2d,
         p2: Point2d,
         line: Point2d,
         height: f64,
-        /// User text shown instead of the measured value when `Some`.
         override_text: Option<String>,
     },
-    /// Axis-locked linear dimension between two points. When `vertical` is false
-    /// it measures the horizontal distance `|x2 − x1|` with a horizontal dimension
-    /// line through `line.y`; when true, the vertical distance through `line.x`.
     OrthoDim {
         p1: Point2d,
         p2: Point2d,
@@ -72,9 +65,6 @@ pub enum EntityKind {
         height: f64,
         override_text: Option<String>,
     },
-    /// Angular dimension at vertex `center`, measuring the angle between the rays
-    /// `center`→`p1` and `center`→`p2`. The dimension arc passes through `line`,
-    /// which sets the arc radius and which of the two angular sectors is labelled.
     AngularDim {
         center: Point2d,
         p1: Point2d,
@@ -83,9 +73,6 @@ pub enum EntityKind {
         height: f64,
         override_text: Option<String>,
     },
-    /// Radius (or diameter, when `diameter` is set) dimension of a circle/arc with
-    /// the given `center`; `edge` is a point on the circle that fixes the leader
-    /// direction and the measured radius (`|center → edge|`).
     RadialDim {
         center: Point2d,
         edge: Point2d,
@@ -95,9 +82,6 @@ pub enum EntityKind {
     },
 }
 
-/// A tangency constraint on a circle: it stays tangent to entity `target`, with
-/// `near` a hint point (the original pick) used to keep the same solution/side
-/// when the circle is re-solved during editing.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct TangentRef {
     pub target: EntityId,
@@ -114,8 +98,6 @@ pub struct Entity {
     pub line_weight: LineWeight,
     pub transparency: f64,
     pub xdata: XData,
-    /// Tangency constraints (currently only circles created by TTR/TTT). Editing a
-    /// constrained circle re-solves it to stay tangent to these targets.
     pub tangents: Vec<TangentRef>,
 }
 
@@ -177,8 +159,6 @@ impl Entity {
     }
 
     pub fn transform(&mut self, t: &Transform2d) {
-        // A free transform (move/rotate/scale/mirror) repositions the circle off
-        // its tangent lines, so the in-place tangency no longer holds — drop it.
         self.tangents.clear();
         self.kind = match &self.kind {
             EntityKind::Curve(c) => EntityKind::Curve(t.apply_curve(c)),
@@ -296,7 +276,6 @@ impl Entity {
     }
 }
 
-/// Axis-aligned bounding box covering a set of points (at least one).
 fn bbox_of(pts: &[(f64, f64)]) -> BoundingBox {
     let (mut minx, mut miny) = pts[0];
     let (mut maxx, mut maxy) = pts[0];
@@ -370,11 +349,9 @@ mod tests {
         let line = Curve::Line(LineSeg::from_endpoints(pt(0, 0), pt(2, 0)));
         let e = Entity::new(EntityId(1), EntityKind::Curve(line), 0);
         let moved = e.transformed(&Transform2d::translation(10.0, 0.0));
-        // Original unchanged
         if let Curve::Line(l) = e.as_curve().unwrap() {
             assert_eq!(l.p0, pt(0, 0));
         }
-        // Copy moved
         if let Curve::Line(l) = moved.as_curve().unwrap() {
             assert_eq!(l.p0, pt(10, 0));
         }

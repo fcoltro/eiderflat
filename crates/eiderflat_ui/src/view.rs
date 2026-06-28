@@ -25,14 +25,9 @@ use render::{
 };
 use tessellate::draw_curve;
 
-/// Per-hatch render cache: (geometry+zoom signature, fill triangles, flattened
-/// outline loops). See [`render::refresh_hatch_cache`].
 pub type HatchCache =
     std::collections::HashMap<EntityId, (u64, Vec<[Point2d; 3]>, Vec<Vec<Point2d>>)>;
 
-/// Per-text render cache: (content+font+zoom signature, filled glyph triangles).
-/// Placed text is drawn from its exact vector outlines, triangulated once and
-/// reused until the text or zoom level changes. See [`render::refresh_text_cache`].
 pub type TextCache = std::collections::HashMap<EntityId, (u64, Vec<[Point2d; 3]>)>;
 
 #[derive(Default)]
@@ -100,7 +95,6 @@ pub fn draw_ui(ui: &mut egui::Ui, app: &mut AppState, ui_state: &mut UiState) {
         crate::fonts::ensure_fonts(&ctx, &fams);
     }
     handle_shortcuts(&ctx, app, ui_state);
-    // Full-bleed canvas fills the whole central area; all chrome floats on top.
     let canvas_rect = ui.max_rect();
     top_bar(&ctx, app, canvas_rect);
     ribbon(&ctx, app, canvas_rect);
@@ -392,8 +386,6 @@ fn canvas(root_ui: &mut egui::Ui, app: &mut AppState, ui_state: &mut UiState, pa
             && response.clicked()
         {
             const GRIP_HIT: f32 = 8.0;
-            // Clicking a tangent icon on a constrained circle deletes that
-            // constraint — checked before grips so it takes priority.
             let tan_hit = (app.selection.len() == 1)
                 .then(|| app.selection[0])
                 .and_then(|id| {
@@ -912,12 +904,6 @@ fn canvas(root_ui: &mut egui::Ui, app: &mut AppState, ui_state: &mut UiState, pa
         refresh_text_cache(app, &mut ui_state.text_cache);
         let selected_set: std::collections::HashSet<EntityId> =
             app.selection.iter().copied().collect();
-        // Viewport culling: only entities whose bounding box overlaps the visible
-        // world rectangle are tessellated and painted. The rect is padded by a few
-        // screen pixels' worth of world space so wide line weights, hover/selection
-        // emphasis and dimension decorations never pop in at the edges. Entities
-        // with no finite bounding box (infinite construction lines, block inserts)
-        // are always drawn.
         let (vx0, vy0, vx1, vy1) = app.view.visible_bounds();
         let cull_pad = 32.0 * app.view.pixel_world_size();
         let view_bb = eiderflat_geometry::BoundingBox::from_corners(
@@ -938,10 +924,6 @@ fn canvas(root_ui: &mut egui::Ui, app: &mut AppState, ui_state: &mut UiState, pa
             }
             let (r, g, b) = resolve_color(app, e);
             let selected = selected_set.contains(&e.id);
-            // Trim/Extend already show a precise segment/ghost preview of exactly
-            // what changes, so recolouring the *whole* entity on hover is
-            // misleading (it looks like the entire entity will go). Suppress the
-            // full-entity hover highlight for those two tools.
             let hovered = !selected
                 && Some(e.id) == hovered_id
                 && !matches!(app.tool, Tool::Trim | Tool::Extend);
@@ -953,9 +935,6 @@ fn canvas(root_ui: &mut egui::Ui, app: &mut AppState, ui_state: &mut UiState, pa
                     Color32::from_rgb(0, 200, 255)
                 }
             } else if hovered {
-                // Secondary accent while an entity-pick tool (trim, fillet,
-                // tangent, TTR/TTT, …) is hovering a candidate; cyan for plain
-                // selection hover.
                 if app.tool.picks_entities() {
                     crate::theme::SNAP
                 } else {
@@ -964,8 +943,6 @@ fn canvas(root_ui: &mut egui::Ui, app: &mut AppState, ui_state: &mut UiState, pa
             } else {
                 Color32::from_rgb(r, g, b)
             };
-            // Base width comes from the entity's resolved line weight; selection
-            // and hover add a little on top for emphasis.
             let base = resolve_line_weight_px(app, e);
             let width = if selected {
                 base + 1.0
@@ -999,10 +976,12 @@ fn canvas(root_ui: &mut egui::Ui, app: &mut AppState, ui_state: &mut UiState, pa
                 text_tris,
             );
         }
-        // Curvature comb on selected curves (toggle in View ▸ Curvature Comb).
         if app.comb_on {
             for &id in &app.selection {
                 if let Some(c) = app.document.get(id).and_then(|e| e.as_curve()) {
+                    if c.as_line().is_some() {
+                        continue;
+                    }
                     overlays::curvature_comb(&painter, app, c, origin, app.comb_scale, 48);
                 }
             }
@@ -1051,8 +1030,6 @@ fn canvas(root_ui: &mut egui::Ui, app: &mut AppState, ui_state: &mut UiState, pa
                 }
             }
         }
-        // Tangency badges on a selected constrained circle — a small "circle +
-        // tangent line" glyph at each tangent point; click one to drop it.
         if app.selection.len() == 1 {
             let id = app.selection[0];
             let hoverp = response.hover_pos();
@@ -1179,7 +1156,6 @@ fn canvas(root_ui: &mut egui::Ui, app: &mut AppState, ui_state: &mut UiState, pa
         } else {
             for (i, (g, dp)) in corner_dots.iter().enumerate() {
                 let hovered = hovered_dot == Some(i);
-                // Smooth grow on hover (eased), no idle animation.
                 let h = ctx.animate_bool(egui::Id::new("corner_dot").with(i), hovered);
                 let r = 5.0 + 2.0 * h;
                 painter.circle_filled(*dp, r, Color32::from_rgb(0, 150, 255));
@@ -1282,9 +1258,6 @@ fn canvas(root_ui: &mut egui::Ui, app: &mut AppState, ui_state: &mut UiState, pa
             }
         }
         if !app.interaction.active_guides.is_empty() {
-            // Draw each guide as a ray from its source point (a line's endpoint,
-            // a tracked feature, or the reference point) through the locked
-            // cursor and a little beyond — not a full-canvas line.
             let stroke = Stroke::new(1.0, crate::theme::SNAP);
             let overshoot = app.view.pixel_world_size() * 28.0;
             let (cwx, cwy) = app.cursor_world;
@@ -1318,10 +1291,6 @@ fn canvas(root_ui: &mut egui::Ui, app: &mut AppState, ui_state: &mut UiState, pa
         let cursor = Point2d::from_f64(app.cursor_world.0, app.cursor_world.1);
         let preview_stroke = Stroke::new(1.5, crate::theme::PREVIEW);
         match &app.tool {
-            // Spline: the curve itself reads as the live preview, while the
-            // straight segments joining the control vertices are drawn as the
-            // dashed grey control polygon (matching a selected NURBS's control
-            // lines) so they're clearly the CV hull, not the spline.
             Tool::Spline { .. } => {
                 let guide = Stroke::new(1.0, crate::theme::CONTROL_LINE);
                 for c in app.tool.preview(&cursor) {
@@ -1338,9 +1307,6 @@ fn canvas(root_ui: &mut egui::Ui, app: &mut AppState, ui_state: &mut UiState, pa
                     }
                 }
             }
-            // Closed shapes: draw the outline as a single closed line so every
-            // corner — including the seam — is welded, matching the committed
-            // entity (no butt-capped gap from separately drawn edges).
             Tool::Rectangle { first: Some(_) }
             | Tool::Polygon {
                 center: Some(_),
@@ -1365,9 +1331,6 @@ fn canvas(root_ui: &mut egui::Ui, app: &mut AppState, ui_state: &mut UiState, pa
                 }
             }
         }
-        // Live dimension previews track the cursor in the dimension layer's
-        // colour (green), so they read as the dimension they will become rather
-        // than a generic amber preview.
         {
             let dim_col = app
                 .document
@@ -1377,9 +1340,6 @@ fn canvas(root_ui: &mut egui::Ui, app: &mut AppState, ui_state: &mut UiState, pa
                 .map(|l| Color32::from_rgb(l.color.0, l.color.1, l.color.2))
                 .unwrap_or(Color32::from_rgb(46, 204, 113));
             match &app.tool {
-                // Smart linear: the cursor both sets the offset and picks the
-                // orientation (aligned / horizontal / vertical), so the preview
-                // shows exactly what the next click will create.
                 Tool::Dimension {
                     p1: Some(a),
                     p2: Some(b),
@@ -1391,15 +1351,6 @@ fn canvas(root_ui: &mut egui::Ui, app: &mut AppState, ui_state: &mut UiState, pa
                         &painter, app, *a, *b, cursor, vertical, None, &to_screen, dim_col,
                     ),
                 },
-                // Angular: with the vertex + both ray points placed, the cursor
-                // positions the dimension arc.
-                Tool::DimAngular { pts } if pts.len() == 3 => {
-                    render::draw_angular_dim(
-                        &painter, app, pts[0], pts[1], pts[2], cursor, None, &to_screen, dim_col,
-                    );
-                }
-                // Angular from two lines: once both lines are picked, the cursor
-                // positions the arc.
                 Tool::DimAngularLines {
                     geom: Some((v, a, b)),
                     ..
@@ -1408,7 +1359,6 @@ fn canvas(root_ui: &mut egui::Ui, app: &mut AppState, ui_state: &mut UiState, pa
                         &painter, app, *v, *a, *b, cursor, None, &to_screen, dim_col,
                     );
                 }
-                // Radial: with the circle picked, the cursor aims the leader.
                 Tool::DimRadial {
                     diameter,
                     center: Some(c),
@@ -1454,17 +1404,12 @@ fn canvas(root_ui: &mut egui::Ui, app: &mut AppState, ui_state: &mut UiState, pa
                 painter.line_segment([pos2(rect.left(), cc.y), pos2(rect.right(), cc.y)], cross);
                 painter.line_segment([pos2(cc.x, rect.top()), pos2(cc.x, rect.bottom())], cross);
             } else {
-                // Short cursor ticks around a central gap when the full crosshair
-                // is turned off.
                 let (gap, arm) = (app.pick_box as f32 * 0.6, app.pick_box as f32 * 1.6);
                 painter.line_segment([cc - vec2(arm, 0.0), cc - vec2(gap, 0.0)], cross);
                 painter.line_segment([cc + vec2(gap, 0.0), cc + vec2(arm, 0.0)], cross);
                 painter.line_segment([cc - vec2(0.0, arm), cc - vec2(0.0, gap)], cross);
                 painter.line_segment([cc + vec2(0.0, gap), cc + vec2(0.0, arm)], cross);
             }
-            // The polar/ortho guide is drawn after the crosshair so a horizontal
-            // or vertical guide isn't painted over by it (the crosshair shares
-            // those exact pixels; diagonal guides like 45° never collided).
             if let Some(((rx, ry), angle_rad)) = app.interaction.active_guide {
                 let view_diag =
                     (app.view.width * app.view.width + app.view.height * app.view.height).sqrt();
@@ -1481,8 +1426,6 @@ fn canvas(root_ui: &mut egui::Ui, app: &mut AppState, ui_state: &mut UiState, pa
                 let box_stroke = if matches!(app.tool, Tool::Select) {
                     cross
                 } else {
-                    // Pick box matches the secondary-accent entity highlight for
-                    // pick tools.
                     Stroke::new(1.4, crate::theme::SNAP)
                 };
                 painter.rect_stroke(

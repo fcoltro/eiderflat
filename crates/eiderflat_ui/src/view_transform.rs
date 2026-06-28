@@ -49,7 +49,6 @@ impl ViewTransform {
         1.0 / self.zoom
     }
 
-    /// Magnification readout for the status pill (100% at the default 50 px/unit).
     pub fn zoom_percent(&self) -> f64 {
         self.zoom * 2.0
     }

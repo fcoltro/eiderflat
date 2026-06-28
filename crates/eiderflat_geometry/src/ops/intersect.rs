@@ -19,10 +19,6 @@ pub fn intersect_line_line(l1: &LineSeg, l2: &LineSeg) -> Option<CurveIntersecti
     .map(|(point, t1, t2)| CurveIntersection { point, t1, t2 })
 }
 
-/// Intersection of the two *infinite* lines carrying `l1` and `l2` (unlike
-/// [`intersect_line_line`], the crossing need not lie within either segment).
-/// Returns `None` when the lines are parallel. Useful for angular dimensions,
-/// extended trims and construction geometry.
 pub fn intersect_lines_unbounded(l1: &LineSeg, l2: &LineSeg) -> Option<Point2d> {
     let (x1, y1) = l1.p0.to_f64();
     let (x2, y2) = l1.p1.to_f64();

@@ -329,7 +329,6 @@ pub fn from_string(text: &str) -> Result<Document, String> {
                     None | Some("-") => None,
                     Some(t) => Some(unesc(t)),
                 };
-                // Precision is optional (absent in older files → keep the default).
                 if let Some(p) = tok.next().and_then(|v| v.parse().ok()) {
                     ds.precision = p;
                 }
@@ -357,7 +356,6 @@ pub fn from_string(text: &str) -> Result<Document, String> {
     Ok(doc)
 }
 
-/// Load from a file.
 pub fn load(path: &std::path::Path) -> std::io::Result<Document> {
     let text = std::fs::read_to_string(path)?;
     from_string(&text).map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
@@ -422,7 +420,6 @@ fn parse_entity<'a>(
             let height = tok.next().and_then(|v| v.parse().ok()).unwrap_or(1.0);
             let rotation = tok.next().and_then(|v| v.parse().ok()).unwrap_or(0.0);
             let content = unesc(tok.next().unwrap_or(""));
-            // Optional trailing font token (absent in older files, "-" = default font).
             let font = match tok.next() {
                 None | Some("-") => None,
                 Some(t) => Some(unesc(t)),
@@ -499,8 +496,6 @@ fn parse_entity<'a>(
             let count: usize = tok.next().and_then(|v| v.parse().ok()).unwrap_or(0);
             let mut segs = Vec::new();
             for _ in 0..count {
-                // Stop at end-of-input rather than spinning `count` times on a
-                // truncated or corrupt file (a huge count must not hang the load).
                 let Some(segline) = lines.next() else { break };
                 if let Some(seg) = parse_segment(segline.trim()) {
                     segs.push(seg);
@@ -517,7 +512,6 @@ fn parse_entity<'a>(
             let read_segs = |lines: &mut std::iter::Peekable<std::str::Lines>, n: usize| {
                 let mut v = Vec::new();
                 for _ in 0..n {
-                    // Stop at end-of-input so a corrupt segment count can't hang.
                     let Some(line) = lines.next() else { break };
                     if let Some(seg) = parse_segment(line.trim()) {
                         v.push(seg);
@@ -529,7 +523,6 @@ fn parse_entity<'a>(
             let boundary = read_segs(lines, nb);
             let mut holes = Vec::new();
             for _ in 0..nh {
-                // each hole begins with a `HOLE <count>` line.
                 let ns = lines
                     .next()
                     .and_then(|l| {
@@ -603,9 +596,6 @@ fn parse_control_data<'a, I: Iterator<Item = &'a str>>(
     tok: &mut I,
 ) -> Option<(Vec<Point2d>, Vec<f64>)> {
     let n: usize = tok.next().and_then(|v| v.parse().ok())?;
-    // Cap the pre-allocation: a corrupt count must not trigger a huge allocation.
-    // The real data is bounded by the tokens present on the line, so we stop as
-    // soon as a control point token is missing.
     let mut points = Vec::with_capacity(n.min(1024));
     let mut weights = Vec::with_capacity(n.min(1024));
     for _ in 0..n {
@@ -785,7 +775,6 @@ fn esc(s: &str) -> String {
     s.replace('\\', "\\\\").replace(' ', "\\s")
 }
 
-/// Serialise an optional dimension text override: `-` for none, else escaped.
 fn dim_override(o: &Option<String>) -> String {
     match o {
         None => "-".into(),
@@ -793,7 +782,6 @@ fn dim_override(o: &Option<String>) -> String {
     }
 }
 
-/// Parse a trailing dimension override token (`-`/absent → none).
 fn parse_dim_override<'a>(tok: &mut impl Iterator<Item = &'a str>) -> Option<String> {
     match tok.next() {
         None | Some("-") => None,
@@ -1134,8 +1122,6 @@ mod tests {
 
     #[test]
     fn corrupt_counts_do_not_hang_or_oom() {
-        // A control-point count far larger than the data present must not trigger a
-        // huge allocation or spin: parsing stops at the end of the available tokens.
         let nurbs = format!(
             "{} {}\nE NURBS 0 bylayer 100000000 0;0 1 5;5 1\n",
             MAGIC, VERSION
@@ -1143,8 +1129,6 @@ mod tests {
         let doc = from_string(&nurbs).expect("loads without hanging");
         assert_eq!(doc.len(), 1);
 
-        // A POLY/HATCH segment count larger than the lines present must likewise
-        // stop at end-of-input rather than looping the full declared count.
         let poly = format!(
             "{} {}\nE POLY 0 bylayer 100000000\nSEG LINE 0;0 4;0\n",
             MAGIC, VERSION

@@ -208,11 +208,6 @@ pub fn triangulate_with_tol(
     holes: &[Vec<Curve>],
     tol: f64,
 ) -> Vec<[Point2d; 3]> {
-    // Lower bound on the flatten tolerance, relative to the region size, so a
-    // huge boundary can't request an unbounded number of points. Kept small
-    // enough (~1/5,000,000 of the region) that the fill edge stays sub-pixel
-    // even at extreme zoom; the deviation-based flattener naturally uses far
-    // fewer points at normal zoom.
     let floor = (region_diag(boundary) * 1e-7).max(1e-9);
     let tol = tol.max(floor);
     let mut outer = loop_polygon(boundary, tol);
@@ -239,11 +234,6 @@ pub fn triangulate_with_tol(
     ear_clip(&merged)
 }
 
-/// Triangulate filled regions made of many closed contours, classifying them by
-/// even-odd containment depth (even depth = filled, odd = hole) rather than
-/// requiring the caller to separate outer rings from holes. This is what fills a
-/// whole text string in one call: each letter is its own filled region, and
-/// counters like the bowl of an `o` or the triangle in an `A` become holes.
 pub fn triangulate_contours(contours: &[Curve], tol: f64) -> Vec<[Point2d; 3]> {
     let polys: Vec<Vec<P>> = contours
         .iter()
@@ -254,9 +244,6 @@ pub fn triangulate_contours(contours: &[Curve], tol: f64) -> Vec<[Point2d; 3]> {
     if n == 0 {
         return Vec::new();
     }
-    // A vertex of one contour is strictly inside/outside every *other* contour
-    // (glyph contours don't share points), so vertex 0 is a fine containment
-    // probe. Depth = how many other contours enclose it.
     let depth: Vec<usize> = (0..n)
         .map(|i| {
             let (px, py) = polys[i][0];
@@ -265,7 +252,6 @@ pub fn triangulate_contours(contours: &[Curve], tol: f64) -> Vec<[Point2d; 3]> {
                 .count()
         })
         .collect();
-    // The immediate parent of contour k is the deepest contour that encloses it.
     let immediate_parent = |k: usize| -> Option<usize> {
         let (px, py) = polys[k][0];
         (0..n)
@@ -276,18 +262,18 @@ pub fn triangulate_contours(contours: &[Curve], tol: f64) -> Vec<[Point2d; 3]> {
     let mut tris = Vec::new();
     for i in 0..n {
         if !depth[i].is_multiple_of(2) {
-            continue; // a hole — emitted with its parent below
+            continue;
         }
         let mut outer = polys[i].clone();
         if signed_area(&outer) < 0.0 {
-            outer.reverse(); // outer ring CCW
+            outer.reverse();
         }
         let hole_polys: Vec<Vec<P>> = (0..n)
             .filter(|&k| depth[k] == depth[i] + 1 && immediate_parent(k) == Some(i))
             .map(|k| {
                 let mut h = polys[k].clone();
                 if signed_area(&h) > 0.0 {
-                    h.reverse(); // holes CW
+                    h.reverse();
                 }
                 h
             })
@@ -298,13 +284,7 @@ pub fn triangulate_contours(contours: &[Curve], tol: f64) -> Vec<[Point2d; 3]> {
     tris
 }
 
-/// Flattened closed boundary loops (outer ring first, then each hole) at the
-/// given tolerance. Lets the renderer stroke a hatch outline from a cached
-/// polyline instead of re-flattening every boundary curve every frame, while
-/// still refining as you zoom in (smaller `tol`).
 pub fn outline_loops(boundary: &[Curve], holes: &[Vec<Curve>], tol: f64) -> Vec<Vec<Point2d>> {
-    // Match the fill's lower bound (see `triangulate_with_tol`) so the stroked
-    // outline and the fill edge refine together as you zoom in.
     let floor = (region_diag(boundary) * 1e-7).max(1e-9);
     let tol = tol.max(floor);
     let to_pts = |ring: Vec<P>| -> Vec<Point2d> {
@@ -487,10 +467,6 @@ fn region_from_closed_loops(
                 .unwrap_or(std::cmp::Ordering::Equal)
         })?;
 
-    // Any other curve crossing this loop's boundary (an open line/spline, or
-    // another closed loop) subdivides it into smaller faces. The single closed
-    // loop is then the wrong answer — defer to the planar arrangement, which
-    // resolves which sub-face the click actually landed in.
     if loop_subdivided(doc, &loops[outer_idx], ids[outer_idx]) {
         return None;
     }
@@ -531,9 +507,6 @@ fn merge_islands(islands: Vec<Vec<Curve>>) -> Vec<Vec<Curve>> {
         .collect()
 }
 
-/// Whether any editable curve other than `outer_id` crosses the `outer` loop's
-/// boundary. Such a curve cuts the loop into multiple faces, so a hatch pick
-/// inside it must be resolved by the arrangement rather than by the whole loop.
 fn loop_subdivided(doc: &Document, outer: &[Curve], outer_id: EntityId) -> bool {
     let po = loop_polygon(outer, default_flatten_tol(outer));
     if po.len() < 3 {
@@ -797,7 +770,6 @@ fn poly_to_curves(p: &[P]) -> Vec<Curve> {
         .collect()
 }
 
-/// Sub-curve of `c` between normalized parameters `a <= b` (both in 0..=1).
 fn subcurve(c: &Curve, a: f64, b: f64) -> Curve {
     use eiderflat_geometry::split_curve;
     let (a, b) = (a.clamp(0.0, 1.0), b.clamp(0.0, 1.0));
@@ -817,8 +789,6 @@ fn subcurve(c: &Curve, a: f64, b: f64) -> Curve {
     }
 }
 
-/// Whether `c`'s endpoints coincide (a full circle/ellipse or closed poly),
-/// so its parameter wraps and a sub-run may cross the 0/1 seam.
 fn curve_closed(c: &Curve) -> bool {
     let (t0, t1) = c.domain();
     let s = c.evaluate_f64(t0);
@@ -826,9 +796,6 @@ fn curve_closed(c: &Curve) -> bool {
     (s.0 - e.0).hypot(s.1 - e.1) < 1e-7
 }
 
-/// Forward sub-curve(s) of `c` from normalized param `a` to `b` (`a <= b`). For
-/// a closed curve `b` (or `a`) may fall outside 0..1: the span is split at each
-/// seam (integer) crossing into one curve per arc piece.
 fn arc_pieces(c: &Curve, a: f64, b: f64, closed: bool) -> Vec<Curve> {
     if !closed || (a >= -1e-9 && b <= 1.0 + 1e-9) {
         return vec![subcurve(c, a.clamp(0.0, 1.0), b.clamp(0.0, 1.0))];
@@ -859,11 +826,6 @@ fn loop_diag(verts: &[P]) -> f64 {
     }
 }
 
-/// Rebuild a traced boundary ring (line segments from the arrangement) back onto
-/// the original document curves wherever the ring follows them. A region hatched
-/// by clicking inside it then keeps the true curve — and stays crisp at any zoom
-/// — instead of the baked polyline the arrangement produces. Anything that
-/// doesn't clearly lie on a single source curve is left as line segments.
 fn recurve_loop(loop_: &[Curve], parts: &[Curve]) -> Vec<Curve> {
     use eiderflat_geometry::{project_point_onto_curve, reverse_curve};
     let m = loop_.len();
@@ -879,7 +841,6 @@ fn recurve_loop(loop_: &[Curve], parts: &[Curve]) -> Vec<Curve> {
         .collect();
     let tol = (loop_diag(&verts) * 5e-3).max(5e-3);
 
-    // Which source part (and normalized param) each vertex lies on, if any.
     let assign = |p: P| -> Option<(usize, f64)> {
         let mut best: Option<(usize, f64, f64)> = None;
         for (i, c) in parts.iter().enumerate() {
@@ -900,8 +861,6 @@ fn recurve_loop(loop_: &[Curve], parts: &[Curve]) -> Vec<Curve> {
     };
     let va: Vec<Option<(usize, f64)>> = verts.iter().map(|&p| assign(p)).collect();
 
-    // An edge belongs to a part only if both endpoints AND its midpoint lie on
-    // it (so a chord that merely cuts across a curve is not mistaken for it).
     let edge_part = |k: usize| -> Option<usize> {
         let (ia, _) = va[k]?;
         let (ib, _) = va[(k + 1) % m]?;
@@ -915,12 +874,10 @@ fn recurve_loop(loop_: &[Curve], parts: &[Curve]) -> Vec<Curve> {
     };
     let ep: Vec<Option<usize>> = (0..m).map(edge_part).collect();
 
-    // Whole ring on one part → a single closed source curve (circle/ellipse).
     if ep[0].is_some() && ep.iter().all(|&e| e == ep[0]) {
         return vec![parts[ep[0].unwrap()].clone()];
     }
 
-    // Start at a seam so runs don't straddle the ring's wrap point.
     let start = (0..m).find(|&k| ep[k] != ep[(k + m - 1) % m]).unwrap_or(0);
 
     let mut out: Vec<Curve> = Vec::new();
@@ -937,9 +894,6 @@ fn recurve_loop(loop_: &[Curve], parts: &[Curve]) -> Vec<Curve> {
             len += 1;
         }
         let vend = (e + len) % m;
-        // Unwrap the run's params along the curve. For a closed source curve a
-        // run can cross the 0/1 seam (e.g. an arc through angle 0); unwrapping
-        // keeps it monotonic so it isn't mistaken for a direction reversal.
         let closed = curve_closed(&parts[idx]);
         let mut u: Vec<f64> = Vec::with_capacity(len + 1);
         u.push(va[e].unwrap().1);
@@ -974,7 +928,6 @@ fn recurve_loop(loop_: &[Curve], parts: &[Curve]) -> Vec<Curve> {
                 ps
             })
             .filter(|ps| {
-                // The assembled run must start/end at the run's vertices.
                 let (Some(first), Some(last)) = (ps.first(), ps.last()) else {
                     return false;
                 };
@@ -998,8 +951,6 @@ fn recurve_loop(loop_: &[Curve], parts: &[Curve]) -> Vec<Curve> {
     if out.is_empty() { loop_.to_vec() } else { out }
 }
 
-/// Source curve parts (poly segments flattened out) available for re-curving a
-/// traced boundary, ignoring hatches themselves.
 fn source_parts(doc: &Document) -> Vec<Curve> {
     let mut parts = Vec::new();
     for e in doc.editable_entities() {
@@ -1143,8 +1094,6 @@ mod tests {
         );
     }
 
-    // One closed square contour as a single Poly curve (what `outline_text`
-    // emits per glyph contour).
     fn square_contour(x0: i64, y0: i64, x1: i64, y1: i64) -> Curve {
         Curve::Poly(Box::new(PolyCurve::new(vec![
             Curve::Line(LineSeg::from_endpoints(pti(x0, y0), pti(x1, y0))),
@@ -1156,8 +1105,6 @@ mod tests {
 
     #[test]
     fn triangulate_contours_classifies_holes_by_depth() {
-        // Outer 6×6 (36), hole 4×4 at depth 1 (−16), island 2×2 at depth 2 (+4)
-        // → filled area 24. Verifies even-odd containment nesting.
         let contours = [
             square_contour(0, 0, 6, 6),
             square_contour(1, 1, 5, 5),
@@ -1175,7 +1122,6 @@ mod tests {
 
     #[test]
     fn triangulate_contours_handles_separate_regions() {
-        // Two disjoint squares (two letters) → 4 + 4 = 8.
         let contours = [square_contour(0, 0, 2, 2), square_contour(5, 0, 7, 2)];
         let total: f64 = triangulate_contours(&contours, 0.01)
             .iter()
@@ -1296,9 +1242,6 @@ mod tests {
 
     #[test]
     fn arrangement_pick_recovers_source_arc() {
-        // A circle cut by a diameter chord forces the arrangement path. The
-        // half-disc boundary must come back as real arc curves, not a baked
-        // polyline, so the fill stays crisp at any zoom.
         let mut doc = Document::new();
         doc.add(full_circle(0.0, 0.0, 5.0));
         doc.add(EntityKind::Curve(Curve::Line(LineSeg::from_endpoints(
@@ -1316,8 +1259,6 @@ mod tests {
 
     #[test]
     fn arrangement_pick_recovers_source_arc_lower_half() {
-        // Same as above but the picked arc crosses the circle's param seam
-        // (start point at angle 0 = (5,0)).
         let mut doc = Document::new();
         doc.add(full_circle(0.0, 0.0, 5.0));
         doc.add(EntityKind::Curve(Curve::Line(LineSeg::from_endpoints(
@@ -1335,16 +1276,12 @@ mod tests {
 
     #[test]
     fn closed_loop_cut_by_open_line_uses_subface() {
-        // A circle crossed by a chord: picking in one segment must fill only
-        // that segment, not the whole circle. The chord is an open line, which
-        // the closed-loop fast path used to ignore entirely.
         let mut doc = Document::new();
         doc.add(full_circle(0.0, 0.0, 5.0));
         doc.add(EntityKind::Curve(Curve::Line(LineSeg::from_endpoints(
             pti(-5, 3),
             pti(5, 3),
         ))));
-        // Click in the small cap above the chord (y in 3..5).
         let (boundary, holes) =
             trace_pick_region(&doc, 0.0, 4.0).expect("the cap encloses the click");
         assert!(holes.is_empty());

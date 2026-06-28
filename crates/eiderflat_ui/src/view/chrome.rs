@@ -7,8 +7,6 @@ use eiderflat_document::{EntityKind, Layer};
 use eiderflat_geometry::{Curve, Point2d};
 use rfd::FileDialog;
 
-/// Global keyboard shortcuts (formerly handled inside the menu bar) plus the
-/// window-title sync. Called once per frame before the chrome is drawn.
 pub(super) fn handle_shortcuts(ctx: &Context, app: &mut AppState, ui_state: &mut UiState) {
     let title = app.window_title();
     if ui_state.last_title != title {
@@ -39,11 +37,9 @@ pub(super) fn handle_shortcuts(ctx: &Context, app: &mut AppState, ui_state: &mut
         } else if ctrl && z {
             app.undo();
         }
-        // Ctrl+A selects every entity.
         if ctrl && ctx.input(|i| i.key_pressed(egui::Key::A)) {
             app.execute(Command::SelectAll);
         }
-        // Clipboard: Ctrl+C copy, Ctrl+X cut, Ctrl+V paste (at the cursor).
         if ctrl && ctx.input(|i| i.key_pressed(egui::Key::C)) {
             app.clipboard_copy();
         }
@@ -59,7 +55,6 @@ pub(super) fn handle_shortcuts(ctx: &Context, app: &mut AppState, ui_state: &mut
     }
 }
 
-/// Floating "glass" top bar pill: brand, menus, undo/redo, command search and export.
 pub(super) fn top_bar(ctx: &Context, app: &mut AppState, canvas_rect: egui::Rect) {
     let margin = 12.0;
     let pos = canvas_rect.left_top() + egui::vec2(margin, margin);
@@ -76,10 +71,6 @@ pub(super) fn top_bar(ctx: &Context, app: &mut AppState, canvas_rect: egui::Rect
                     ui.set_height(34.0);
                     ui.horizontal_centered(|ui| {
                         ui.add_space(4.0);
-                        // Document name + save-status dot:
-                        //   red   = never saved to disk
-                        //   amber = saved before, but has unsaved changes
-                        //   green = saved, no pending changes
                         ui.label(
                             egui::RichText::new(app.document_label())
                                 .size(13.0)
@@ -100,7 +91,6 @@ pub(super) fn top_bar(ctx: &Context, app: &mut AppState, canvas_rect: egui::Rect
                         }
                         ui.add_space(6.0);
                         menu_items(ui, app);
-                        // Undo / redo sit just right of the Help menu (as requested).
                         ui.add_space(2.0);
                         ui.scope(|ui| {
                             ui.spacing_mut().item_spacing.x = 2.0;
@@ -132,7 +122,6 @@ pub(super) fn top_bar(ctx: &Context, app: &mut AppState, canvas_rect: egui::Rect
                             });
                         });
 
-                        // Right cluster (search · export · avatar), right-aligned.
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             ui.add_space(2.0);
                             if ui
@@ -188,8 +177,6 @@ fn search_button() -> impl egui::Widget {
             egui::FontId::proportional(12.5),
             crate::theme::TEXT_DIM,
         );
-        // Two separate keycaps on the right — "Ctrl" and "F" — instead of one
-        // combined badge.
         let cap = |p: &egui::Painter, right: f32, text: &str| -> f32 {
             let galley = p.layout_no_wrap(
                 text.to_string(),
@@ -433,8 +420,6 @@ fn menu_items(ui: &mut egui::Ui, app: &mut AppState) {
         ui.checkbox(&mut app.snap_on, "Object Snap  (F7)");
         ui.checkbox(&mut app.grid_on, "Grid  (F8)");
         ui.checkbox(&mut app.grid_snap_on, "Snap to Grid  (F9)");
-        // Polar and Ortho are mutually exclusive, so route the toggle through
-        // the same exclusion the F10 key and the pill chip use.
         let mut polar = app.polar_on;
         if ui
             .checkbox(&mut polar, "Guides — Polar Tracking  (F10)")
@@ -461,7 +446,7 @@ fn menu_items(ui: &mut egui::Ui, app: &mut AppState) {
         tool_menu_item(ui, app, "Line", Tool::Line { last: None });
         tool_menu_item(ui, app, "Tangent Line", Tool::TangentLine { first: None });
         tool_menu_item(ui, app, "Circle", Tool::Circle { center: None });
-        ui.menu_button("Circle ▸", |ui| {
+        ui.menu_button("Circle", |ui| {
             tool_menu_item(ui, app, "Center, Radius", Tool::Circle { center: None });
             tool_menu_item(
                 ui,
@@ -491,7 +476,7 @@ fn menu_items(ui: &mut egui::Ui, app: &mut AppState) {
             },
         );
         tool_menu_item(ui, app, "Arc", Tool::Arc3 { pts: vec![] });
-        ui.menu_button("Arc ▸", |ui| {
+        ui.menu_button("Arc", |ui| {
             tool_menu_item(ui, app, "3 Points", Tool::Arc3 { pts: vec![] });
             tool_menu_item(
                 ui,
@@ -534,18 +519,12 @@ fn menu_items(ui: &mut egui::Ui, app: &mut AppState) {
             },
         );
         ui.separator();
-        ui.menu_button("Dimension ▸", |ui| {
+        ui.menu_button("Dimension", |ui| {
             tool_menu_item(
                 ui,
                 app,
-                "Linear (aligned / H / V — by cursor)",
+                "Linear (aligned)",
                 Tool::Dimension { p1: None, p2: None },
-            );
-            tool_menu_item(
-                ui,
-                app,
-                "Angular (3 points)",
-                Tool::DimAngular { pts: vec![] },
             );
             tool_menu_item(
                 ui,
@@ -705,7 +684,6 @@ fn menu_items(ui: &mut egui::Ui, app: &mut AppState) {
 }
 
 pub(super) fn about_window(ctx: &Context, ui_state: &mut UiState) {
-    // Pick up the open request flagged by the Help menu.
     if ctx.data(|d| {
         d.get_temp::<bool>(egui::Id::new("open_about"))
             .unwrap_or(false)
@@ -769,9 +747,6 @@ pub(super) fn about_window(ctx: &Context, ui_state: &mut UiState) {
     }
 }
 
-/// Modal dialog for editing line weight & type: sets the defaults applied to
-/// newly drawn objects, and (when something is selected) edits the selection.
-/// Opened via the "open_line_props" context flag.
 pub(super) fn line_props_dialog(ctx: &Context, app: &mut AppState, ui_state: &mut UiState) {
     if ctx.data(|d| {
         d.get_temp::<bool>(egui::Id::new("open_line_props"))
@@ -812,9 +787,6 @@ pub(super) fn line_props_dialog(ctx: &Context, app: &mut AppState, ui_state: &mu
                     .color(crate::theme::TEXT),
             );
 
-            // ── Defaults for newly drawn objects ───────────────────────────
-            // Both sections show rows labelled "Line weight"/"Line type", so
-            // scope each in its own id to avoid egui widget-id clashes.
             prop_section(ui, "NEW OBJECTS");
             ui.push_id("line_props_new", |ui| {
                 let dw = app.default_line_weight.clone();
@@ -837,7 +809,6 @@ pub(super) fn line_props_dialog(ctx: &Context, app: &mut AppState, ui_state: &mu
                 });
             });
 
-            // ── Selection (only when something is selected) ────────────────
             if !sel.is_empty() {
                 prop_section(ui, &format!("SELECTION ({})", sel.len()));
                 ui.push_id("line_props_sel", |ui| {
@@ -894,9 +865,6 @@ pub(super) fn line_props_dialog(ctx: &Context, app: &mut AppState, ui_state: &mu
     }
 }
 
-/// Consolidated user-settings dialog: drawing units, the snap/tracking aids
-/// (which persist across sessions via `UiPrefs`), the curvature comb, and the
-/// default text font. Opened via Edit ▸ Settings… (the "open_settings" flag).
 pub(super) fn settings_dialog(ctx: &Context, app: &mut AppState, ui_state: &mut UiState) {
     use eiderflat_document::Units;
     if ctx.data(|d| {
@@ -925,7 +893,6 @@ pub(super) fn settings_dialog(ctx: &Context, app: &mut AppState, ui_state: &mut 
     egui::Window::new("settings_dialog")
         .title_bar(false)
         .collapsible(false)
-        // Vertical-only resize: drag the bottom edge to make it taller/shorter.
         .resizable([false, true])
         .order(egui::Order::Foreground)
         .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
@@ -934,7 +901,6 @@ pub(super) fn settings_dialog(ctx: &Context, app: &mut AppState, ui_state: &mut 
         .max_height(screen_h - 24.0)
         .show(ctx, |ui| {
             ui.set_width(416.0);
-            // ── Header ─────────────────────────────────────────────────────
             ui.add_space(4.0);
             ui.label(
                 egui::RichText::new("Settings")
@@ -950,8 +916,6 @@ pub(super) fn settings_dialog(ctx: &Context, app: &mut AppState, ui_state: &mut 
             ui.add_space(8.0);
             settings_rule(ui);
 
-            // Reserve room for the footer, then let the scroll area fill the rest
-            // of the (resizable) window height.
             let footer_h = 60.0;
             let scroll_h = (ui.available_height() - footer_h).max(120.0);
             egui::ScrollArea::vertical()
@@ -997,7 +961,6 @@ pub(super) fn settings_dialog(ctx: &Context, app: &mut AppState, ui_state: &mut 
                             c[0].checkbox(&mut app.grid_on, "Grid");
                             c[0].checkbox(&mut app.grid_snap_on, "Snap to grid");
                             c[0].checkbox(&mut app.track_on, "Extension tracking");
-                            // Ortho and polar are mutually exclusive (as the F-keys).
                             let mut polar = app.polar_on;
                             if c[1].checkbox(&mut polar, "Polar tracking").changed() {
                                 app.polar_on = polar;
@@ -1190,7 +1153,6 @@ pub(super) fn settings_dialog(ctx: &Context, app: &mut AppState, ui_state: &mut 
                     ui.add_space(8.0);
                 });
 
-            // ── Footer ─────────────────────────────────────────────────────
             settings_rule(ui);
             ui.add_space(8.0);
             ui.horizontal(|ui| {
@@ -1219,7 +1181,6 @@ pub(super) fn settings_dialog(ctx: &Context, app: &mut AppState, ui_state: &mut 
     }
 }
 
-/// A full-width hairline rule used to divide the settings header/footer.
 fn settings_rule(ui: &mut egui::Ui) {
     let (rect, _) =
         ui.allocate_exact_size(egui::vec2(ui.available_width(), 1.0), egui::Sense::hover());
@@ -1230,8 +1191,6 @@ fn settings_rule(ui: &mut egui::Ui) {
     );
 }
 
-/// A bordered, padded settings group with a small caps title — the visual
-/// "division" between option groups in the settings dialog.
 fn settings_card(ui: &mut egui::Ui, title: &str, body: impl FnOnce(&mut egui::Ui)) {
     ui.add_space(9.0);
     egui::Frame::new()
@@ -1252,7 +1211,6 @@ fn settings_card(ui: &mut egui::Ui, title: &str, body: impl FnOnce(&mut egui::Ui
         });
 }
 
-/// A settings row: a fixed-width label on the left, the control(s) on the right.
 fn setting_row(ui: &mut egui::Ui, label: &str, add: impl FnOnce(&mut egui::Ui)) {
     ui.horizontal(|ui| {
         let (rect, _) = ui.allocate_exact_size(egui::vec2(132.0, 24.0), egui::Sense::hover());
@@ -1267,7 +1225,6 @@ fn setting_row(ui: &mut egui::Ui, label: &str, add: impl FnOnce(&mut egui::Ui)) 
     });
 }
 
-/// Human-readable label for a drawing-units choice.
 fn units_label(u: eiderflat_document::Units) -> &'static str {
     use eiderflat_document::Units;
     match u {
@@ -1346,7 +1303,6 @@ fn tool_hotkey(tool: &Tool) -> &'static str {
         | Tool::CircleTtt { .. }
         | Tool::TangentLine { .. }
         | Tool::Dimension { .. }
-        | Tool::DimAngular { .. }
         | Tool::DimAngularLines { .. }
         | Tool::DimRadial { .. } => "",
     }
@@ -1548,10 +1504,6 @@ fn modify_entries() -> Vec<(crate::icons::Icon, &'static str, Act)> {
     ]
 }
 
-/// Whether an action is meaningless without a current selection — used to grey
-/// out the transform/combine tools (Move, Copy, Rotate, …, Disjoint, Join) while
-/// nothing is selected. Pick-based tools (Offset, Trim, Extend, Fillet, Chamfer,
-/// Hatch) operate by clicking and stay enabled.
 fn act_needs_selection(act: &Act) -> bool {
     match act {
         Act::Tool(t) => matches!(
@@ -1567,8 +1519,6 @@ fn act_needs_selection(act: &Act) -> bool {
     }
 }
 
-/// The id of the flyout tool-group a dock entry belongs to (so hovering it opens
-/// a sub-tool flyout), or `None` for a plain single-tool button.
 fn group_id(act: &Act) -> Option<u8> {
     match act {
         Act::Tool(Tool::Line { .. }) => Some(0),
@@ -1579,7 +1529,6 @@ fn group_id(act: &Act) -> Option<u8> {
     }
 }
 
-/// The sub-tools shown in a group's flyout (icon, label, action).
 fn group_entries(id: u8) -> Vec<(crate::icons::Icon, &'static str, Act)> {
     use crate::icons::Icon;
     match id {
@@ -1643,13 +1592,8 @@ fn group_entries(id: u8) -> Vec<(crate::icons::Icon, &'static str, Act)> {
         _ => vec![
             (
                 Icon::Dimension,
-                "Linear — aligned / H / V by cursor",
+                "Linear (aligned)",
                 Act::Tool(Tool::Dimension { p1: None, p2: None }),
-            ),
-            (
-                Icon::DimAngle,
-                "Angular (3 points)",
-                Act::Tool(Tool::DimAngular { pts: vec![] }),
             ),
             (
                 Icon::DimAngle,
@@ -1681,7 +1625,6 @@ fn group_entries(id: u8) -> Vec<(crate::icons::Icon, &'static str, Act)> {
     }
 }
 
-/// A little corner triangle marking a dock button that opens a tool flyout.
 fn flyout_marker(ui: &egui::Ui, rect: egui::Rect) {
     let c = rect.right_bottom() + egui::vec2(-3.0, -3.0);
     let p = ui.painter();
@@ -1692,11 +1635,6 @@ fn flyout_marker(ui: &egui::Ui, rect: egui::Rect) {
     ));
 }
 
-/// Render one vertical column of dock tools, greying out selection-only tools
-/// when nothing is selected. `divider_after_first` draws a rule after the top
-/// entry (used to set Select apart from the draw tools). Records into `hover` the
-/// group + screen-rect of any hovered grouped button, so the caller can open its
-/// flyout.
 fn dock_column(
     ui: &mut egui::Ui,
     app: &mut AppState,
@@ -1706,9 +1644,6 @@ fn dock_column(
     hover: &mut Option<(u8, egui::Rect)>,
 ) {
     let has_sel = app.has_selection();
-    // Fixed-width column. `vertical_centered` here would read the available width
-    // to centre within — inside an auto-sized Area that feeds back and grows the
-    // dock wider every frame. Pinning the width to the icon size keeps it stable.
     ui.vertical(|ui| {
         ui.set_width(icon_px);
         ui.spacing_mut().item_spacing = egui::vec2(0.0, 3.0);
@@ -1724,7 +1659,6 @@ fn dock_column(
                 })
                 .inner;
             if resp.hovered() {
-                // Preview this tool's tips in the bottom hint panel.
                 if let Act::Tool(t) = act {
                     app.hint_tool = Some(t.clone());
                 }
@@ -1743,15 +1677,10 @@ fn dock_column(
 }
 
 pub(super) fn ribbon(ctx: &Context, app: &mut AppState, canvas_rect: egui::Rect) {
-    // Cleared every frame; the dock sets it while a tool button is hovered so the
-    // bottom hint panel can preview that tool's tips.
     app.hint_tool = None;
     let draw = draw_entries();
     let modify = modify_entries();
     let avail = canvas_rect;
-    // Two adjacent columns — Draw (left) and Modify (right) — inside one glass
-    // pill. Height follows the taller column; the dock floats vertically centred
-    // and clamps to the top so it never rides off the canvas.
     let icon_px = 36.0;
     let row_h = icon_px + 3.0;
     let rows = draw.len().max(modify.len());
@@ -1780,8 +1709,6 @@ pub(super) fn ribbon(ctx: &Context, app: &mut AppState, canvas_rect: egui::Rect)
         })
         .inner;
 
-    // Illustrator-style flyout: hovering a grouped button (or the flyout itself)
-    // opens a horizontal popup of its sub-tools, just to the right of the button.
     let next = dock_flyout(ctx, app, hover.or(prev), hover);
     if let Some(v) = next {
         ctx.data_mut(|d| d.insert_temp(flyout_id, v));
@@ -1792,8 +1719,6 @@ pub(super) fn ribbon(ctx: &Context, app: &mut AppState, canvas_rect: egui::Rect)
     }
 }
 
-/// Draw the open tool-group flyout (if any) and return the group that should stay
-/// open next frame. Stays open while the button or the flyout is hovered.
 fn dock_flyout(
     ctx: &Context,
     app: &mut AppState,
@@ -1848,7 +1773,6 @@ fn dock_flyout(
     }
 }
 
-/// Thin vertical rule separating the two dock columns.
 fn dock_vsep(ui: &mut egui::Ui, height: f32) {
     ui.add_space(3.0);
     let (rect, _) = ui.allocate_exact_size(egui::vec2(1.0, height), egui::Sense::hover());
@@ -1872,9 +1796,6 @@ fn dock_divider(ui: &mut egui::Ui) {
     ui.add_space(2.0);
 }
 
-/// Bottom-centre floating "glass" status pill. A single row: modify tools,
-/// live coordinates, a units dropdown, snap chips (with a stay-open object-snap
-/// popup), and zoom controls.
 pub(super) fn status_pill(ctx: &Context, app: &mut AppState, canvas_rect: egui::Rect) {
     egui::Area::new(egui::Id::new("status_pill"))
         .anchor(
@@ -1890,9 +1811,6 @@ pub(super) fn status_pill(ctx: &Context, app: &mut AppState, canvas_rect: egui::
                 .inner_margin(egui::Margin::symmetric(10, 6))
                 .show(ui, |ui| {
                     ui.horizontal_centered(|ui| {
-                        // ── Live cursor coordinates: "X  14.20    Y  248.75   mm".
-                        // Values sit in fixed-width left-aligned cells so the gaps
-                        // stay constant regardless of the number's length.
                         ui.scope(|ui| {
                             ui.spacing_mut().item_spacing.x = 0.0;
                             let (cx, cy) = app.cursor_world;
@@ -1933,9 +1851,6 @@ pub(super) fn status_pill(ctx: &Context, app: &mut AppState, canvas_rect: egui::
                         });
                         pill_sep(ui);
 
-                        // ── SNAP master toggle + arrow popup, then the quick
-                        // chips, in F7…F12 order: Snap, Grid, GSnap, Guides,
-                        // Track, Dyn.
                         snap_master(ui, app);
                         ui.add_space(6.0);
                         snap_chip(ui, &mut app.grid_on, "Grid");
@@ -1951,7 +1866,6 @@ pub(super) fn status_pill(ctx: &Context, app: &mut AppState, canvas_rect: egui::
                         snap_chip(ui, &mut app.dyn_on, "Dyn");
                         pill_sep(ui);
 
-                        // ── Zoom: − / 100% / + (plus zoom-extents).
                         let (wx, wy) = app
                             .view
                             .screen_to_world(app.view.width / 2.0, app.view.height / 2.0);
@@ -1980,15 +1894,12 @@ pub(super) fn status_pill(ctx: &Context, app: &mut AppState, canvas_rect: egui::
                         }
                         pill_sep(ui);
 
-                        // ── Units dropdown at the far right (as in the reference).
                         unit_dropdown(ui, app);
                     });
                 });
         });
 }
 
-/// Units selector: a compact "mm" button with a small chevron that flips up when
-/// the menu is open (replaces the old top "Units" menu).
 fn unit_dropdown(ui: &mut egui::Ui, app: &mut AppState) {
     use eiderflat_document::Units;
     let open_id = egui::Id::new("unit_menu_open");
@@ -2024,7 +1935,6 @@ fn unit_dropdown(ui: &mut egui::Ui, app: &mut AppState) {
         egui::FontId::proportional(12.0),
         crate::theme::TEXT,
     );
-    // Small chevron (▲ when open, ▼ when closed), example-dim colour.
     let cc = egui::pos2(rect.right() - 11.0, rect.center().y);
     let (dx, dy) = (3.2, 2.2);
     let chev = if open {
@@ -2084,7 +1994,6 @@ fn unit_dropdown(ui: &mut egui::Ui, app: &mut AppState) {
     ui.ctx().data_mut(|d| d.insert_temp(open_id, open));
 }
 
-/// Small round −/+ button for the zoom control. Returns true when clicked.
 fn round_btn(ui: &mut egui::Ui, glyph: &str, tip: &str) -> bool {
     let (rect, resp) = ui.allocate_exact_size(egui::vec2(28.0, 28.0), egui::Sense::click());
     if resp.hovered() {
@@ -2101,9 +2010,6 @@ fn round_btn(ui: &mut egui::Ui, glyph: &str, tip: &str) -> bool {
     resp.on_hover_text(tip).clicked()
 }
 
-/// Combined "SNAP | ▲" control: clicking the SNAP half toggles object snap on/off,
-/// clicking the arrow half opens the object-snap kinds popup (which stays open
-/// while toggling and reflects the current state).
 fn snap_master(ui: &mut egui::Ui, app: &mut AppState) {
     let open_id = egui::Id::new("snap_kinds_open");
     let mut open = ui
@@ -2118,7 +2024,6 @@ fn snap_master(ui: &mut egui::Ui, app: &mut AppState) {
     ui.spacing_mut().item_spacing.x = saved_sp;
     let on = app.snap_on;
 
-    // Shared pill background.
     let union = srect.union(arect);
     let p = ui.painter();
     p.rect(
@@ -2128,7 +2033,6 @@ fn snap_master(ui: &mut egui::Ui, app: &mut AppState) {
         egui::Stroke::new(1.0, crate::theme::OUTLINE),
         egui::StrokeKind::Inside,
     );
-    // SNAP half highlight when active or hovered.
     if on {
         p.rect_filled(srect.shrink(1.0), 7.0, crate::theme::ACCENT_DIM);
     } else if sresp.hovered() {
@@ -2145,13 +2049,11 @@ fn snap_master(ui: &mut egui::Ui, app: &mut AppState) {
             crate::theme::TEXT_DIM
         },
     );
-    // Divider bar between the two halves.
     p.vline(
         srect.right(),
         (union.top() + 5.0)..=(union.bottom() - 5.0),
         egui::Stroke::new(1.0, crate::theme::OUTLINE),
     );
-    // Arrow half.
     if open || aresp.hovered() {
         p.rect_filled(arect.shrink(1.0), 7.0, crate::theme::WIDGET_HOVER);
     }
@@ -2207,7 +2109,6 @@ fn snap_master(ui: &mut egui::Ui, app: &mut AppState) {
                         }
                     });
             });
-        // Close only when clicking outside the popup (and not on the trigger).
         if popup.response.clicked_elsewhere() && !trigger_hovered {
             open = false;
         }
@@ -2227,7 +2128,6 @@ fn pill_sep(ui: &mut egui::Ui) {
     ui.add_space(3.0);
 }
 
-/// A small pill toggle chip (mirrors the mockup's SNAP chips). Returns true if toggled.
 fn snap_chip(ui: &mut egui::Ui, on: &mut bool, label: &str) -> bool {
     let galley = ui.painter().layout_no_wrap(
         label.to_string(),
@@ -2237,7 +2137,6 @@ fn snap_chip(ui: &mut egui::Ui, on: &mut bool, label: &str) -> bool {
     let w = galley.size().x + 18.0;
     let (rect, resp) = ui.allocate_exact_size(egui::vec2(w, 26.0), egui::Sense::click());
     let (fill, stroke, fg) = if *on {
-        // Match the active SNAP master: borderless ACCENT_DIM fill, bright text.
         (
             crate::theme::ACCENT_DIM,
             egui::Stroke::NONE,
@@ -2273,13 +2172,11 @@ fn snap_chip(ui: &mut egui::Ui, on: &mut bool, label: &str) -> bool {
     }
 }
 
-/// Single combined right "glass" inspector: Properties at the top, Layers below.
 pub(super) fn inspector(ctx: &Context, app: &mut AppState, canvas_rect: egui::Rect) {
     const RIGHT_M: f32 = 12.0;
     const WIDTH: f32 = 292.0;
     let screen = ctx.content_rect();
     let top_off = (canvas_rect.top() - screen.top()) + 76.0;
-    // Fill from just under the top bar down to just above the status pill.
     let avail_h = (canvas_rect.height() - 76.0 - 80.0).max(160.0);
 
     egui::Area::new(egui::Id::new("inspector"))
@@ -2291,9 +2188,6 @@ pub(super) fn inspector(ctx: &Context, app: &mut AppState, canvas_rect: egui::Re
                 .inner_margin(egui::Margin::same(0))
                 .show(ui, |ui| {
                     ui.set_width(WIDTH);
-                    // Force the panel to span the full available height; the scroll
-                    // area inside takes the remaining space and scrolls when the
-                    // content (or a short window) doesn't fit.
                     ui.set_height(avail_h);
                     egui::Frame::new()
                         .inner_margin(egui::Margin {
@@ -2436,7 +2330,6 @@ fn layers_section(ui: &mut egui::Ui, app: &mut AppState) {
             ui.spacing_mut().item_spacing.x = 7.0;
             ui.set_height(38.0);
 
-            // Current-layer indicator bar (click to set current).
             let (dr, dresp) = ui.allocate_exact_size(egui::vec2(5.0, 18.0), egui::Sense::click());
             let bar = egui::Rect::from_center_size(dr.center(), egui::vec2(3.0, 16.0));
             let col = if is_cur {
@@ -2454,7 +2347,6 @@ fn layers_section(ui: &mut egui::Ui, app: &mut AppState) {
                 app.document.layers.current = i;
             }
 
-            // Small colour swatch (opens the colour picker).
             let mut c = rgb;
             let changed = ui
                 .scope(|ui| {
@@ -2466,7 +2358,6 @@ fn layers_section(ui: &mut egui::Ui, app: &mut AppState) {
                 l.color = (c[0], c[1], c[2]);
             }
 
-            // Right cluster: count · eye · trash.
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.spacing_mut().item_spacing.x = 0.0;
                 use crate::icons::{Icon, icon_button_sized};
@@ -2477,12 +2368,12 @@ fn layers_section(ui: &mut egui::Ui, app: &mut AppState) {
                     } else {
                         "Layer 0 and the current layer can't be deleted"
                     };
-                    if icon_button_sized(ui, Icon::Delete, tip, false, 36.0).clicked() {
+                    if icon_button_sized(ui, Icon::Delete, tip, false, 20.0).clicked() {
                         delete_layer = Some(i);
                     }
                 });
                 let icon = if on { Icon::Eye } else { Icon::EyeOff };
-                if icon_button_sized(ui, icon, "Show / hide this layer", false, 36.0).clicked()
+                if icon_button_sized(ui, icon, "Show / hide this layer", false, 20.0).clicked()
                     && let Some(l) = app.document.layers.get_mut(i)
                 {
                     l.on = !on;
@@ -2497,7 +2388,6 @@ fn layers_section(ui: &mut egui::Ui, app: &mut AppState) {
                         .color(crate::theme::TEXT_DIM),
                 );
                 ui.add_space(4.0);
-                // Editable layer name fills the gap between swatch and the cluster.
                 let mut buf = name.clone();
                 let name_col = if is_cur {
                     crate::theme::TEXT
@@ -2539,12 +2429,9 @@ fn layers_section(ui: &mut egui::Ui, app: &mut AppState) {
     }
 }
 
-/// Compact per-layer "weight" and "line type" menu badges for a layer row.
-/// These set the layer's defaults, which every "by layer" entity inherits.
 fn layer_appearance_menus(ui: &mut egui::Ui, app: &mut AppState, i: usize) {
     use eiderflat_document::LineTypeRef;
 
-    // ── Line type badge (short glyph) ──────────────────────────────────────
     let cur_lt = app
         .document
         .layers
@@ -2577,7 +2464,6 @@ fn layer_appearance_menus(ui: &mut egui::Ui, app: &mut AppState, i: usize) {
     .response
     .on_hover_text("Layer line type");
 
-    // ── Line weight badge (mm, or "—" for hairline) ────────────────────────
     let cur_w = app
         .document
         .layers
@@ -2612,14 +2498,7 @@ fn layer_appearance_menus(ui: &mut egui::Ui, app: &mut AppState, i: usize) {
     .on_hover_text("Layer line weight");
 }
 
-/// Floating contextual toolbar shown just above a single selected entity.
-/// Contextual key hints for the active tool, à la Plasticity's command panel: a
-/// translucent rounded card pinned to the bottom-right of the canvas listing the
-/// keys/gestures available right now. On an empty drawing with no tool active it
-/// turns into a short getting-started card instead.
 pub(super) fn tool_hint_panel(ctx: &Context, app: &AppState, canvas_rect: egui::Rect) {
-    // While the cursor is over a dock tool, show that tool's hints; otherwise the
-    // active tool's (with the empty-canvas / selection cards).
     let (title, rows) = match &app.hint_tool {
         Some(t) => hints_for_tool(t),
         None => tool_hints(app),
@@ -2628,15 +2507,6 @@ pub(super) fn tool_hint_panel(ctx: &Context, app: &AppState, canvas_rect: egui::
         return;
     }
 
-    // Sit just left of the inspector column, near the bottom. No card background —
-    // a backgroundless, half-transparent heads-up hint that stays out of the way.
-    // The x offset mirrors the inspector geometry (right margin 12 + width 292).
-    //
-    // Painted straight onto a paint layer (not an `Area`) so it is a true
-    // watermark: it registers no interactive region, so the cursor passes
-    // through it as if it weren't there — clicks, snapping and drawing all reach
-    // the canvas underneath.
-    let _ = canvas_rect;
     let painter = ctx.layer_painter(egui::LayerId::new(
         egui::Order::Foreground,
         egui::Id::new("tool_hint_panel"),
@@ -2647,11 +2517,10 @@ pub(super) fn tool_hint_panel(ctx: &Context, app: &AppState, canvas_rect: egui::
     let title_font = egui::FontId::proportional(11.5);
     let key_font = egui::FontId::monospace(11.0);
     let desc_font = egui::FontId::proportional(11.5);
-    let row_gap = 6.0; // keycap cell → description
-    let line_gap = 5.0; // between stacked lines
-    let cell_min = 46.0; // keeps descriptions aligned
+    let row_gap = 6.0;
+    let line_gap = 5.0;
+    let cell_min = 46.0;
 
-    // Lay everything out first so we can right/bottom-anchor the block.
     let title_g = painter.layout_no_wrap(title.to_string(), title_font, title_col);
     let row_g: Vec<(std::sync::Arc<egui::Galley>, std::sync::Arc<egui::Galley>)> = rows
         .iter()
@@ -2674,7 +2543,9 @@ pub(super) fn tool_hint_panel(ctx: &Context, app: &AppState, canvas_rect: egui::
     let screen = ctx.content_rect();
     let right = screen.right() - (12.0 + 292.0 + 12.0);
     let left = right - width;
-    let mut y = screen.bottom() - 16.0 - height;
+    let inspector_bottom =
+        canvas_rect.top() + 76.0 + (canvas_rect.height() - 76.0 - 80.0).max(160.0);
+    let mut y = inspector_bottom - height;
 
     painter.galley(egui::pos2(left, y), title_g.clone(), title_col);
     y += title_g.size().y + line_gap;
@@ -2687,8 +2558,6 @@ pub(super) fn tool_hint_panel(ctx: &Context, app: &AppState, canvas_rect: egui::
     }
 }
 
-/// The hint title and key/gesture rows for the *active* tool, with the empty-
-/// drawing getting-started card and the selection card layered on top of Select.
 fn tool_hints(app: &AppState) -> (&'static str, Vec<(&'static str, &'static str)>) {
     if matches!(app.tool, Tool::Select) {
         if app.document.is_empty() || (!app.has_selection() && app.document.len() <= 1) {
@@ -2717,8 +2586,6 @@ fn tool_hints(app: &AppState) -> (&'static str, Vec<(&'static str, &'static str)
     hints_for_tool(&app.tool)
 }
 
-/// Per-tool hint title + rows, independent of document/selection state — used
-/// both for the active tool and for whichever dock tool the cursor is hovering.
 fn hints_for_tool(tool: &Tool) -> (&'static str, Vec<(&'static str, &'static str)>) {
     use Tool::*;
     match tool {
@@ -2877,8 +2744,6 @@ pub(super) fn contextual_toolbar(ctx: &Context, app: &mut AppState, canvas_rect:
     if !matches!(app.tool, Tool::Select) || !app.has_selection() {
         return;
     }
-    // Combined bounding box of the whole selection, so the bar follows multi-
-    // selections (every action below operates on all selected entities).
     let Some(bbox) = app
         .selection
         .iter()
@@ -2888,12 +2753,10 @@ pub(super) fn contextual_toolbar(ctx: &Context, app: &mut AppState, canvas_rect:
     else {
         return;
     };
-    // Anchor above the bbox top-centre, in screen space.
     let cxw = (bbox.min.x + bbox.max.x) * 0.5;
     let topw = bbox.max.y;
     let (sx, sy) = app.view.world_to_screen(cxw, topw);
     let anchor = canvas_rect.min + egui::vec2(sx as f32, sy as f32) - egui::vec2(0.0, 50.0);
-    // Keep it inside the canvas.
     let anchor = egui::pos2(
         anchor
             .x
@@ -2978,7 +2841,6 @@ fn prop_caption(ui: &mut egui::Ui, text: &str) {
     );
 }
 
-/// Apply the rounded "value box" widget styling used across the inspector fields.
 fn style_value_box(ui: &mut egui::Ui) {
     let r = egui::CornerRadius::same(9);
     let v = ui.visuals_mut();
@@ -3089,7 +2951,6 @@ fn kind_icon(kind: &EntityKind) -> crate::icons::Icon {
     }
 }
 
-/// Selected-object header: an icon chip, the type name, and a subtitle.
 fn object_header(ui: &mut egui::Ui, name: &str, subtitle: &str, icon: crate::icons::Icon) {
     ui.horizontal(|ui| {
         let (rect, _) = ui.allocate_exact_size(egui::vec2(38.0, 38.0), egui::Sense::hover());
@@ -3126,8 +2987,6 @@ fn object_header(ui: &mut egui::Ui, name: &str, subtitle: &str, icon: crate::ico
     });
 }
 
-/// Text-override editor shown for a selected dimension: type custom text to show
-/// instead of the measured value, or clear it to fall back to the measurement.
 fn dim_override_editor(ui: &mut egui::Ui, app: &mut AppState, id: eiderflat_document::EntityId) {
     let is_dim = matches!(
         app.document.get(id).map(|e| &e.kind),
@@ -3148,7 +3007,6 @@ fn dim_override_editor(ui: &mut egui::Ui, app: &mut AppState, id: eiderflat_docu
             .hint_text("measured value")
             .desired_width(f32::INFINITY),
     );
-    // Snapshot once when editing begins, so the whole edit is one undo step.
     if resp.gained_focus() {
         app.begin_edit();
     }
@@ -3159,7 +3017,6 @@ fn dim_override_editor(ui: &mut egui::Ui, app: &mut AppState, id: eiderflat_docu
 
 fn measurements(ui: &mut egui::Ui, kind: &EntityKind) {
     use eiderflat_geometry::CurveSegment;
-    // Dimensions report what they measure.
     match kind {
         EntityKind::Dimension { p1, p2, .. } => {
             prop_section(ui, "MEASUREMENTS");
@@ -3244,8 +3101,6 @@ fn measurements(ui: &mut egui::Ui, kind: &EntityKind) {
     }
 }
 
-/// A full-width rounded Appearance row: a left label and a right value that is a
-/// borderless dropdown (optionally with a leading swatch or a line sample).
 fn appearance_row(
     ui: &mut egui::Ui,
     label: &str,
@@ -3255,8 +3110,6 @@ fn appearance_row(
     add_options: impl FnOnce(&mut egui::Ui),
 ) {
     let id = ui.make_persistent_id(("appearance_row", label));
-    // Whole row is the control: paint the value (no inner button) and make the
-    // entire frame clickable so a click anywhere opens the dropdown.
     let inner = egui::Frame::new()
         .fill(crate::theme::WIDGET_BG)
         .stroke(egui::Stroke::new(1.0, crate::theme::OUTLINE))
@@ -3271,7 +3124,6 @@ fn appearance_row(
                         .color(crate::theme::TEXT_DIM),
                 );
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    // Trailing chevron marks the row as a dropdown.
                     let (cr, _) =
                         ui.allocate_exact_size(egui::vec2(12.0, 22.0), egui::Sense::hover());
                     let cc = cr.center();
@@ -3311,7 +3163,6 @@ fn appearance_row(
     let rect = inner.response.rect;
     let resp = ui.interact(rect, id, egui::Sense::click());
     if resp.hovered() {
-        // Brighten the whole row outline to read as a single hoverable control.
         ui.painter().rect_stroke(
             rect,
             egui::CornerRadius::same(9),
@@ -3324,7 +3175,6 @@ fn appearance_row(
     ui.add_space(8.0);
 }
 
-/// The preset line-weight choices offered in the inspector and the line dialog.
 fn lw_options() -> [(&'static str, eiderflat_document::LineWeight); 7] {
     use eiderflat_document::LineWeight::{ByLayer, Hundredths};
     [
@@ -3338,7 +3188,6 @@ fn lw_options() -> [(&'static str, eiderflat_document::LineWeight); 7] {
     ]
 }
 
-/// Human-readable label for a line weight.
 fn lw_label(w: &eiderflat_document::LineWeight) -> String {
     use eiderflat_document::LineWeight;
     match w {
@@ -3348,7 +3197,6 @@ fn lw_label(w: &eiderflat_document::LineWeight) -> String {
     }
 }
 
-/// The line-type choices offered in the inspector and the line dialog.
 fn lt_options() -> [(&'static str, eiderflat_document::LineTypeRef); 5] {
     use eiderflat_document::LineTypeRef;
     [
@@ -3360,7 +3208,6 @@ fn lt_options() -> [(&'static str, eiderflat_document::LineTypeRef); 5] {
     ]
 }
 
-/// Human-readable label for a line type.
 fn lt_label(t: &eiderflat_document::LineTypeRef) -> String {
     use eiderflat_document::LineTypeRef;
     match t {
@@ -3374,7 +3221,6 @@ fn lt_label(t: &eiderflat_document::LineTypeRef) -> String {
 fn appearance_section(ui: &mut egui::Ui, app: &mut AppState, sel: &[eiderflat_document::EntityId]) {
     prop_section(ui, "APPEARANCE");
 
-    // ── Line weight ───────────────────────────────────────────────────────
     let first_lw = sel
         .first()
         .and_then(|&id| app.document.get(id))
@@ -3400,7 +3246,6 @@ fn appearance_section(ui: &mut egui::Ui, app: &mut AppState, sel: &[eiderflat_do
         }
     });
 
-    // ── Line type ─────────────────────────────────────────────────────────
     let first_lt = sel
         .first()
         .and_then(|&id| app.document.get(id))
@@ -3426,7 +3271,6 @@ fn appearance_section(ui: &mut egui::Ui, app: &mut AppState, sel: &[eiderflat_do
         }
     });
 
-    // ── Layer ─────────────────────────────────────────────────────────────
     let layer_names: Vec<String> = app
         .document
         .layers
@@ -3791,7 +3635,6 @@ fn edit_entity_geometry(ui: &mut egui::Ui, app: &mut AppState, id: eiderflat_doc
 fn hatch_pattern_editor(ui: &mut egui::Ui, pattern: &mut eiderflat_document::HatchPattern) -> bool {
     use eiderflat_document::HatchPattern as HP;
     let mut changed = false;
-    // Current kind label.
     let kind = match pattern {
         HP::Solid => "Solid",
         HP::Lines { .. } => "Lines",

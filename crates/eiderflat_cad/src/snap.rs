@@ -27,9 +27,6 @@ impl SnapKind {
     }
 }
 
-/// Every object-snap kind paired with its UI label, in display order. A single
-/// source of truth so the settings panel and the status-bar snap popup never
-/// drift apart (and a newly added kind shows up in both automatically).
 pub const SNAP_KINDS: [(SnapKind, &str); 10] = [
     (SnapKind::Endpoint, "Endpoint"),
     (SnapKind::Midpoint, "Midpoint"),
@@ -87,10 +84,6 @@ pub fn find_snaps(
     find_snaps_excluding(doc, cursor, settings, reference, None)
 }
 
-/// Like [`find_snaps`], but skips `exclude` entirely (all snap kinds, including
-/// intersections). Used while dragging a grip so the entity being edited never
-/// snaps to itself — in particular so its moving edge stops producing confusing
-/// "apparent intersections" with everything it sweeps across.
 pub fn find_snaps_excluding(
     doc: &Document,
     cursor: (f64, f64),
@@ -551,7 +544,6 @@ mod tests {
     fn intersection_snap_over_two_beziers_is_fast() {
         use std::time::Instant;
         let mut doc = Document::new();
-        // Two cubic Béziers that cross near (5, 5).
         doc.add(EntityKind::Curve(Curve::Bezier(CubicBezier::new(
             pt(0, 0),
             pt(3, 10),
@@ -704,7 +696,7 @@ mod tests {
 
     #[test]
     fn snap_perpendicular_to_line() {
-        let (doc, _) = doc_with_line(); // line y=0 from (0,0)-(10,0)
+        let (doc, _) = doc_with_line();
         let s = SnapSettings {
             enabled: vec![SnapKind::Perpendicular],
             tolerance: 1.0,

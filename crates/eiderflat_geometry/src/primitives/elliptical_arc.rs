@@ -168,8 +168,6 @@ mod tests {
 
     #[test]
     fn foci_finite_when_minor_exceeds_major() {
-        // Malformed ellipse (semi_minor > semi_major): the radicand goes
-        // negative, so foci() must clamp to 0 and stay finite, not return NaN.
         let ell = EllipticalArc::axis_aligned(
             Point2d::from_i64(0, 0),
             4.0,

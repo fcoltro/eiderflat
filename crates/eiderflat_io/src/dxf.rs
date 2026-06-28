@@ -102,7 +102,7 @@ fn parse_tables(pairs: &[Pair], doc: &mut Document) {
                     }
                     if aci < 0 {
                         layer.on = false;
-                    } // negative ACI = layer off
+                    }
                 }
                 6 => layer.line_type = LineTypeRef::Named(p.value.clone()),
                 70 => {
@@ -185,7 +185,6 @@ fn parse_arc(rec: &[Pair]) -> Vec<EntityKind> {
 
 fn parse_ellipse(rec: &[Pair]) -> Vec<EntityKind> {
     let (cx, cy) = (get(rec, 10).unwrap_or(0.0), get(rec, 20).unwrap_or(0.0));
-    // Major axis endpoint relative to center.
     let (mx, my) = (get(rec, 11).unwrap_or(1.0), get(rec, 21).unwrap_or(0.0));
     let ratio = get(rec, 40).unwrap_or(1.0);
     let start = get(rec, 41).unwrap_or(0.0);
@@ -239,7 +238,6 @@ fn parse_lwpolyline(rec: &[Pair]) -> Vec<EntityKind> {
         match p.code {
             10 => {
                 if let Some(x) = cur_x.take() {
-                    // previous vertex had no y? push with 0
                     verts.push((x, 0.0, cur_bulge));
                     cur_bulge = 0.0;
                 }
@@ -285,7 +283,7 @@ fn parse_lwpolyline(rec: &[Pair]) -> Vec<EntityKind> {
 }
 
 fn bulge_arc(x1: f64, y1: f64, x2: f64, y2: f64, bulge: f64) -> Curve {
-    let theta = 4.0 * bulge.atan(); // signed included angle
+    let theta = 4.0 * bulge.atan();
     let chord = ((x2 - x1).powi(2) + (y2 - y1).powi(2)).sqrt();
     let radius = (chord / 2.0) / (theta / 2.0).sin().abs();
     let mx = (x1 + x2) / 2.0;
@@ -360,7 +358,6 @@ pub fn export_dxf(doc: &Document) -> String {
     s
 }
 
-/// Emit a decomposed dimension as DXF LINE entities plus a TEXT label.
 fn dimension_to_dxf(w: &mut impl FnMut(i32, &str), prims: &crate::dim::DimPrimitives, layer: &str) {
     for (a, b) in &prims.segs {
         w(0, "LINE");
@@ -376,7 +373,6 @@ fn dimension_to_dxf(w: &mut impl FnMut(i32, &str), prims: &crate::dim::DimPrimit
         w(10, &fmt(t.anchor.x));
         w(20, &fmt(t.anchor.y));
         w(40, &fmt(t.height));
-        // Middle-centre justification so the label sits on its anchor point.
         w(72, "1");
         w(73, "2");
         w(11, &fmt(t.anchor.x));
@@ -509,7 +505,7 @@ fn write_entity(w: &mut impl FnMut(i32, &str), kind: &EntityKind, layer: &str) {
 }
 
 fn write_polyline(w: &mut impl FnMut(i32, &str), pc: &PolyCurve, layer: &str) {
-    let mut verts: Vec<(f64, f64, f64)> = Vec::new(); // (x, y, bulge to next)
+    let mut verts: Vec<(f64, f64, f64)> = Vec::new();
     for seg in &pc.segments {
         match seg {
             Curve::Line(l) => {
@@ -631,7 +627,7 @@ mod tests {
             assert!((c.included_angle() - TAU).abs() < 1e-6);
         }
         if let Curve::Arc(a) = arcs[1] {
-            assert!((a.included_angle() - std::f64::consts::FRAC_PI_2).abs() < 1e-6); // 90°
+            assert!((a.included_angle() - std::f64::consts::FRAC_PI_2).abs() < 1e-6);
         }
     }
 

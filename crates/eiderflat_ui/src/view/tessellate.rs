@@ -19,14 +19,9 @@ pub(super) fn draw_curve(
         }
         other => {
             let mut pts = flatten_curve(other, to_screen);
-            // A curve whose ends meet (rectangle, polygon, full circle, closed
-            // spline) is drawn as a *closed* line so the start/end seam gets a
-            // proper corner join. With a plain open `Shape::line` that one
-            // vertex (e.g. a rectangle's bottom-left corner, which is the
-            // polycurve's seam) is butt-capped on both edges and looks unwelded.
             if is_closed_curve(other) {
                 if pts.len() >= 2 && (pts[0] - pts[pts.len() - 1]).length() < 0.5 {
-                    pts.pop(); // drop the duplicated seam vertex
+                    pts.pop();
                 }
                 painter.add(egui::Shape::closed_line(pts, stroke));
             } else {
@@ -36,9 +31,6 @@ pub(super) fn draw_curve(
     }
 }
 
-/// Whether a curve's start and end coincide, i.e. it forms a closed loop
-/// (rectangle, polygon, full circle, closed spline). Used to pick a closed vs.
-/// open polyline so the seam vertex joins cleanly.
 fn is_closed_curve(c: &Curve) -> bool {
     let (t0, t1) = c.domain();
     let (sx, sy) = c.evaluate_f64(t0);
@@ -46,10 +38,6 @@ fn is_closed_curve(c: &Curve) -> bool {
     (sx - ex).hypot(sy - ey) < 1e-9
 }
 
-/// Draw a curve with a line-type dash pattern. `pattern_px` alternates lengths
-/// in screen pixels, sign-encoded: a positive value is a drawn dash, a negative
-/// value a gap, and a zero a dot. An empty pattern draws solid (like
-/// [`draw_curve`]).
 pub(super) fn draw_curve_patterned(
     painter: &egui::Painter,
     c: &Curve,
@@ -72,8 +60,6 @@ pub(super) fn draw_curve_patterned(
     draw_patterned_polyline(painter, &pts, stroke, pattern_px);
 }
 
-/// Walk a dash pattern along a polyline, carrying the pattern phase across
-/// vertices so dashes stay continuous through corners.
 pub(super) fn draw_patterned_polyline(
     painter: &egui::Painter,
     pts: &[egui::Pos2],
@@ -83,8 +69,6 @@ pub(super) fn draw_patterned_polyline(
     if pts.len() < 2 {
         return;
     }
-    // Total pattern length; if it's degenerate, fall back to a solid line so we
-    // never spin forever on an all-zero pattern.
     let total: f32 = pattern_px.iter().map(|v| v.abs()).sum();
     if total <= 1e-3 {
         painter.add(egui::Shape::line(pts.to_vec(), stroke));
@@ -93,9 +77,7 @@ pub(super) fn draw_patterned_polyline(
     let dot_r = (stroke.width * 0.6).max(0.6);
     let mut pi = 0usize;
     let mut rem = pattern_px[0].abs();
-    // Pen state for the current element: > 0 dash, 0 dot, < 0 gap.
     let mut elem = pattern_px[0];
-    // Draw a dot if the very first element is one.
     if elem == 0.0 {
         painter.circle_filled(pts[0], dot_r, stroke.color);
     }
@@ -115,7 +97,6 @@ pub(super) fn draw_patterned_polyline(
                 return;
             }
             if elem == 0.0 {
-                // Dot at the current position, then advance to the next element.
                 painter.circle_filled(a + dir * cursor, dot_r, stroke.color);
                 pi = (pi + 1) % pattern_px.len();
                 elem = pattern_px[pi];
@@ -148,8 +129,6 @@ pub(super) fn flatten_curve(
     };
     let mut pts: Vec<egui::Pos2> = Vec::with_capacity(64);
     const SPANS: usize = 4;
-    // Evaluate each span endpoint exactly once and thread it through the
-    // recursion, so a curve point is never re-evaluated at a shared parameter.
     let mut a = t0;
     let mut pa = eval(t0);
     pts.push(pa);
@@ -186,10 +165,6 @@ fn tessellate(
     }
 }
 
-/// Squared distance from `p` to segment `a`–`b`. Avoids a `sqrt` on hot paths
-/// (tessellation tolerance tests) where only a comparison against a squared
-/// threshold is needed; take `.sqrt()` of the result when an actual distance
-/// is wanted.
 pub(super) fn point_seg_dist_sq(p: egui::Pos2, a: egui::Pos2, b: egui::Pos2) -> f32 {
     let abx = b.x - a.x;
     let aby = b.y - a.y;

@@ -17,8 +17,6 @@ impl Layer {
             name: name.into(),
             color: (255, 255, 255),
             line_type: LineTypeRef::Named("Continuous".into()),
-            // Hairline by default — entities show "no weight" until a layer or
-            // entity weight is explicitly assigned.
             line_weight_mm: 0.0,
             on: true,
             frozen: false,
@@ -28,6 +26,11 @@ impl Layer {
 
     pub fn with_color(mut self, r: u8, g: u8, b: u8) -> Self {
         self.color = (r, g, b);
+        self
+    }
+
+    pub fn with_line_type(mut self, name: impl Into<String>) -> Self {
+        self.line_type = LineTypeRef::Named(name.into());
         self
     }
 

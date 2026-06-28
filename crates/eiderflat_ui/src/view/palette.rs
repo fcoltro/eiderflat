@@ -25,7 +25,6 @@ struct Entry {
 }
 
 const ENTRIES: &[Entry] = &[
-    // ── Tools ──────────────────────────────────────────────────────────────
     Entry {
         name: "Select",
         hint: "Esc",
@@ -106,7 +105,6 @@ const ENTRIES: &[Entry] = &[
         icon: Icon::Text,
         action: Action::Cmd("TEXT"),
     },
-    // ── Modify ─────────────────────────────────────────────────────────────
     Entry {
         name: "Move",
         hint: "Shift M",
@@ -227,7 +225,6 @@ const ENTRIES: &[Entry] = &[
         icon: Icon::Delete,
         action: Action::Cmd("ERASE"),
     },
-    // ── View ───────────────────────────────────────────────────────────────
     Entry {
         name: "Zoom Extents",
         hint: "Z",
@@ -366,7 +363,6 @@ fn run_entry(app: &mut AppState, e: &Entry) {
     }
 }
 
-/// A keycap badge ("V", "Ctrl", …) drawn at the current cursor.
 fn keycap(ui: &mut egui::Ui, text: &str) {
     let galley = ui.painter().layout_no_wrap(
         text.to_string(),
@@ -391,14 +387,12 @@ fn keycap(ui: &mut egui::Ui, text: &str) {
     );
 }
 
-/// One command row. Returns the response so the caller can detect clicks/hover.
 fn command_row(ui: &mut egui::Ui, e: &Entry, selected: bool) -> egui::Response {
     let (rect, resp) =
         ui.allocate_exact_size(egui::vec2(ui.available_width(), 44.0), egui::Sense::click());
     if selected || resp.hovered() {
         ui.painter().rect_filled(rect, 10.0, theme::WIDGET_HOVER);
     }
-    // Icon chip.
     let icon_box = egui::Rect::from_min_size(
         egui::pos2(rect.left() + 8.0, rect.center().y - 15.0),
         egui::vec2(30.0, 30.0),
@@ -417,7 +411,6 @@ fn command_row(ui: &mut egui::Ui, e: &Entry, selected: bool) -> egui::Response {
         icon_box.shrink(7.0),
         egui::Color32::from_rgb(210, 224, 244),
     );
-    // Label.
     ui.painter().text(
         egui::pos2(icon_box.right() + 12.0, rect.center().y),
         egui::Align2::LEFT_CENTER,
@@ -425,7 +418,6 @@ fn command_row(ui: &mut egui::Ui, e: &Entry, selected: bool) -> egui::Response {
         egui::FontId::proportional(13.5),
         theme::TEXT,
     );
-    // Keycap badges, right-aligned.
     if !e.hint.is_empty() {
         let mut keys: Vec<&str> = e.hint.split_whitespace().collect();
         keys.reverse();
@@ -471,7 +463,6 @@ pub(super) fn command_bar(
     let open_id = egui::Id::new("palette_open_state");
     let mut open = ctx.data(|d| d.get_temp::<bool>(open_id).unwrap_or(false));
 
-    // Ctrl+F (or a toolbar/menu request) opens + focuses the palette.
     let menu_request = ctx.data(|d| {
         d.get_temp::<bool>(egui::Id::new("open_palette"))
             .unwrap_or(false)
@@ -503,7 +494,6 @@ pub(super) fn command_bar(
     let focused = ctx.memory(|m| m.has_focus(bar_id));
     let q = ui_state.command_input.trim().to_ascii_lowercase();
 
-    // Build the ordered, filtered list of visible entries.
     let visible: Vec<&Entry> = if q.is_empty() {
         let mut v = Vec::new();
         for g in GROUP_ORDER {
@@ -536,7 +526,6 @@ pub(super) fn command_bar(
     let mut run_raw = false;
     let mut close_requested = false;
 
-    // ── Dim full-screen backdrop (closes on click). ────────────────────────
     let screen = ctx.content_rect();
     let backdrop = egui::Area::new(egui::Id::new("palette_backdrop"))
         .order(egui::Order::Tooltip)
@@ -550,7 +539,6 @@ pub(super) fn command_bar(
         close_requested = true;
     }
 
-    // ── Centred card. ──────────────────────────────────────────────────────
     let width = 600.0_f32.min(canvas_rect.width() - 48.0);
     let pos = egui::pos2(
         canvas_rect.center().x - width / 2.0,
@@ -565,7 +553,6 @@ pub(super) fn command_bar(
                 .inner_margin(egui::Margin::same(0))
                 .show(ui, |ui| {
                     ui.set_width(width);
-                    // Header: magnifier + input + ESC badge.
                     egui::Frame::new()
                         .inner_margin(egui::Margin::symmetric(16, 14))
                         .show(ui, |ui| {
@@ -615,7 +602,6 @@ pub(super) fn command_bar(
                         });
                     super::chrome::divider_h(ui);
 
-                    // Body: grouped rows (or flat results when searching).
                     egui::ScrollArea::vertical()
                         .max_height(screen.height() * 0.46)
                         .auto_shrink([false, false])
@@ -661,7 +647,6 @@ pub(super) fn command_bar(
                                 });
                         });
 
-                    // Footer: navigation hints + version.
                     super::chrome::divider_h(ui);
                     egui::Frame::new()
                         .inner_margin(egui::Margin::symmetric(16, 10))
@@ -698,11 +683,6 @@ pub(super) fn command_bar(
                         });
                 });
         });
-    // Keep the card above the full-screen backdrop. Both live on the Tooltip
-    // layer, and clicking the backdrop to dismiss it moves the backdrop to the
-    // front; without this, reopening the palette would leave the dim backdrop
-    // painted on top of (and swallowing clicks to) the card — it looked dark and
-    // unresponsive. Re-topping the card every frame prevents that.
     ctx.move_to_top(card.response.layer_id);
 
     if let Some(i) = run_idx {

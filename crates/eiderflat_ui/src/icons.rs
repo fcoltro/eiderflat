@@ -51,8 +51,6 @@ pub enum Icon {
 }
 
 impl Icon {
-    /// The raw PNG bytes for this icon, embedded at compile time. Every icon is
-    /// a 32×32 RGBA glyph drawn in the shared white + blue-accent palette.
     fn png_bytes(self) -> &'static [u8] {
         match self {
             Icon::Select => include_bytes!("../assets/icons/icons_curves_ui_select.png"),
@@ -116,9 +114,6 @@ impl Icon {
 #[derive(Clone, Default)]
 struct IconTextureCache(HashMap<u8, egui::TextureHandle>);
 
-/// Decode the icon's embedded PNG into a GPU texture, cached per icon id. The
-/// glyph is stored at its native 32×32 resolution and scaled (LINEAR) to the
-/// requested box at paint time.
 fn icon_texture(ctx: &egui::Context, icon: Icon) -> Option<egui::TextureHandle> {
     let id = egui::Id::new("eiderflat_icon_texture_cache");
     if let Some(tex) = ctx.data(|d| {
@@ -146,9 +141,6 @@ fn icon_texture(ctx: &egui::Context, icon: Icon) -> Option<egui::TextureHandle> 
     Some(tex)
 }
 
-/// Paint an icon into `rect`. The glyphs ship pre-coloured (white + blue
-/// accent); `tint` multiplies that artwork — pass `Color32::WHITE` to render it
-/// faithfully, or a dimmer/coloured value to fade or shade it.
 pub fn paint_icon(
     painter: &egui::Painter,
     ctx: &egui::Context,
@@ -206,16 +198,11 @@ pub fn app_icon() -> egui::IconData {
     }
 }
 
-/// The app symbol rasterized to a square PNG of `size`×`size` px (straight
-/// alpha). Used to build the executable/launcher icons.
 pub fn app_icon_png(size: u32) -> Option<Vec<u8>> {
     let svg = include_str!("../assets/logotype/symbol.svg");
     rasterize_svg(svg, size, size)?.encode_png().ok()
 }
 
-/// A multi-resolution Windows `.ico` of the app symbol as raw file bytes, with
-/// one PNG-compressed entry per size (read by Windows Vista+). Embedded into the
-/// `.exe` by the app's build script so the file shows the icon in Explorer.
 pub fn app_icon_ico() -> Option<Vec<u8>> {
     let sizes = [16u32, 24, 32, 48, 64, 128, 256];
     let mut entries: Vec<(u32, Vec<u8>)> = Vec::with_capacity(sizes.len());
@@ -223,18 +210,18 @@ pub fn app_icon_ico() -> Option<Vec<u8>> {
         entries.push((s, app_icon_png(s)?));
     }
     let mut out = Vec::new();
-    out.extend_from_slice(&0u16.to_le_bytes()); // reserved
-    out.extend_from_slice(&1u16.to_le_bytes()); // type: icon
+    out.extend_from_slice(&0u16.to_le_bytes());
+    out.extend_from_slice(&1u16.to_le_bytes());
     out.extend_from_slice(&(entries.len() as u16).to_le_bytes());
-    let mut offset = 6 + entries.len() * 16; // header + directory entries
+    let mut offset = 6 + entries.len() * 16;
     for (s, png) in &entries {
-        let dim = if *s >= 256 { 0u8 } else { *s as u8 }; // 256 encodes as 0
-        out.push(dim); // width
-        out.push(dim); // height
-        out.push(0); // palette colors
-        out.push(0); // reserved
-        out.extend_from_slice(&1u16.to_le_bytes()); // color planes
-        out.extend_from_slice(&32u16.to_le_bytes()); // bits per pixel
+        let dim = if *s >= 256 { 0u8 } else { *s as u8 };
+        out.push(dim);
+        out.push(dim);
+        out.push(0);
+        out.push(0);
+        out.extend_from_slice(&1u16.to_le_bytes());
+        out.extend_from_slice(&32u16.to_le_bytes());
         out.extend_from_slice(&(png.len() as u32).to_le_bytes());
         out.extend_from_slice(&(offset as u32).to_le_bytes());
         offset += png.len();
@@ -262,9 +249,7 @@ pub fn logo_texture(ctx: &egui::Context) -> Option<egui::TextureHandle> {
 }
 
 const ICON_SIZE: f32 = 30.0;
-/// Fixed glyph size (in points) so all icon buttons share one visual size,
-/// independent of their button box.
-const GLYPH_PX: f32 = 18.0;
+const GLYPH_PX: f32 = 24.0;
 
 pub fn icon_button(ui: &mut Ui, icon: Icon, tooltip: &str, active: bool) -> Response {
     icon_button_sized(ui, icon, tooltip, active, ICON_SIZE)
@@ -288,7 +273,6 @@ pub fn icon_button_sized(
 
     let radius = (size * 0.27).round().clamp(8.0, 13.0);
     let painter = ui.painter_at(rect);
-    // Hover background fades in; the active tool gets a filled accent pill + border.
     if anim > 0.001 && act < 0.5 {
         painter.rect_filled(
             rect,
@@ -306,17 +290,12 @@ pub fn icon_button_sized(
         );
     }
 
-    // The glyphs ship pre-coloured, so a disabled button just fades the artwork
-    // rather than recolouring it; enabled buttons render it faithfully.
     let tint = if ui.is_enabled() {
         Color32::WHITE
     } else {
         Color32::WHITE.gamma_multiply(0.4)
     };
-    // The glyph is a fixed pixel size regardless of the button box, so every
-    // icon across the UI (toolbars, layer rows, the contextual popup, undo/redo,
-    // …) renders at the same visual size. Smaller buttons keep a little padding.
-    let glyph = GLYPH_PX.min(size - 6.0).max(8.0);
+    let glyph = GLYPH_PX.min(size - 4.0).max(8.0);
     let area = snap_rect(
         Rect::from_center_size(rect.center(), Vec2::splat(glyph)),
         ppp,
@@ -329,11 +308,7 @@ pub fn icon_button_sized(
     response
 }
 
-/// Render a button tooltip from a string like `"Offset  (Shift+O) — type a
-/// distance"`: the name in bold, the parenthesised shortcut as a keycap chip, and
-/// any trailing `— description` as a dimmed second line.
 fn rich_tooltip(ui: &mut Ui, text: &str) {
-    // Split off a leading "(shortcut)" group, if present.
     let (head, keys) = match (text.find('('), text.find(')')) {
         (Some(o), Some(c)) if c > o => (
             text[..o].trim().to_string(),
@@ -341,7 +316,6 @@ fn rich_tooltip(ui: &mut Ui, text: &str) {
         ),
         _ => (text.to_string(), None),
     };
-    // Anything after the ")" that begins with an em dash is the description.
     let desc = text
         .find(')')
         .map(|c| text[c + 1..].trim())

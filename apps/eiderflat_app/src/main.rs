@@ -3,11 +3,9 @@
 use eiderflat_geometry::{CircularArc, Curve, LineSeg, Point2d, intersect};
 use eiderflat_ui::{AppState, UiPrefs, UiState, draw_ui, egui};
 
-/// eframe storage key for the persisted UI preferences.
 const PREFS_KEY: &str = "eiderflat_ui_prefs";
 
 fn main() {
-    // Capture any panic to the log file (the console may flash and close).
     std::panic::set_hook(Box::new(|info| {
         log_init();
         log(&format!("PANIC: {info}"));
@@ -59,17 +57,10 @@ struct EiderflatCad {
 }
 
 impl eframe::App for EiderflatCad {
-    // eframe 0.34 drives apps through `ui` (the old `ctx`-based `update` is
-    // deprecated). All our chrome/canvas code builds its own panels on the
-    // context, so we draw from `ui.ctx()` and leave the provided root `ui` empty.
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        // The viewport is the egui painter with adaptive, zoom-aware tessellation:
-        // smooth at any zoom, dependency-free, and exact where it matters (the
-        // algebraic kernel), tessellated only for display.
         draw_ui(ui, &mut self.app, &mut self.ui);
     }
 
-    // Persist UI preferences (snap/tracking toggles, last font) between sessions.
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
         storage.set_string(PREFS_KEY, self.app.ui_prefs().serialize());
     }
@@ -77,14 +68,11 @@ impl eframe::App for EiderflatCad {
 
 fn run_gui() -> eframe::Result<()> {
     let options = eframe::NativeOptions {
-        // Native OS window (standard title bar, controls, rounding, resize/snap).
         viewport: egui::ViewportBuilder::default()
             .with_title("eiderFLAT")
             .with_icon(std::sync::Arc::new(eiderflat_ui::icons::app_icon()))
             .with_min_inner_size([900.0, 560.0])
             .with_inner_size([1200.0, 800.0]),
-        // 4× MSAA sharpens the edges of the tessellated UI/geometry (cheap on any
-        // modern GPU); combined with pixel-snapped icon buttons it crisps the chrome.
         multisampling: 4,
         ..Default::default()
     };
@@ -94,7 +82,6 @@ fn run_gui() -> eframe::Result<()> {
         Box::new(|cc| {
             log("Window created. Using the adaptive-tessellation egui painter.");
             let mut app = AppState::new(1200.0, 800.0);
-            // Restore persisted UI preferences from the previous session.
             if let Some(s) = cc.storage.and_then(|s| s.get_string(PREFS_KEY)) {
                 app.apply_prefs(&UiPrefs::deserialize(&s));
             }

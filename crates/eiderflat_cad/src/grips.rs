@@ -111,7 +111,6 @@ pub fn grips_for(kind: &EntityKind) -> Vec<Grip> {
             vec![
                 Grip::new(GripRole::Endpoint(0), *p1),
                 Grip::new(GripRole::Endpoint(1), *p2),
-                // The offset handle that slides the dimension line.
                 Grip::new(GripRole::Vertex(2), *line),
             ]
         }
@@ -461,7 +460,6 @@ fn poly_edit_points(poly: &PolyCurve) -> Vec<EditPoint> {
                 writes: vec![(s, ci)],
             });
         }
-        // End anchor.
         pts.push(EditPoint {
             pos: end,
             writes: vec![(s, end_ctrl)],

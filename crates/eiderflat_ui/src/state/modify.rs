@@ -77,9 +77,6 @@ impl AppState {
                 center: None,
                 ..
             } => {
-                // Pick a circle or arc; its centre + radius drive the dimension.
-                // The follow-up "aim the leader" click is a free point, handled by
-                // the normal tool path once `center` is set.
                 if let Some(id) = pick(self)
                     && let Some((c, r)) = self
                         .document
@@ -96,8 +93,6 @@ impl AppState {
                 true
             }
             Tool::DimAngularLines { a, geom: None } => {
-                // Pick two lines; their intersection is the angle vertex and a far
-                // point on each line gives the ray directions.
                 if let Some(id) = pick(self)
                     && line_endpoints_of(self, id).is_some()
                 {
@@ -261,8 +256,6 @@ impl AppState {
         }
     }
 
-    /// Circle of `radius` tangent to entities `a` and `b`, nearest the pick.
-    /// Records the two tangency constraints so the circle stays tangent on edit.
     fn add_tangent_circle_ttr(&mut self, a: EntityId, b: EntityId, radius: f64, near: Point2d) {
         let (Some(c1), Some(c2)) = (
             self.document.get(a).and_then(|e| e.as_curve()).cloned(),
@@ -283,8 +276,6 @@ impl AppState {
         }
     }
 
-    /// Circle tangent to three entities, nearest the final pick. Records all three
-    /// tangency constraints.
     fn add_tangent_circle_ttt(&mut self, ids: [EntityId; 3], near: Point2d) {
         let curves: Vec<_> = ids
             .iter()
@@ -312,8 +303,6 @@ impl AppState {
         }
     }
 
-    /// Add a full circle as an entity, applying the new-object line defaults.
-    /// Returns the new entity id (so callers can attach constraints).
     fn create_full_circle(&mut self, center: Point2d, r: f64) -> Option<EntityId> {
         if r <= 1e-9 {
             return None;
@@ -327,7 +316,6 @@ impl AppState {
         Some(id)
     }
 
-    /// Add a line segment as an entity, applying the new-object line defaults.
     fn create_line(&mut self, a: Point2d, b: Point2d) {
         if a.dist_f64(&b) < 1e-9 {
             return;
@@ -339,7 +327,6 @@ impl AppState {
         ]));
     }
 
-    /// `(centre, radius)` if the entity is a full circle / arc, else `None`.
     fn circle_of(&self, id: EntityId) -> Option<(Point2d, f64)> {
         match self.document.get(id).and_then(|e| e.as_curve()) {
             Some(eiderflat_geometry::Curve::Arc(a)) => Some((a.center, a.radius)),
@@ -347,9 +334,6 @@ impl AppState {
         }
     }
 
-    /// Drive the tangent-line tool from a click. First pick is a free point or a
-    /// circle/arc; the second resolves into a tangent line (from a point to a
-    /// circle, or a common tangent of two circles).
     fn handle_tangent_line_click(&mut self, first: Option<crate::tools::TanAnchor>, p: &Point2d) {
         use crate::tools::{TanAnchor, Tool};
         let tol = self.view.pixel_world_size() * 6.0;
@@ -374,7 +358,6 @@ impl AppState {
                     first: Some(anchor),
                 };
             }
-            // From a free point, tangent to the picked circle.
             Some(TanAnchor::Point(pt)) => {
                 if let Some((_, (o, r))) = picked_circle {
                     let touches = eiderflat_geometry::tangent_points_from_point(o, r, pt);
@@ -383,7 +366,6 @@ impl AppState {
                     }
                     self.tool = Tool::TangentLine { first: None };
                 }
-                // Otherwise keep waiting for a circle/arc pick.
             }
             Some(TanAnchor::Circle(aid, aclick)) => {
                 let Some((o1, r1)) = self.circle_of(aid) else {
@@ -391,7 +373,6 @@ impl AppState {
                     return;
                 };
                 match picked_circle {
-                    // Common tangent between the two circles.
                     Some((bid, (o2, r2))) if bid != aid => {
                         let segs = eiderflat_geometry::common_tangent_segments(o1, r1, o2, r2);
                         let best = segs.into_iter().min_by(|x, y| {
@@ -406,7 +387,6 @@ impl AppState {
                         }
                         self.tool = Tool::TangentLine { first: None };
                     }
-                    // Second pick is a free point: tangent from it to the circle.
                     _ => {
                         let touches = eiderflat_geometry::tangent_points_from_point(o1, r1, *p);
                         if let Some(t) = nearest(&touches, aclick) {
@@ -455,9 +435,6 @@ pub enum TrimExtendPreview {
     Extension(eiderflat_geometry::Curve),
 }
 
-/// Extract a (centre, radius) pair from a circular curve — a full circle or a
-/// circular arc. Returns `None` for anything else, so radius/diameter dimensions
-/// only attach to round geometry.
 fn circle_center_radius(c: &eiderflat_geometry::Curve) -> Option<(Point2d, f64)> {
     match c {
         eiderflat_geometry::Curve::Arc(a) => Some((a.center, a.radius)),
@@ -465,7 +442,6 @@ fn circle_center_radius(c: &eiderflat_geometry::Curve) -> Option<(Point2d, f64)>
     }
 }
 
-/// Endpoints of a picked straight line entity, or `None` if it isn't a line.
 fn line_endpoints_of(app: &AppState, id: EntityId) -> Option<(Point2d, Point2d)> {
     match app.document.get(id)?.as_curve()? {
         eiderflat_geometry::Curve::Line(l) => Some((l.p0, l.p1)),
@@ -473,8 +449,6 @@ fn line_endpoints_of(app: &AppState, id: EntityId) -> Option<(Point2d, Point2d)>
     }
 }
 
-/// Build angular-dimension geometry (vertex + a ray point on each line) from two
-/// picked lines, using their infinite-line intersection as the vertex.
 fn angular_from_lines(
     app: &AppState,
     a: EntityId,
@@ -486,7 +460,6 @@ fn angular_from_lines(
         &eiderflat_geometry::LineSeg::from_endpoints(a0, a1),
         &eiderflat_geometry::LineSeg::from_endpoints(b0, b1),
     )?;
-    // Ray point on each line = the endpoint farthest from the vertex.
     let far = |p: Point2d, q: Point2d| {
         if vertex.dist_f64(&p) >= vertex.dist_f64(&q) {
             p
