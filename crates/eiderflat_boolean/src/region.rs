@@ -48,29 +48,75 @@ fn flatten_segment(seg: &Curve) -> Vec<Point2d> {
     tessellate_curve(seg, tol)
 }
 
-fn boundary_signed_area(boundary: &[Curve]) -> f64 {
-    let mut area = 0.0;
+/// Flattens every boundary segment into one continuous vertex ring. Shared
+/// endpoints between consecutive segments are de-duplicated so the ring carries
+/// no zero-length edges, and the ring is meant to be read as *closed*: the edge
+/// from the last vertex back to the first must be walked too.
+///
+/// Closing the ring matters because a full-circle arc tessellates to a polyline
+/// whose ends differ by a rounding gap (`sin(2π) ≈ -1.2e-16`, not 0). Walking
+/// only the within-segment edges drops the crossing that lives in that seam, so
+/// a horizontal ray whose `y` lands inside the gap miscounts and reports an
+/// outside point as inside.
+fn boundary_ring(boundary: &[Curve]) -> Vec<Point2d> {
+    let mut ring: Vec<Point2d> = Vec::new();
     for seg in boundary {
-        for w in flatten_segment(seg).windows(2) {
-            area += (w[0].x + w[1].x) * (w[1].y - w[0].y);
+        let poly = flatten_segment(seg);
+        let mut iter = poly.into_iter();
+        if let Some(first) = iter.next() {
+            // Skip the first point when it coincides with the previous segment's end.
+            if ring
+                .last()
+                .is_none_or(|l| (l.x - first.x).abs() > 1e-12 || (l.y - first.y).abs() > 1e-12)
+            {
+                ring.push(first);
+            }
+            ring.extend(iter);
         }
+    }
+    // Drop a trailing point that coincides with the start: the closing edge added
+    // by the wraparound walk would otherwise be zero-length (and the seam crossing
+    // would still be missed).
+    if ring.len() >= 2 {
+        let (f, l) = (ring[0], *ring.last().unwrap());
+        if (f.x - l.x).abs() <= 1e-12 && (f.y - l.y).abs() <= 1e-12 {
+            ring.pop();
+        }
+    }
+    ring
+}
+
+fn boundary_signed_area(boundary: &[Curve]) -> f64 {
+    let ring = boundary_ring(boundary);
+    let n = ring.len();
+    if n < 3 {
+        return 0.0;
+    }
+    let mut area = 0.0;
+    for i in 0..n {
+        let a = ring[i];
+        let b = ring[(i + 1) % n];
+        area += (a.x + b.x) * (b.y - a.y);
     }
     area / 2.0
 }
 
 fn winding_number_boundary(boundary: &[Curve], px: f64, py: f64) -> i32 {
+    let ring = boundary_ring(boundary);
+    let n = ring.len();
+    if n < 3 {
+        return 0;
+    }
     let mut wn = 0i32;
-    for seg in boundary {
-        for w in flatten_segment(seg).windows(2) {
-            let (x1, y1) = (w[0].x, w[0].y);
-            let (x2, y2) = (w[1].x, w[1].y);
-            if y1 <= py {
-                if y2 > py && cross_sign(x1, y1, x2, y2, px, py) > 0.0 {
-                    wn += 1;
-                }
-            } else if y2 <= py && cross_sign(x1, y1, x2, y2, px, py) < 0.0 {
-                wn -= 1;
+    for i in 0..n {
+        let (x1, y1) = (ring[i].x, ring[i].y);
+        let (x2, y2) = (ring[(i + 1) % n].x, ring[(i + 1) % n].y);
+        if y1 <= py {
+            if y2 > py && cross_sign(x1, y1, x2, y2, px, py) > 0.0 {
+                wn += 1;
             }
+        } else if y2 <= py && cross_sign(x1, y1, x2, y2, px, py) < 0.0 {
+            wn -= 1;
         }
     }
     wn
@@ -152,6 +198,35 @@ mod tests {
         assert!(r.contains_point(2.9, 0.0), "just inside the rim");
         assert!(!r.contains_point(3.1, 0.0), "just outside the rim");
         assert!(!r.contains_point(10.0, 10.0), "far point is outside");
+    }
+
+    #[test]
+    fn full_circle_seam_does_not_leak_winding() {
+        // A full-circle arc tessellates to a polyline whose ends differ by a
+        // rounding gap (sin(2π) ≈ -1.2e-16). A horizontal ray whose y lands inside
+        // that seam must still see both rim crossings; before closing the ring, the
+        // seam crossing was dropped and a far-outside point read as inside, leaking
+        // hatch lines beyond the circle.
+        let r = Region::new(vec![Curve::Arc(CircularArc::new(
+            Point2d::from_i64(0, 0),
+            5.0,
+            0.0,
+            std::f64::consts::TAU,
+        ))]);
+        for &y in &[0.0, -0.0, 1e-16, -1e-16, -1e-300, 1e-9, -1e-9] {
+            assert!(
+                !r.contains_point(-9.571, y),
+                "point far left of the circle must be outside (y={y:+e})"
+            );
+            assert!(
+                !r.contains_point(9.571, y),
+                "point far right of the circle must be outside (y={y:+e})"
+            );
+            assert!(
+                r.contains_point(0.0, y),
+                "the centre line must be inside (y={y:+e})"
+            );
+        }
     }
 
     #[test]

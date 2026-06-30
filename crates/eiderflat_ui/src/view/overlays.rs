@@ -917,3 +917,70 @@ fn height_glyph(ui: &mut egui::Ui) {
         p.line_segment([pos2(x, y), pos2(x + 3.0, y + dy)], s);
     }
 }
+
+#[cfg(test)]
+mod text_hud_tests {
+    use super::*;
+    use eiderflat_document::EntityKind;
+
+    fn key(k: egui::Key, pressed: bool) -> egui::Event {
+        egui::Event::Key {
+            key: k,
+            physical_key: None,
+            pressed,
+            repeat: false,
+            modifiers: egui::Modifiers::NONE,
+        }
+    }
+
+    #[test]
+    #[allow(deprecated)] // dyn_text_hud takes &Context, not &mut Ui, so run_ui doesn't fit
+    fn typing_then_enter_creates_text() {
+        let ctx = egui::Context::default();
+        let mut app = AppState::new(800.0, 600.0);
+        app.tool = Tool::Text {
+            anchor: Some(Point2d::from_f64(1.0, 2.0)),
+            height: 2.5,
+        };
+        let mut ui_state = UiState::default();
+        let origin = pos2(0.0, 0.0);
+
+        let frame = |events: Vec<egui::Event>, app: &mut AppState, ui: &mut UiState| {
+            let raw = egui::RawInput {
+                events,
+                ..Default::default()
+            };
+            let _ = ctx.run(raw, |ctx| dyn_text_hud(ctx, app, ui, origin));
+        };
+
+        // Frame 1: HUD appears and requests focus on the text field.
+        frame(vec![], &mut app, &mut ui_state);
+        // Frame 2: type into the (now focused) field.
+        frame(
+            vec![egui::Event::Text("Hello".into())],
+            &mut app,
+            &mut ui_state,
+        );
+        // Frame 3: press Enter to place the text.
+        frame(
+            vec![key(egui::Key::Enter, true), key(egui::Key::Enter, false)],
+            &mut app,
+            &mut ui_state,
+        );
+
+        let texts: Vec<&str> = app
+            .document
+            .editable_entities()
+            .filter_map(|e| match &e.kind {
+                EntityKind::Text { content, .. } => Some(content.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            texts,
+            vec!["Hello"],
+            "Enter should place the typed text as a Text entity; tool={:?}",
+            app.tool
+        );
+    }
+}
