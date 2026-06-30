@@ -159,6 +159,39 @@ impl AppState {
                 }
                 true
             }
+            Tool::Blend {
+                continuity,
+                tension,
+                first,
+            } => {
+                if let Some(id) = pick(self) {
+                    match first {
+                        None => {
+                            self.tool = Tool::Blend {
+                                continuity,
+                                tension,
+                                first: Some(id),
+                            }
+                        }
+                        Some(a) => {
+                            if a != id {
+                                self.history.snapshot(&self.document);
+                                if edit::blend(&mut self.document, a, id, continuity, tension)
+                                    .is_none()
+                                {
+                                    self.history.discard_last();
+                                }
+                            }
+                            self.tool = Tool::Blend {
+                                continuity,
+                                tension,
+                                first: None,
+                            };
+                        }
+                    }
+                }
+                true
+            }
             Tool::CircleTtr { radius, first } => {
                 if let Some(id) = pick(self) {
                     match first {

@@ -201,6 +201,15 @@ pub(super) fn tool_prompt(tool: &Tool) -> String {
                 "Pick the second line".into()
             }
         }
+        Tool::Blend {
+            continuity, first, ..
+        } => {
+            if first.is_none() {
+                format!("Blend ({continuity:?}) — pick the first entity")
+            } else {
+                "Pick the second entity to blend into".into()
+            }
+        }
         Tool::Stretch { c1, c2, base, .. } => match (c1, c2, base) {
             (None, _, _) => "Specify first corner of crossing window".into(),
             (Some(_), None, _) => "Specify opposite corner".into(),

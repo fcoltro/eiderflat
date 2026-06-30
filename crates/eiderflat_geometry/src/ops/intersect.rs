@@ -25,7 +25,8 @@ pub fn intersect_lines_unbounded(l1: &LineSeg, l2: &LineSeg) -> Option<Point2d> 
     let (x3, y3) = l2.p0.to_f64();
     let (x4, y4) = l2.p1.to_f64();
     let denom = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
-    if denom.abs() < 1e-12 {
+    let scale = (x1 - x2).hypot(y1 - y2) * (x3 - x4).hypot(y3 - y4);
+    if denom.abs() <= 1e-12 * scale.max(1.0) {
         return None;
     }
     let t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / denom;
@@ -162,8 +163,11 @@ fn intersect_segments_f64(
     let vx = qb.0 - qa.0;
     let vy = qb.1 - qa.1;
 
+    // Relative parallelism test: the cross product scales with both segment lengths,
+    // so a fixed absolute floor mislabels long near-parallel segments. Scale by them.
     let denom = ux * vy - uy * vx;
-    if denom.abs() < 1e-12 {
+    let scale = (ux * ux + uy * uy).sqrt() * (vx * vx + vy * vy).sqrt();
+    if denom.abs() <= 1e-12 * scale.max(1.0) {
         return None;
     }
 

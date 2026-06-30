@@ -1,3 +1,4 @@
+pub mod blend;
 pub mod curvature;
 pub mod distance;
 pub mod intersect;
@@ -5,6 +6,7 @@ pub mod offset;
 pub mod split_reverse;
 pub mod tangent;
 
+pub use blend::{Continuity, blend_curves};
 pub use curvature::{curvature_at, normal_at, tangent_at};
 pub use distance::{
     ProjectionResult, curve_to_curve_distance, point_to_curve_distance, project_point_onto_curve,

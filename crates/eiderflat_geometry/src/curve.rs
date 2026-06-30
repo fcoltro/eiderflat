@@ -41,60 +41,37 @@ impl Curve {
     }
 }
 
+/// Forwards a `CurveSegment` call to whichever variant `Curve` holds, binding the
+/// inner value to `$v`. Keeps the seven-arm match in exactly one place so a new
+/// `Curve` variant can never silently miss a method.
+macro_rules! dispatch {
+    ($self:ident, $v:ident => $body:expr) => {
+        match $self {
+            Curve::Line($v) => $body,
+            Curve::Arc($v) => $body,
+            Curve::Ellipse($v) => $body,
+            Curve::Bezier($v) => $body,
+            Curve::Poly($v) => $body,
+            Curve::Rational($v) => $body,
+            Curve::Nurbs($v) => $body,
+        }
+    };
+}
+
 impl CurveSegment for Curve {
     fn domain(&self) -> (f64, f64) {
-        match self {
-            Curve::Line(v) => v.domain(),
-            Curve::Arc(v) => v.domain(),
-            Curve::Ellipse(v) => v.domain(),
-            Curve::Bezier(v) => v.domain(),
-            Curve::Poly(v) => v.domain(),
-            Curve::Rational(v) => v.domain(),
-            Curve::Nurbs(v) => v.domain(),
-        }
+        dispatch!(self, v => v.domain())
     }
     fn evaluate_f64(&self, t: f64) -> (f64, f64) {
-        match self {
-            Curve::Line(v) => v.evaluate_f64(t),
-            Curve::Arc(v) => v.evaluate_f64(t),
-            Curve::Ellipse(v) => v.evaluate_f64(t),
-            Curve::Bezier(v) => v.evaluate_f64(t),
-            Curve::Poly(v) => v.evaluate_f64(t),
-            Curve::Rational(v) => v.evaluate_f64(t),
-            Curve::Nurbs(v) => v.evaluate_f64(t),
-        }
+        dispatch!(self, v => v.evaluate_f64(t))
     }
     fn bounding_box(&self) -> BoundingBox {
-        match self {
-            Curve::Line(v) => v.bounding_box(),
-            Curve::Arc(v) => v.bounding_box(),
-            Curve::Ellipse(v) => v.bounding_box(),
-            Curve::Bezier(v) => v.bounding_box(),
-            Curve::Poly(v) => v.bounding_box(),
-            Curve::Rational(v) => v.bounding_box(),
-            Curve::Nurbs(v) => v.bounding_box(),
-        }
+        dispatch!(self, v => v.bounding_box())
     }
     fn tangent_f64(&self, t: f64) -> (f64, f64) {
-        match self {
-            Curve::Line(v) => v.tangent_f64(t),
-            Curve::Arc(v) => v.tangent_f64(t),
-            Curve::Ellipse(v) => v.tangent_f64(t),
-            Curve::Bezier(v) => v.tangent_f64(t),
-            Curve::Poly(v) => v.tangent_f64(t),
-            Curve::Rational(v) => v.tangent_f64(t),
-            Curve::Nurbs(v) => v.tangent_f64(t),
-        }
+        dispatch!(self, v => v.tangent_f64(t))
     }
     fn arc_length(&self) -> f64 {
-        match self {
-            Curve::Line(v) => v.arc_length(),
-            Curve::Arc(v) => v.arc_length(),
-            Curve::Ellipse(v) => v.arc_length(),
-            Curve::Bezier(v) => v.arc_length(),
-            Curve::Poly(v) => v.arc_length(),
-            Curve::Rational(v) => v.arc_length(),
-            Curve::Nurbs(v) => v.arc_length(),
-        }
+        dispatch!(self, v => v.arc_length())
     }
 }

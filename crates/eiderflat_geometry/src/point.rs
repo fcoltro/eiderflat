@@ -20,20 +20,24 @@ impl Point2d {
         Point2d { x, y }
     }
 
+    #[inline]
     pub fn to_f64(&self) -> (f64, f64) {
         (self.x, self.y)
     }
 
+    #[inline]
     pub fn dist_sq(&self, other: &Point2d) -> f64 {
         let dx = self.x - other.x;
         let dy = self.y - other.y;
         dx * dx + dy * dy
     }
 
+    #[inline]
     pub fn dist_f64(&self, other: &Point2d) -> f64 {
         self.dist_sq(other).sqrt()
     }
 
+    #[inline]
     pub fn midpoint(&self, other: &Point2d) -> Point2d {
         Point2d {
             x: (self.x + other.x) / 2.0,
@@ -41,6 +45,7 @@ impl Point2d {
         }
     }
 
+    #[inline]
     pub fn lerp(&self, other: &Point2d, t: f64) -> Point2d {
         Point2d {
             x: self.x + t * (other.x - self.x),

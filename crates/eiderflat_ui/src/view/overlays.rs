@@ -3,7 +3,7 @@ use super::render::corner_glass_frame;
 use crate::state::AppState;
 use crate::tools::Tool;
 use egui::{Color32, Stroke, pos2};
-use eiderflat_geometry::{Curve, CurveSegment, Point2d, curvature_at, normal_at};
+use eiderflat_geometry::{Continuity, Curve, CurveSegment, Point2d, curvature_at, normal_at};
 
 pub(super) fn curvature_comb(
     painter: &egui::Painter,
@@ -724,11 +724,17 @@ pub(super) fn dyn_corner_hud(
         Tool::Fillet { radius, .. } => Some(("Radius", *radius)),
         Tool::Chamfer { dist, .. } => Some(("Dist", *dist)),
         Tool::CircleTtr { radius, .. } => Some(("Radius", *radius)),
+        Tool::Blend { tension, .. } => Some(("Tension", *tension)),
         _ => None,
     };
     let (Some((label, value)), true) = (info, app.dyn_on) else {
         ui_state.dyn_corner_active = false;
         return;
+    };
+    // Blend additionally offers a G0–G3 continuity selector in the same HUD.
+    let blend_continuity = match &app.tool {
+        Tool::Blend { continuity, .. } => Some(*continuity),
+        _ => None,
     };
 
     let first_show = !ui_state.dyn_corner_active;
@@ -737,14 +743,34 @@ pub(super) fn dyn_corner_hud(
     }
     let id = egui::Id::new("dyn_corner_val");
     let pos = cursor_hud_pos(app, origin, -38.0);
+    let mut new_continuity: Option<Continuity> = None;
     cursor_hud(ctx, "dyn_corner_hud", pos, |ui| {
+        if let Some(current) = blend_continuity {
+            for c in [
+                Continuity::G0,
+                Continuity::G1,
+                Continuity::G2,
+                Continuity::G3,
+            ] {
+                let txt = match c {
+                    Continuity::G0 => "G0",
+                    Continuity::G1 => "G1",
+                    Continuity::G2 => "G2",
+                    Continuity::G3 => "G3",
+                };
+                if ui.selectable_label(current == c, txt).clicked() {
+                    new_continuity = Some(c);
+                }
+            }
+            ui.separator();
+        }
         hud_label(ui, label);
         let r = hud_field(
             ui,
             id,
             &mut ui_state.dyn_corner_val,
             58.0,
-            "value, then pick lines",
+            "value, then pick",
             false,
             false,
         );
@@ -754,30 +780,49 @@ pub(super) fn dyn_corner_hud(
         }
     });
     ui_state.dyn_corner_active = true;
-    if let Ok(v) = ui_state.dyn_corner_val.trim().parse::<f64>()
-        && v > 1e-9
-    {
-        match &app.tool {
-            Tool::Fillet { first, .. } => {
+    let typed = ui_state
+        .dyn_corner_val
+        .trim()
+        .parse::<f64>()
+        .ok()
+        .filter(|v| *v > 1e-9);
+    match &app.tool {
+        Tool::Fillet { first, .. } => {
+            if let Some(v) = typed {
                 app.tool = Tool::Fillet {
                     radius: v,
                     first: *first,
                 }
             }
-            Tool::Chamfer { first, .. } => {
+        }
+        Tool::Chamfer { first, .. } => {
+            if let Some(v) = typed {
                 app.tool = Tool::Chamfer {
                     dist: v,
                     first: *first,
                 }
             }
-            Tool::CircleTtr { first, .. } => {
+        }
+        Tool::CircleTtr { first, .. } => {
+            if let Some(v) = typed {
                 app.tool = Tool::CircleTtr {
                     radius: v,
                     first: *first,
                 }
             }
-            _ => {}
         }
+        Tool::Blend {
+            continuity,
+            tension,
+            first,
+        } => {
+            app.tool = Tool::Blend {
+                continuity: new_continuity.unwrap_or(*continuity),
+                tension: typed.unwrap_or(*tension),
+                first: *first,
+            }
+        }
+        _ => {}
     }
 }
 

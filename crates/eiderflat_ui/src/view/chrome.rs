@@ -645,6 +645,16 @@ fn menu_items(ui: &mut egui::Ui, app: &mut AppState) {
                 first: None,
             },
         );
+        tool_menu_item(
+            ui,
+            app,
+            "Blend",
+            Tool::Blend {
+                continuity: eiderflat_geometry::Continuity::G1,
+                tension: 1.0,
+                first: None,
+            },
+        );
         ui.separator();
         if ui
             .add(egui::Button::new("Disjoint").shortcut_text("Shift+X"))
@@ -1293,6 +1303,7 @@ fn tool_hotkey(tool: &Tool) -> &'static str {
         Tool::Extend => "Shift+E",
         Tool::Fillet { .. } => "Shift+F",
         Tool::Chamfer { .. } => "Shift+H",
+        Tool::Blend { .. } => "Shift+B",
         Tool::Stretch { .. } => "Shift+S",
         Tool::Hatch => "H",
         Tool::ArcStartCenterEnd { .. }
@@ -1473,6 +1484,15 @@ fn modify_entries() -> Vec<(crate::icons::Icon, &'static str, Act)> {
             "Chamfer  (Shift+H) — type distance, pick 2 lines",
             Act::Tool(Tool::Chamfer {
                 dist: 1.0,
+                first: None,
+            }),
+        ),
+        (
+            Icon::Blend,
+            "Blend  (Shift+B) — pick G0–G3, pick 2 entities",
+            Act::Tool(Tool::Blend {
+                continuity: eiderflat_geometry::Continuity::G1,
+                tension: 1.0,
                 first: None,
             }),
         ),
@@ -2717,6 +2737,15 @@ fn hints_for_tool(tool: &Tool) -> (&'static str, Vec<(&'static str, &'static str
             vec![
                 ("type", "distance"),
                 ("Click", "two lines"),
+                ("Esc", "cancel"),
+            ],
+        ),
+        Blend { .. } => (
+            "Blend",
+            vec![
+                ("G0–G3", "continuity"),
+                ("type", "tension"),
+                ("Click", "two entities"),
                 ("Esc", "cancel"),
             ],
         ),

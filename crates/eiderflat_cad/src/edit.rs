@@ -1,7 +1,8 @@
 use eiderflat_document::{Document, EntityId, EntityKind};
 use eiderflat_geometry::{
-    CircularArc, Curve, CurveSegment, EllipticalArc, LineSeg, MinTracker, Point2d, PolyCurve,
-    Transform2d, intersect, offset_curve, point_to_curve_distance, reverse_curve, split_curve,
+    CircularArc, Continuity, Curve, CurveSegment, EllipticalArc, LineSeg, MinTracker, Point2d,
+    PolyCurve, Transform2d, blend_curves, intersect, offset_curve, point_to_curve_distance,
+    reverse_curve, split_curve,
 };
 
 pub fn erase(doc: &mut Document, ids: &[EntityId]) {
@@ -668,6 +669,56 @@ pub fn fillet(
     trim_entity_for_corner(doc, b, eb, sol.tb, sol.b_angle, vtx);
     let arc = arc_between(sol.center, sol.ta, sol.tb, radius);
     Some(doc.add_on_layer(EntityKind::Curve(Curve::Arc(arc)), layer))
+}
+
+/// Adds a blend spline joining two entities (line, arc, or spline) with the
+/// requested order of geometric continuity (G0–G3).
+///
+/// The nearest pair of endpoints is chosen automatically, and the source
+/// entities are left untouched — the blend is a new connecting curve. `tension`
+/// scales the blend's handle length on both sides (1.0 is a good default; larger
+/// values bow the blend out further, smaller values pull it tighter to the chord).
+pub fn blend(
+    doc: &mut Document,
+    a: EntityId,
+    b: EntityId,
+    continuity: Continuity,
+    tension: f64,
+) -> Option<EntityId> {
+    if a == b {
+        return None;
+    }
+    let layer = doc.get(a)?.layer;
+    let ca = doc.get(a)?.as_curve()?.clone();
+    let cb = doc.get(b)?.as_curve()?.clone();
+    let (a_at_end, b_at_end) = nearest_ends(&ca, &cb);
+    let curve = blend_curves(&ca, a_at_end, &cb, b_at_end, continuity, tension, tension)?;
+    Some(doc.add_on_layer(EntityKind::Curve(curve), layer))
+}
+
+/// Endpoint of `c` at its start (`false`) or end (`true`).
+fn curve_endpoint(c: &Curve, at_end: bool) -> (f64, f64) {
+    let (t0, t1) = c.domain();
+    c.evaluate_f64(if at_end { t1 } else { t0 })
+}
+
+/// Of the four start/end pairings of two curves, the one whose endpoints are
+/// closest — the natural pair to bridge with a blend.
+fn nearest_ends(a: &Curve, b: &Curve) -> (bool, bool) {
+    let mut best = f64::INFINITY;
+    let mut choice = (true, false);
+    for &ae in &[false, true] {
+        for &be in &[false, true] {
+            let pa = curve_endpoint(a, ae);
+            let pb = curve_endpoint(b, be);
+            let d = (pa.0 - pb.0).hypot(pa.1 - pb.1);
+            if d < best {
+                best = d;
+                choice = (ae, be);
+            }
+        }
+    }
+    choice
 }
 
 pub fn chamfer(
@@ -2143,6 +2194,53 @@ mod tests {
         } else {
             panic!()
         }
+    }
+
+    #[test]
+    fn blend_g0_connects_nearest_ends_with_a_line() {
+        let mut doc = Document::new();
+        // Two horizontal lines with a gap; nearest ends are a.p1=(2,0) and b.p0=(5,0).
+        let a = draw::line(&mut doc, pt(0, 0), pt(2, 0));
+        let b = draw::line(&mut doc, pt(5, 0), pt(7, 0));
+        let id = blend(&mut doc, a, b, Continuity::G0, 1.0).expect("blend should succeed");
+        let c = doc.get(id).unwrap().as_curve().unwrap();
+        assert!(matches!(c, Curve::Line(_)), "G0 blend is a line");
+        let s = c.evaluate_f64(0.0);
+        let e = c.evaluate_f64(1.0);
+        assert!((s.0 - 2.0).abs() < 1e-9 && s.1.abs() < 1e-9, "start {s:?}");
+        assert!((e.0 - 5.0).abs() < 1e-9 && e.1.abs() < 1e-9, "end {e:?}");
+    }
+
+    #[test]
+    fn blend_g1_is_tangent_continuous_with_both_sources() {
+        let mut doc = Document::new();
+        let a = draw::line(&mut doc, pt(0, 0), pt(2, 0)); // ends horizontal at (2,0)
+        let b = draw::line(&mut doc, pt(4, 2), pt(4, 5)); // starts vertical at (4,2)
+        let id = blend(&mut doc, a, b, Continuity::G1, 1.0).expect("blend should succeed");
+        let c = doc.get(id).unwrap().as_curve().unwrap();
+        assert!(matches!(c, Curve::Bezier(_)), "G1 blend is a cubic");
+
+        let unit = |v: (f64, f64)| {
+            let m = v.0.hypot(v.1);
+            (v.0 / m, v.1 / m)
+        };
+        let t0 = unit(c.tangent_f64(0.0));
+        let t1 = unit(c.tangent_f64(1.0));
+        assert!(
+            (t0.0 - 1.0).abs() < 1e-6 && t0.1.abs() < 1e-6,
+            "leaves +x: {t0:?}"
+        );
+        assert!(
+            t1.0.abs() < 1e-6 && (t1.1 - 1.0).abs() < 1e-6,
+            "arrives +y: {t1:?}"
+        );
+    }
+
+    #[test]
+    fn blend_rejects_same_entity() {
+        let mut doc = Document::new();
+        let a = draw::line(&mut doc, pt(0, 0), pt(2, 0));
+        assert!(blend(&mut doc, a, a, Continuity::G1, 1.0).is_none());
     }
 
     #[test]

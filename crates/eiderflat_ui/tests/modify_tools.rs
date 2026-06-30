@@ -99,6 +99,46 @@ fn fillet_tool_adds_arc() {
 }
 
 #[test]
+fn blend_tool_connects_two_entities_with_a_spline() {
+    let mut a = app();
+    a.add_entity(line(0, 0, 2, 0)); // ends at (2,0)
+    a.add_entity(line(5, 0, 7, 0)); // starts at (5,0)
+    let before = a.document.len();
+    a.run_command("BLEND"); // default G1
+    click(&mut a, 1.0, 0.0); // pick first line
+    click(&mut a, 6.0, 0.0); // pick second line
+    assert_eq!(
+        a.document.len(),
+        before + 1,
+        "blend adds one connecting curve, leaving the sources in place"
+    );
+    assert!(
+        a.document
+            .iter()
+            .any(|e| matches!(&e.kind, EntityKind::Curve(Curve::Bezier(_)))),
+        "a G1 blend is a cubic Bézier"
+    );
+}
+
+#[test]
+fn blend_command_selects_g2_continuity() {
+    let mut a = app();
+    a.add_entity(line(0, 0, 2, 0));
+    a.add_entity(line(5, 2, 7, 2));
+    let before = a.document.len();
+    a.run_command("BLEND G2");
+    click(&mut a, 1.0, 0.0);
+    click(&mut a, 6.0, 2.0);
+    assert_eq!(a.document.len(), before + 1);
+    assert!(
+        a.document
+            .iter()
+            .any(|e| matches!(&e.kind, EntityKind::Curve(Curve::Rational(_)))),
+        "a G2 blend is a quintic rational Bézier"
+    );
+}
+
+#[test]
 fn fillet_triangle_caps_radius_across_shared_edges() {
     use eiderflat_ui::state::CornerKind;
     use std::collections::HashMap;

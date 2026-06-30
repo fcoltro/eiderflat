@@ -812,6 +812,17 @@ impl AppState {
                     self.command_log.push(trimmed.to_string());
                     return;
                 }
+                Tool::Blend {
+                    continuity, first, ..
+                } => {
+                    self.tool = Tool::Blend {
+                        continuity: *continuity,
+                        tension: v,
+                        first: *first,
+                    };
+                    self.command_log.push(trimmed.to_string());
+                    return;
+                }
                 Tool::CircleTtr { first, .. } => {
                     self.tool = Tool::CircleTtr {
                         radius: v,

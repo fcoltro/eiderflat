@@ -186,6 +186,14 @@ const ENTRIES: &[Entry] = &[
         action: Action::Cmd("CHAMFER"),
     },
     Entry {
+        name: "Blend",
+        hint: "Shift B",
+        keywords: "modify connect spline continuity g0 g1 g2 g3 tangent curvature join smooth",
+        group: "Modify",
+        icon: Icon::Blend,
+        action: Action::Cmd("BLEND"),
+    },
+    Entry {
         name: "Stretch",
         hint: "Shift S",
         keywords: "modify deform window",

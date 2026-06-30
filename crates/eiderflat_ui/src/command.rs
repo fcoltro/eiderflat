@@ -181,6 +181,29 @@ pub fn parse_command(input: &str) -> Command {
                 .unwrap_or(1.0);
             Command::Activate(Tool::Chamfer { dist, first: None })
         }
+        "BLEND" | "BL" => {
+            // Optional args: continuity (g0..g3) and/or tension number, any order.
+            let mut continuity = eiderflat_geometry::Continuity::G1;
+            let mut tension = 1.0;
+            for tok in rest {
+                match tok.to_ascii_uppercase().as_str() {
+                    "G0" => continuity = eiderflat_geometry::Continuity::G0,
+                    "G1" => continuity = eiderflat_geometry::Continuity::G1,
+                    "G2" => continuity = eiderflat_geometry::Continuity::G2,
+                    "G3" => continuity = eiderflat_geometry::Continuity::G3,
+                    other => {
+                        if let Ok(v) = other.parse::<f64>() {
+                            tension = v;
+                        }
+                    }
+                }
+            }
+            Command::Activate(Tool::Blend {
+                continuity,
+                tension,
+                first: None,
+            })
+        }
         "STRETCH" | "S" => Command::Activate(Tool::Stretch {
             c1: None,
             c2: None,

@@ -1,5 +1,26 @@
 use crate::curve::{Curve, CurveSegment};
+use crate::error::GeomError;
 use crate::point::{BoundingBox, Point2d};
+
+/// Shared validation for control-point/weight pairs of rational curves.
+fn validate_rational(points: usize, weights: &[f64]) -> Result<(), GeomError> {
+    if points != weights.len() {
+        return Err(GeomError::LengthMismatch {
+            points,
+            weights: weights.len(),
+        });
+    }
+    if points < 2 {
+        return Err(GeomError::TooFewPoints {
+            got: points,
+            need: 2,
+        });
+    }
+    if let Some(&w) = weights.iter().find(|&&w| w.is_nan() || w <= 0.0) {
+        return Err(GeomError::NonPositiveWeight(w));
+    }
+    Ok(())
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct RationalBezier {
@@ -8,21 +29,16 @@ pub struct RationalBezier {
 }
 
 impl RationalBezier {
+    /// Trusted-caller constructor; panics on invalid input. Use
+    /// [`RationalBezier::try_new`] for untrusted data.
     pub fn new(points: Vec<Point2d>, weights: Vec<f64>) -> Self {
-        assert_eq!(
-            points.len(),
-            weights.len(),
-            "points and weights must match in length"
-        );
-        assert!(
-            points.len() >= 2,
-            "a Bézier needs at least two control points"
-        );
-        assert!(
-            weights.iter().all(|&w| w > 0.0),
-            "weights must be strictly positive"
-        );
-        RationalBezier { points, weights }
+        Self::try_new(points, weights).expect("invalid rational Bézier")
+    }
+
+    /// Fallible constructor: returns a [`GeomError`] instead of panicking.
+    pub fn try_new(points: Vec<Point2d>, weights: Vec<f64>) -> Result<Self, GeomError> {
+        validate_rational(points.len(), &weights)?;
+        Ok(RationalBezier { points, weights })
     }
 
     pub fn polynomial(points: Vec<Point2d>) -> Self {
@@ -185,7 +201,21 @@ impl CurveSegment for RationalBezier {
 }
 
 fn de_casteljau(control: &[[f64; 3]], t: f64) -> [f64; 3] {
-    let mut h = control.to_vec();
+    // Real curves here are low degree (lines=2, arcs=3, cubics=4), so collapse on a
+    // stack buffer with no allocation; fall back to the heap only for exotic degrees.
+    const STACK: usize = 8;
+    let n = control.len();
+    if n <= STACK {
+        let mut buf = [[0.0; 3]; STACK];
+        buf[..n].copy_from_slice(control);
+        de_casteljau_inplace(&mut buf[..n], t)
+    } else {
+        let mut buf = control.to_vec();
+        de_casteljau_inplace(&mut buf, t)
+    }
+}
+
+fn de_casteljau_inplace(h: &mut [[f64; 3]], t: f64) -> [f64; 3] {
     let n = h.len();
     for r in 1..n {
         for i in 0..n - r {
@@ -282,21 +312,16 @@ pub struct NurbsCurve {
 }
 
 impl NurbsCurve {
+    /// Trusted-caller constructor; panics on invalid input. Use
+    /// [`NurbsCurve::try_new`] for untrusted data.
     pub fn new(control: Vec<Point2d>, weights: Vec<f64>) -> Self {
-        assert_eq!(
-            control.len(),
-            weights.len(),
-            "control and weights must match in length"
-        );
-        assert!(
-            control.len() >= 2,
-            "a spline needs at least two control vertices"
-        );
-        assert!(
-            weights.iter().all(|&w| w > 0.0),
-            "weights must be strictly positive"
-        );
-        NurbsCurve { control, weights }
+        Self::try_new(control, weights).expect("invalid NURBS curve")
+    }
+
+    /// Fallible constructor: returns a [`GeomError`] instead of panicking.
+    pub fn try_new(control: Vec<Point2d>, weights: Vec<f64>) -> Result<Self, GeomError> {
+        validate_rational(control.len(), &weights)?;
+        Ok(NurbsCurve { control, weights })
     }
 
     pub fn uniform(control: Vec<Point2d>) -> Self {
@@ -346,7 +371,7 @@ impl CurveSegment for NurbsCurve {
         self.segments().iter().map(|s| s.arc_length()).sum()
     }
 }
-fn seg_param(n: usize, t: f64) -> (usize, f64) {
+pub(crate) fn seg_param(n: usize, t: f64) -> (usize, f64) {
     let scaled = t.clamp(0.0, 1.0) * n as f64;
     let i = (scaled.floor() as usize).min(n - 1);
     (i, scaled - i as f64)

@@ -1,4 +1,5 @@
 use crate::curve::CurveSegment;
+use crate::error::GeomError;
 use crate::point::{BoundingBox, Point2d};
 
 #[derive(Clone, Copy, Debug)]
@@ -10,14 +11,28 @@ pub struct CircularArc {
 }
 
 impl CircularArc {
+    /// Trusted-caller constructor. Panics on a non-positive radius; use
+    /// [`CircularArc::try_new`] when the radius comes from untrusted input.
     pub fn new(center: Point2d, radius: f64, start_angle: f64, end_angle: f64) -> Self {
-        assert!(radius > 0.0, "Radius must be positive");
-        CircularArc {
+        Self::try_new(center, radius, start_angle, end_angle).expect("Radius must be positive")
+    }
+
+    /// Fallible constructor: returns [`GeomError::NonPositiveRadius`] instead of panicking.
+    pub fn try_new(
+        center: Point2d,
+        radius: f64,
+        start_angle: f64,
+        end_angle: f64,
+    ) -> Result<Self, GeomError> {
+        if radius.is_nan() || radius <= 0.0 {
+            return Err(GeomError::NonPositiveRadius(radius));
+        }
+        Ok(CircularArc {
             center,
             radius,
             start_angle,
             end_angle,
-        }
+        })
     }
 
     pub fn from_three_points(p1: &Point2d, p2: &Point2d, p3: &Point2d) -> Option<Self> {
@@ -29,8 +44,12 @@ impl CircularArc {
         let r1 = (ax * (p1.x + p2.x) + ay * (p1.y + p2.y)) / 2.0;
         let r2 = (bx * (p2.x + p3.x) + by * (p2.y + p3.y)) / 2.0;
 
+        // Relative collinearity test: an absolute 1e-12 floor wrongly flags large-
+        // coordinate triangles as collinear. Scale the determinant tolerance by the
+        // magnitudes of the two edge vectors it is built from.
         let det = ax * by - ay * bx;
-        if det.abs() < 1e-12 {
+        let scale = (ax * ax + ay * ay).sqrt() * (bx * bx + by * by).sqrt();
+        if det.abs() <= 1e-12 * scale.max(1.0) {
             return None;
         }
 
@@ -118,16 +137,8 @@ impl CurveSegment for CircularArc {
         let mut ymin = sy.min(ey);
         let mut ymax = sy.max(ey);
 
-        let mut a = self.start_angle;
-        let end = self.start_angle + self.included_angle();
-        while a < end {
-            let (x, y) = self.evaluate_f64(a);
-            xmin = xmin.min(x);
-            xmax = xmax.max(x);
-            ymin = ymin.min(y);
-            ymax = ymax.max(y);
-            a += std::f64::consts::FRAC_PI_2;
-        }
+        // The extrema of a circular arc are its endpoints plus whichever of the four
+        // cardinal directions (k·90°) fall inside the swept range.
         for k in 0..4 {
             let angle = k as f64 * std::f64::consts::FRAC_PI_2;
             let mut rel = angle - self.start_angle;
@@ -171,6 +182,15 @@ mod tests {
         assert!((cx - 1.0).abs() < 1e-6, "cx={}", cx);
         assert!((cy - 2.0).abs() < 1e-6, "cy={}", cy);
         assert!((arc.radius - 3.0).abs() < 1e-4, "r={}", arc.radius);
+    }
+
+    #[test]
+    fn try_new_rejects_non_positive_radius() {
+        assert_eq!(
+            CircularArc::try_new(Point2d::from_i64(0, 0), 0.0, 0.0, 1.0).unwrap_err(),
+            GeomError::NonPositiveRadius(0.0)
+        );
+        assert!(CircularArc::try_new(Point2d::from_i64(0, 0), 2.0, 0.0, 1.0).is_ok());
     }
 
     #[test]

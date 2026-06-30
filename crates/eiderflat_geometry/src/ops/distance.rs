@@ -64,6 +64,25 @@ pub fn project_point_onto_curve(curve: &Curve, px: f64, py: f64) -> ProjectionRe
             };
             return golden_section_projection_fn(&ev, (0.0, 1.0), px, py, 32);
         }
+        Nurbs(nc) => {
+            // Decompose the spline into Bézier segments ONCE, then sample the prepared
+            // segments. Calling `nc.evaluate_f64` directly would re-run the full
+            // knot-insertion decomposition on every one of the ~80 sample evaluations.
+            let segs = nc.segments();
+            let n = segs.len();
+            if n == 0 {
+                return ProjectionResult {
+                    point: (px, py),
+                    t: 0.0,
+                    distance: 0.0,
+                };
+            }
+            let ev = move |t: f64| {
+                let (i, lt) = crate::nurbs::seg_param(n, t);
+                segs[i].evaluate_f64(lt)
+            };
+            return golden_section_projection_fn(&ev, (0.0, 1.0), px, py, 32);
+        }
         _ => {}
     }
 

@@ -28,6 +28,7 @@ pub enum Icon {
     Extend,
     Fillet,
     Chamfer,
+    Blend,
     Stretch,
     Explode,
     Join,
@@ -87,6 +88,8 @@ impl Icon {
             Icon::Extend => include_bytes!("../assets/icons/icons_curves_mod_extend.png"),
             Icon::Fillet => include_bytes!("../assets/icons/icons_curves_mod_fillet.png"),
             Icon::Chamfer => include_bytes!("../assets/icons/icons_curves_mod_chamfer.png"),
+            // Reuses the Join glyph — a blend joins two curves into one smooth span.
+            Icon::Blend => include_bytes!("../assets/icons/icons_curves_mod_join.png"),
             Icon::Stretch => include_bytes!("../assets/icons/icons_curves_mod_stretch.png"),
             Icon::Explode => include_bytes!("../assets/icons/icons_curves_mod_disjoint.png"),
             Icon::Join => include_bytes!("../assets/icons/icons_curves_mod_join.png"),

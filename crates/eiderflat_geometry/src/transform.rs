@@ -125,6 +125,7 @@ impl Transform2d {
         }
     }
 
+    #[inline]
     pub fn apply_point(&self, p: &Point2d) -> Point2d {
         Point2d {
             x: self.m00 * p.x + self.m01 * p.y + self.tx,
@@ -134,10 +135,12 @@ impl Transform2d {
 
     /// Applies only the linear (rotation/scale/shear) part to a direction vector,
     /// ignoring translation. Use this for directions/normals rather than positions.
+    #[inline]
     pub fn apply_vector(&self, dx: f64, dy: f64) -> (f64, f64) {
         (self.m00 * dx + self.m01 * dy, self.m10 * dx + self.m11 * dy)
     }
 
+    #[inline]
     pub fn determinant(&self) -> f64 {
         self.m00 * self.m11 - self.m01 * self.m10
     }
@@ -152,6 +155,21 @@ impl Transform2d {
 
     pub fn is_reflection(&self) -> bool {
         self.determinant() < 0.0
+    }
+
+    /// True when the linear part is a similarity (uniform scale + rotation, possibly
+    /// reflected): its columns are orthogonal and equal length. Only such transforms
+    /// map a circle to a circle and an ellipse to a similar ellipse, so the closed-form
+    /// `apply_arc`/`apply_ellipse` fast paths are valid exactly when this holds.
+    pub fn is_conformal(&self) -> bool {
+        let col_a = self.m00 * self.m00 + self.m10 * self.m10;
+        let col_b = self.m01 * self.m01 + self.m11 * self.m11;
+        let dot = self.m00 * self.m01 + self.m10 * self.m11;
+        let scale = col_a.max(col_b);
+        if scale < 1e-24 {
+            return true; // degenerate (≈zero) linear part; nothing to preserve
+        }
+        (col_a - col_b).abs() <= 1e-9 * scale && dot.abs() <= 1e-9 * scale
     }
 }
 
@@ -168,8 +186,8 @@ impl Transform2d {
                 self.apply_point(&b.p2),
                 self.apply_point(&b.p3),
             )),
-            Curve::Arc(a) => Curve::Arc(self.apply_arc(a)),
-            Curve::Ellipse(e) => Curve::Ellipse(self.apply_ellipse(e)),
+            Curve::Arc(a) => self.apply_arc(a),
+            Curve::Ellipse(e) => self.apply_ellipse(e),
             Curve::Poly(pc) => {
                 let segs = pc.segments.iter().map(|s| self.apply_curve(s)).collect();
                 Curve::Poly(Box::new(PolyCurve::new(segs)))
@@ -185,7 +203,13 @@ impl Transform2d {
         }
     }
 
-    fn apply_arc(&self, a: &CircularArc) -> CircularArc {
+    fn apply_arc(&self, a: &CircularArc) -> Curve {
+        if !self.is_conformal() {
+            // A non-uniform scale or shear turns a circle into an ellipse that a
+            // CircularArc cannot represent. Lower to exact rational quadratics and
+            // transform their control points instead — that map is exact for any affine.
+            return self.apply_lowered(&Curve::Arc(*a));
+        }
         let new_center = self.apply_point(&a.center);
         let new_radius = a.radius * self.scale_factor();
         let rot = self.rotation_angle();
@@ -194,10 +218,16 @@ impl Transform2d {
         } else {
             (a.start_angle + rot, a.end_angle + rot)
         };
-        CircularArc::new(new_center, new_radius, start, end)
+        Curve::Arc(CircularArc::new(new_center, new_radius, start, end))
     }
 
-    fn apply_ellipse(&self, e: &EllipticalArc) -> EllipticalArc {
+    fn apply_ellipse(&self, e: &EllipticalArc) -> Curve {
+        if !self.is_conformal() {
+            // Under a general affine the ellipse stays an ellipse, but its axes rotate
+            // and rescale independently (and may shear) — not expressible by scaling both
+            // semi-axes uniformly. Transform the exact rational form instead.
+            return self.apply_lowered(&Curve::Ellipse(*e));
+        }
         let new_center = self.apply_point(&e.center);
         let sf = self.scale_factor();
         let new_major = e.semi_major * sf;
@@ -209,7 +239,24 @@ impl Transform2d {
         } else {
             (e.start_angle + rot, e.end_angle + rot)
         };
-        EllipticalArc::new(new_center, new_major, new_minor, new_rotation, start, end)
+        Curve::Ellipse(EllipticalArc::new(
+            new_center,
+            new_major,
+            new_minor,
+            new_rotation,
+            start,
+            end,
+        ))
+    }
+
+    /// Lowers a conic to its exact rational-Bézier segments and transforms those,
+    /// yielding a `Poly` of `Rational`s. Used when the transform is non-conformal.
+    fn apply_lowered(&self, curve: &Curve) -> Curve {
+        let segs: Vec<Curve> = crate::nurbs::lower(curve)
+            .into_iter()
+            .map(Curve::Rational)
+            .collect();
+        self.apply_curve(&Curve::Poly(Box::new(PolyCurve::new(segs))))
     }
 }
 
@@ -293,6 +340,35 @@ mod tests {
         } else {
             panic!("expected arc");
         }
+    }
+
+    #[test]
+    fn non_uniform_scale_turns_circle_into_exact_ellipse() {
+        // scale(2,1) on a unit circle: every transformed point must satisfy
+        // (x/2)^2 + y^2 = 1. The closed-form CircularArc path would wrongly keep a
+        // circle of radius sqrt(2); the lowered path is exact.
+        let circle = Curve::Arc(CircularArc::new(
+            Point2d::from_i64(0, 0),
+            1.0,
+            0.0,
+            std::f64::consts::TAU,
+        ));
+        let t = Transform2d::scale(2.0, 1.0);
+        assert!(!t.is_conformal());
+        let out = t.apply_curve(&circle);
+        for i in 0..=64 {
+            let s = i as f64 / 64.0;
+            let (x, y) = out.evaluate_f64(s);
+            let f = (x / 2.0).powi(2) + y.powi(2);
+            assert!((f - 1.0).abs() < 1e-9, "off ellipse at s={s}: f={f}");
+        }
+    }
+
+    #[test]
+    fn uniform_scale_keeps_arc_type() {
+        let arc = Curve::Arc(CircularArc::new(pt(0, 0), 2.0, 0.0, std::f64::consts::PI));
+        let out = Transform2d::scale_uniform(3.0).apply_curve(&arc);
+        assert!(matches!(out, Curve::Arc(_)), "conformal scale keeps an Arc");
     }
 
     #[test]

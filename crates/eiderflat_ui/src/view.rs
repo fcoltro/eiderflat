@@ -638,7 +638,7 @@ fn canvas(root_ui: &mut egui::Ui, app: &mut AppState, ui_state: &mut UiState, pa
                     }
                     ui.separator();
                     ui.menu_button("Modify", |ui| {
-                        let acts: [(&str, Command); 11] = [
+                        let acts: [(&str, Command); 12] = [
                             (
                                 "Move",
                                 Command::Activate(Tool::Move {
@@ -695,6 +695,14 @@ fn canvas(root_ui: &mut egui::Ui, app: &mut AppState, ui_state: &mut UiState, pa
                                 "Chamfer",
                                 Command::Activate(Tool::Chamfer {
                                     dist: 1.0,
+                                    first: None,
+                                }),
+                            ),
+                            (
+                                "Blend",
+                                Command::Activate(Tool::Blend {
+                                    continuity: eiderflat_geometry::Continuity::G1,
+                                    tension: 1.0,
                                     first: None,
                                 }),
                             ),
@@ -835,6 +843,7 @@ fn canvas(root_ui: &mut egui::Ui, app: &mut AppState, ui_state: &mut UiState, pa
                     (Key::E, "EXTEND"),
                     (Key::F, "FILLET"),
                     (Key::H, "CHAMFER"),
+                    (Key::B, "BLEND"),
                     (Key::X, "DISJOINT"),
                     (Key::J, "JOIN"),
                 ];

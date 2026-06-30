@@ -12,6 +12,7 @@ impl LineSeg {
         LineSeg { p0, p1 }
     }
 
+    #[inline]
     pub fn direction(&self) -> (f64, f64) {
         (self.p1.x - self.p0.x, self.p1.y - self.p0.y)
     }

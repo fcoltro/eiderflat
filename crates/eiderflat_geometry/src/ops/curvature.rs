@@ -28,7 +28,8 @@ pub fn curvature_at(curve: &Curve, t: f64) -> Option<f64> {
     if speed_sq < 1e-20 {
         return None;
     }
-    let k = (dx * ddy - dy * ddx) / speed_sq.powf(1.5);
+    // speed_sq^1.5 == speed_sq * sqrt(speed_sq); avoids a generic powf in the hot path.
+    let k = (dx * ddy - dy * ddx) / (speed_sq * speed_sq.sqrt());
     k.is_finite().then_some(k)
 }
 

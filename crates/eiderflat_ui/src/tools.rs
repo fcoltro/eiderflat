@@ -1,7 +1,7 @@
 use eiderflat_document::{EntityId, EntityKind};
 use eiderflat_geometry::{
-    CircularArc, Curve, EllipticalArc, LineSeg, NurbsCurve, Point2d, PolyCurve, Transform2d,
-    cv_spline_segments,
+    CircularArc, Continuity, Curve, EllipticalArc, LineSeg, NurbsCurve, Point2d, PolyCurve,
+    Transform2d, cv_spline_segments,
 };
 #[allow(clippy::large_enum_variant)]
 #[derive(Clone, Debug)]
@@ -109,6 +109,11 @@ pub enum Tool {
         dist: f64,
         first: Option<EntityId>,
     },
+    Blend {
+        continuity: Continuity,
+        tension: f64,
+        first: Option<EntityId>,
+    },
     Stretch {
         c1: Option<Point2d>,
         c2: Option<Point2d>,
@@ -168,6 +173,7 @@ impl Tool {
             Tool::Offset { .. } => "OFFSET",
             Tool::Fillet { .. } => "FILLET",
             Tool::Chamfer { .. } => "CHAMFER",
+            Tool::Blend { .. } => "BLEND",
             Tool::Stretch { .. } => "STRETCH",
         }
     }
@@ -184,6 +190,7 @@ impl Tool {
                 | Tool::Offset { .. }
                 | Tool::Fillet { .. }
                 | Tool::Chamfer { .. }
+                | Tool::Blend { .. }
                 | Tool::CircleTtr { .. }
                 | Tool::CircleTtt { .. }
                 | Tool::TangentLine { .. }
@@ -202,6 +209,7 @@ impl Tool {
                 | Tool::Offset { .. }
                 | Tool::Fillet { .. }
                 | Tool::Chamfer { .. }
+                | Tool::Blend { .. }
                 | Tool::CircleTtr { .. }
                 | Tool::CircleTtt { .. }
         )
@@ -589,6 +597,7 @@ impl Tool {
             | Tool::Offset { .. }
             | Tool::Fillet { .. }
             | Tool::Chamfer { .. }
+            | Tool::Blend { .. }
             | Tool::Stretch { .. }
             | Tool::CircleTtr { .. }
             | Tool::CircleTtt { .. }
@@ -646,6 +655,7 @@ impl Tool {
             Tool::Offset { source, .. } => *source = None,
             Tool::Fillet { first, .. } => *first = None,
             Tool::Chamfer { first, .. } => *first = None,
+            Tool::Blend { first, .. } => *first = None,
             Tool::Stretch { c1, c2, base, .. } => {
                 *c1 = None;
                 *c2 = None;
@@ -683,6 +693,7 @@ impl Tool {
             Tool::Offset { source, .. } => source.is_some(),
             Tool::Fillet { first, .. } => first.is_some(),
             Tool::Chamfer { first, .. } => first.is_some(),
+            Tool::Blend { first, .. } => first.is_some(),
             Tool::Stretch { c1, .. } => c1.is_some(),
             Tool::Text { anchor, .. } => anchor.is_some(),
             Tool::Trim | Tool::Extend | Tool::Hatch | Tool::Select => false,
@@ -850,6 +861,7 @@ impl Tool {
             | Tool::Offset { .. }
             | Tool::Fillet { .. }
             | Tool::Chamfer { .. }
+            | Tool::Blend { .. }
             | Tool::CircleTtr { .. }
             | Tool::CircleTtt { .. } => None,
             Tool::TangentLine { first } => match first {
