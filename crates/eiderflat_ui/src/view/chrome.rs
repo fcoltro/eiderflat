@@ -504,6 +504,7 @@ fn menu_items(ui: &mut egui::Ui, app: &mut AppState) {
             "Polygon",
             Tool::Polygon {
                 center: None,
+                radius_point: None,
                 sides: None,
             },
         );
@@ -653,6 +654,7 @@ fn menu_items(ui: &mut egui::Ui, app: &mut AppState) {
                 continuity: eiderflat_geometry::Continuity::G1,
                 tension: 1.0,
                 first: None,
+                second: None,
             },
         );
         ui.separator();
@@ -1385,6 +1387,7 @@ fn draw_entries() -> Vec<(crate::icons::Icon, &'static str, Act)> {
             "Polygon  (G)",
             Act::Tool(Tool::Polygon {
                 center: None,
+                radius_point: None,
                 sides: None,
             }),
         ),
@@ -1494,6 +1497,7 @@ fn modify_entries() -> Vec<(crate::icons::Icon, &'static str, Act)> {
                 continuity: eiderflat_geometry::Continuity::G1,
                 tension: 1.0,
                 first: None,
+                second: None,
             }),
         ),
         (

@@ -106,7 +106,13 @@ fn blend_tool_connects_two_entities_with_a_spline() {
     let before = a.document.len();
     a.run_command("BLEND"); // default G1
     click(&mut a, 1.0, 0.0); // pick first line
-    click(&mut a, 6.0, 0.0); // pick second line
+    click(&mut a, 6.0, 0.0); // pick second line — stages a preview, doesn't commit yet
+    assert_eq!(
+        a.document.len(),
+        before,
+        "picking both entities only stages a preview; nothing is added until confirmed"
+    );
+    a.confirm_pending_blend();
     assert_eq!(
         a.document.len(),
         before + 1,
@@ -129,12 +135,71 @@ fn blend_command_selects_g2_continuity() {
     a.run_command("BLEND G2");
     click(&mut a, 1.0, 0.0);
     click(&mut a, 6.0, 2.0);
+    a.confirm_pending_blend();
     assert_eq!(a.document.len(), before + 1);
     assert!(
         a.document
             .iter()
             .any(|e| matches!(&e.kind, EntityKind::Curve(Curve::Rational(_)))),
         "a G2 blend is a quintic rational Bézier"
+    );
+}
+
+#[test]
+fn blend_pending_pick_can_be_cancelled_without_committing() {
+    let mut a = app();
+    a.add_entity(line(0, 0, 2, 0));
+    a.add_entity(line(5, 0, 7, 0));
+    let before = a.document.len();
+    a.run_command("BLEND");
+    click(&mut a, 1.0, 0.0);
+    click(&mut a, 6.0, 0.0);
+    a.cancel_pending_blend();
+    assert_eq!(
+        a.document.len(),
+        before,
+        "cancelling a pending blend must not add anything"
+    );
+    assert!(
+        matches!(
+            a.tool,
+            eiderflat_ui::tools::Tool::Blend {
+                first: None,
+                second: None,
+                ..
+            }
+        ),
+        "cancel returns to picking a fresh first entity, tool={:?}",
+        a.tool
+    );
+}
+
+#[test]
+fn blend_pending_pick_absorbs_further_clicks() {
+    let mut a = app();
+    a.add_entity(line(0, 0, 2, 0));
+    a.add_entity(line(5, 0, 7, 0));
+    a.add_entity(line(0, 3, 2, 3));
+    let before = a.document.len();
+    a.run_command("BLEND");
+    click(&mut a, 1.0, 0.0); // first
+    click(&mut a, 6.0, 0.0); // second — now pending confirmation
+    click(&mut a, 1.0, 3.0); // a third click must not re-pick or commit anything
+    assert_eq!(
+        a.document.len(),
+        before,
+        "clicks while the confirm popup is pending must be absorbed, not picked"
+    );
+    assert!(
+        matches!(
+            a.tool,
+            eiderflat_ui::tools::Tool::Blend {
+                second: Some(_),
+                ..
+            }
+        ),
+        "tool stays pending until confirmed or cancelled, tool={:?}",
+        a.tool
     );
 }
 

@@ -18,10 +18,10 @@ use chrome::{
 };
 use palette::command_bar;
 use render::{
-    HATCH_SELECT, draw_corner_preview, draw_dashed_line, draw_dimension, draw_entity, draw_grid,
-    draw_prompt_chip, draw_scale_bar, draw_transform_ghost, draw_trim_extend_preview,
-    layer_visible, refresh_hatch_cache, refresh_text_cache, resolve_color, resolve_line_weight_px,
-    tool_prompt,
+    HATCH_SELECT, draw_blend_preview, draw_corner_preview, draw_dashed_line, draw_dimension,
+    draw_entity, draw_grid, draw_prompt_chip, draw_scale_bar, draw_transform_ghost,
+    draw_trim_extend_preview, layer_visible, refresh_hatch_cache, refresh_text_cache,
+    resolve_color, resolve_line_weight_px, tool_prompt,
 };
 use tessellate::draw_curve;
 
@@ -56,6 +56,8 @@ pub struct UiState {
     pub dyn_tf_active: bool,
     pub dyn_corner_val: String,
     pub dyn_corner_active: bool,
+    pub blend_confirm_tension: String,
+    pub blend_confirm_active: bool,
     pub dyn_text_content: String,
     pub dyn_text_active: bool,
     pub corner_input: String,
@@ -291,10 +293,11 @@ fn canvas(root_ui: &mut egui::Ui, app: &mut AppState, ui_state: &mut UiState, pa
         overlays::dyn_line_hud(ctx, app, ui_state, origin);
         overlays::dyn_circle_hud(ctx, app, ui_state, origin);
         overlays::dyn_rect_hud(ctx, app, ui_state, origin);
-        overlays::dyn_polygon_hud(ctx, app, ui_state, origin);
+        overlays::polygon_sides_hud(ctx, app, ui_state, origin);
         overlays::dyn_ellipse_hud(ctx, app, ui_state, origin);
         overlays::dyn_offset_hud(ctx, app, ui_state, origin);
         overlays::dyn_corner_hud(ctx, app, ui_state, origin);
+        overlays::blend_confirm_hud(ctx, app, ui_state, origin);
         overlays::dyn_text_hud(ctx, app, ui_state, origin);
         overlays::dyn_transform_hud(ctx, app, ui_state, origin);
         overlays::cursor_readout(ctx, app, origin);
@@ -704,6 +707,7 @@ fn canvas(root_ui: &mut egui::Ui, app: &mut AppState, ui_state: &mut UiState, pa
                                     continuity: eiderflat_geometry::Continuity::G1,
                                     tension: 1.0,
                                     first: None,
+                                    second: None,
                                 }),
                             ),
                             (
@@ -754,32 +758,6 @@ fn canvas(root_ui: &mut egui::Ui, app: &mut AppState, ui_state: &mut UiState, pa
             app.run_command("");
         }
         let focused_id = ctx.memory(|mem| mem.focused());
-        let cmd_input_id = egui::Id::new("command_line_input");
-        let hud_focused = focused_id == Some(egui::Id::new("dyn_len"))
-            || focused_id == Some(egui::Id::new("dyn_ang"))
-            || focused_id == Some(egui::Id::new("dyn_radius"))
-            || focused_id == Some(egui::Id::new("dyn_rect_field"))
-            || focused_id == Some(egui::Id::new("dyn_poly_sides"))
-            || focused_id == Some(egui::Id::new("dyn_ell_major"))
-            || focused_id == Some(egui::Id::new("dyn_ell_minor"))
-            || focused_id == Some(egui::Id::new("dyn_offset_dist"))
-            || focused_id == Some(egui::Id::new("dyn_corner_val"))
-            || focused_id == Some(egui::Id::new("dyn_text_field"))
-            || focused_id == Some(egui::Id::new("dyn_tf_dx"))
-            || focused_id == Some(egui::Id::new("dyn_tf_dy"))
-            || focused_id == Some(egui::Id::new("dyn_tf_angle"))
-            || focused_id == Some(egui::Id::new("dyn_tf_factor"))
-            || focused_id == Some(egui::Id::new("palette_input"));
-        let poly_focus_armed = egui::Id::new("polygon_sides_focus_armed");
-        if !app.dyn_on && matches!(app.tool, Tool::Polygon { center: None, .. }) {
-            let armed = ctx.data(|d| d.get_temp::<bool>(poly_focus_armed).unwrap_or(false));
-            if !armed && !palette_open && !hud_focused {
-                ctx.memory_mut(|mem| mem.request_focus(cmd_input_id));
-                ctx.data_mut(|d| d.insert_temp(poly_focus_armed, true));
-            }
-        } else {
-            ctx.data_mut(|d| d.insert_temp(poly_focus_armed, false));
-        }
         if ui.input(|i| i.key_pressed(egui::Key::F7)) {
             app.snap_on = !app.snap_on;
         }
@@ -1320,6 +1298,7 @@ fn canvas(root_ui: &mut egui::Ui, app: &mut AppState, ui_state: &mut UiState, pa
             | Tool::Polygon {
                 center: Some(_),
                 sides: Some(_),
+                ..
             } => {
                 let pts: Vec<egui::Pos2> = app
                     .tool
@@ -1389,6 +1368,7 @@ fn canvas(root_ui: &mut egui::Ui, app: &mut AppState, ui_state: &mut UiState, pa
             }
         }
         draw_transform_ghost(&painter, app, &to_screen);
+        draw_blend_preview(&painter, app, &to_screen, hovered_id);
         draw_trim_extend_preview(&painter, app, &to_screen);
         let cc = to_screen(app.cursor_world.0, app.cursor_world.1);
         let over_canvas = response.contains_pointer()
@@ -1627,11 +1607,16 @@ fn canvas(root_ui: &mut egui::Ui, app: &mut AppState, ui_state: &mut UiState, pa
                     }
                     Tool::Polygon {
                         center: Some(c),
+                        radius_point,
                         sides,
                     } => {
-                        let d = c.dist_f64(&cursor);
+                        // Once the radius click has landed, the shape is fixed;
+                        // report that point's numbers instead of the still-moving
+                        // cursor, matching what `Tool::preview` now renders.
+                        let rp = radius_point.unwrap_or(cursor);
+                        let d = c.dist_f64(&rp);
                         let (x0, y0) = c.to_f64();
-                        let (x1, y1) = cursor.to_f64();
+                        let (x1, y1) = rp.to_f64();
                         let dx = x1 - x0;
                         let dy = y1 - y0;
                         let angle_deg = eiderflat_geometry::wrap_deg360(dy.atan2(dx).to_degrees());

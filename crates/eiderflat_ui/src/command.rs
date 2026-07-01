@@ -132,6 +132,7 @@ pub fn parse_command(input: &str) -> Command {
                 .filter(|n| *n >= 3);
             Command::Activate(Tool::Polygon {
                 center: None,
+                radius_point: None,
                 sides,
             })
         }
@@ -202,6 +203,7 @@ pub fn parse_command(input: &str) -> Command {
                 continuity,
                 tension,
                 first: None,
+                second: None,
             })
         }
         "STRETCH" | "S" => Command::Activate(Tool::Stretch {

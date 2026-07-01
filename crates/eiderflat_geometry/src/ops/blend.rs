@@ -335,6 +335,98 @@ mod tests {
         );
     }
 
+    /// Exact k-th derivative of a Bézier at t=0 via forward differences of the
+    /// control polygon (algebraic, no finite-difference truncation error).
+    fn deriv_at_0(control: &[Point2d], k: usize) -> Point2d {
+        let n = control.len() - 1;
+        let mut level: Vec<Point2d> = control.to_vec();
+        for _ in 0..k {
+            level = level
+                .windows(2)
+                .map(|w| Point2d::new(w[1].x - w[0].x, w[1].y - w[0].y))
+                .collect();
+        }
+        let scale = fact(n) / fact(n - k);
+        scl(level[0], scale)
+    }
+
+    /// Exact k-th derivative of a Bézier at t=1 via backward differences.
+    fn deriv_at_1(control: &[Point2d], k: usize) -> Point2d {
+        let mut rev = control.to_vec();
+        rev.reverse();
+        let d = deriv_at_0(&rev, k);
+        // B^(k)(1) on the original = (-1)^k * (reversed curve)^(k)(0)
+        scl(d, (-1.0_f64).powi(k as i32))
+    }
+
+    fn extract_control(c: &Curve) -> Vec<Point2d> {
+        match c {
+            Curve::Line(l) => vec![l.p0, l.p1],
+            Curve::Bezier(b) => vec![b.p0, b.p1, b.p2, b.p3],
+            Curve::Rational(rb) => rb.points.clone(),
+            other => panic!("unexpected blend curve variant: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn assembled_control_polygon_exactly_matches_requested_derivatives() {
+        // Exercise all four join-side combinations (at_end x2) for every
+        // continuity order, with two arcs of different radius/handedness, and
+        // verify the *algebraic* derivatives of the assembled Bezier/Rational
+        // control polygon equal the requested d_start/d_end exactly (no FD).
+        let a = Curve::Arc(CircularArc::new(
+            Point2d::from_f64(0.0, 0.0),
+            2.0,
+            0.0,
+            std::f64::consts::FRAC_PI_2,
+        ));
+        let b = Curve::Arc(CircularArc::new(
+            Point2d::from_f64(10.0, 1.0),
+            1.3,
+            std::f64::consts::PI,
+            1.5 * std::f64::consts::PI,
+        ));
+        for &a_end in &[true, false] {
+            for &b_end in &[true, false] {
+                for c in [Continuity::G1, Continuity::G2, Continuity::G3] {
+                    let n = c.order();
+                    let (ta_lo, ta_hi) = a.domain();
+                    let (tb_lo, tb_hi) = b.domain();
+                    let ta_star = if a_end { ta_hi } else { ta_lo };
+                    let tb_star = if b_end { tb_hi } else { tb_lo };
+                    let pa = pt(a.evaluate_f64(ta_star));
+                    let pb = pt(b.evaluate_f64(tb_star));
+                    let chord = pa.dist_f64(&pb);
+                    if chord < 1e-9 {
+                        continue;
+                    }
+                    let sigma_a = if a_end { 1.0 } else { -1.0 };
+                    let sigma_b = if b_end { -1.0 } else { 1.0 };
+                    let d_start = blend_derivs(&a, ta_star, sigma_a, chord, n);
+                    let d_end = blend_derivs(&b, tb_star, sigma_b, chord, n);
+
+                    let blend = blend_curves(&a, a_end, &b, b_end, c, 1.0, 1.0).expect("chord > 0");
+                    let control = extract_control(&blend);
+
+                    for k in 0..=n {
+                        let got0 = deriv_at_0(&control, k);
+                        let got1 = deriv_at_1(&control, k);
+                        let want0 = d_start[k];
+                        let want1 = d_end[k];
+                        assert!(
+                            (got0.x - want0.x).abs() < 1e-6 && (got0.y - want0.y).abs() < 1e-6,
+                            "{c:?} a_end={a_end} b_end={b_end} k={k} start: got {got0:?} want {want0:?}"
+                        );
+                        assert!(
+                            (got1.x - want1.x).abs() < 1e-6 && (got1.y - want1.y).abs() < 1e-6,
+                            "{c:?} a_end={a_end} b_end={b_end} k={k} end: got {got1:?} want {want1:?}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
     #[test]
     fn coincident_joins_return_none() {
         let a = line(0.0, 0.0, 1.0, 1.0);

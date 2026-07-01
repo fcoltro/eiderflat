@@ -163,7 +163,13 @@ impl AppState {
                 continuity,
                 tension,
                 first,
+                second,
             } => {
+                if second.is_some() {
+                    // Both entities are picked and the live-preview popup is showing;
+                    // absorb further canvas clicks until Apply/Enter or Escape.
+                    return true;
+                }
                 if let Some(id) = pick(self) {
                     match first {
                         None => {
@@ -171,21 +177,15 @@ impl AppState {
                                 continuity,
                                 tension,
                                 first: Some(id),
+                                second: None,
                             }
                         }
                         Some(a) => {
-                            if a != id {
-                                self.history.snapshot(&self.document);
-                                if edit::blend(&mut self.document, a, id, continuity, tension)
-                                    .is_none()
-                                {
-                                    self.history.discard_last();
-                                }
-                            }
                             self.tool = Tool::Blend {
                                 continuity,
                                 tension,
-                                first: None,
+                                first: if a == id { None } else { Some(a) },
+                                second: if a == id { None } else { Some(id) },
                             };
                         }
                     }
@@ -286,6 +286,49 @@ impl AppState {
                 true
             }
             _ => false,
+        }
+    }
+
+    /// Commits the pending blend (both entities picked, popup showing) with
+    /// whatever continuity/tension is currently set, then resets the tool to
+    /// pick a fresh pair. No-op if the tool isn't in the pending-confirm state.
+    pub fn confirm_pending_blend(&mut self) {
+        let Tool::Blend {
+            continuity,
+            tension,
+            first: Some(a),
+            second: Some(b),
+        } = self.tool.clone()
+        else {
+            return;
+        };
+        self.history.snapshot(&self.document);
+        if eiderflat_cad::edit::blend(&mut self.document, a, b, continuity, tension).is_none() {
+            self.history.discard_last();
+        }
+        self.tool = Tool::Blend {
+            continuity,
+            tension,
+            first: None,
+            second: None,
+        };
+    }
+
+    /// Drops the pending blend pick (both entities chosen, popup showing)
+    /// without committing, returning to "pick the first entity".
+    pub fn cancel_pending_blend(&mut self) {
+        if let Tool::Blend {
+            continuity,
+            tension,
+            ..
+        } = self.tool.clone()
+        {
+            self.tool = Tool::Blend {
+                continuity,
+                tension,
+                first: None,
+                second: None,
+            };
         }
     }
 

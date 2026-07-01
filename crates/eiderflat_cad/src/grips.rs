@@ -1,6 +1,7 @@
 use eiderflat_document::EntityKind;
 use eiderflat_geometry::{
     CircularArc, Curve, CurveSegment, EllipticalArc, LineSeg, NurbsCurve, Point2d, PolyCurve,
+    RationalBezier,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -88,6 +89,12 @@ pub fn grips_for(kind: &EntityKind) -> Vec<Grip> {
         ],
         EntityKind::Curve(Curve::Nurbs(nc)) => nc
             .control
+            .iter()
+            .enumerate()
+            .map(|(i, p)| Grip::new(GripRole::Vertex(i), *p))
+            .collect(),
+        EntityKind::Curve(Curve::Rational(rb)) => rb
+            .points
             .iter()
             .enumerate()
             .map(|(i, p)| Grip::new(GripRole::Vertex(i), *p))
@@ -244,6 +251,18 @@ pub fn apply_grip(start: &EntityKind, grip: &Grip, to: Point2d) -> EntityKind {
                 EntityKind::Curve(Curve::Nurbs(NurbsCurve {
                     control,
                     weights: nc.weights.clone(),
+                }))
+            } else {
+                start.clone()
+            }
+        }
+        (EntityKind::Curve(Curve::Rational(rb)), GripRole::Vertex(k)) => {
+            let mut points = rb.points.clone();
+            if k < points.len() {
+                points[k] = to;
+                EntityKind::Curve(Curve::Rational(RationalBezier {
+                    points,
+                    weights: rb.weights.clone(),
                 }))
             } else {
                 start.clone()
@@ -898,6 +917,33 @@ mod tests {
             assert_eq!(n.weights, vec![1.0, 1.0, 1.0]);
         } else {
             panic!("expected a spline");
+        }
+    }
+
+    #[test]
+    fn rational_bezier_control_vertex_grips() {
+        // A G2/G3 blend curve is stored as Curve::Rational; it must be just as
+        // draggable as a Curve::Bezier or Curve::Nurbs spline.
+        use eiderflat_geometry::RationalBezier;
+        let rb = RationalBezier::polynomial(vec![
+            Point2d::from_f64(0.0, 0.0),
+            Point2d::from_f64(1.0, 2.0),
+            Point2d::from_f64(2.0, 3.0),
+            Point2d::from_f64(3.0, 2.0),
+            Point2d::from_f64(4.0, 0.0),
+        ]);
+        let start = EntityKind::Curve(Curve::Rational(rb));
+        let g = grips_for(&start);
+        assert_eq!(g.len(), 5, "one grip per control point");
+        assert!(matches!(g[2].role, GripRole::Vertex(2)));
+        if let EntityKind::Curve(Curve::Rational(r)) =
+            apply_grip(&start, &g[2], Point2d::from_f64(2.0, 9.0))
+        {
+            assert_eq!(r.points[2], Point2d::from_f64(2.0, 9.0));
+            assert_eq!(r.points[0], Point2d::from_f64(0.0, 0.0));
+            assert_eq!(r.weights, vec![1.0; 5]);
+        } else {
+            panic!("expected a rational bezier");
         }
     }
 

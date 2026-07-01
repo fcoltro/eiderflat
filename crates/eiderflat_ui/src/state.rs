@@ -666,6 +666,37 @@ impl AppState {
         self.apply_tool_event(ev);
     }
 
+    /// Commits the pending polygon (center + radius both picked, popup
+    /// showing) with whatever side count is currently set. No-op outside
+    /// that pending state.
+    pub fn confirm_pending_polygon(&mut self) {
+        if !matches!(
+            self.tool,
+            Tool::Polygon {
+                center: Some(_),
+                radius_point: Some(_),
+                ..
+            }
+        ) {
+            return;
+        }
+        let ev = self.tool.commit();
+        self.apply_tool_event(ev);
+    }
+
+    /// Drops the pending polygon pick (both clicks made, popup showing)
+    /// without committing, returning to "click the center point" — the last
+    /// side count used is kept for next time.
+    pub fn cancel_pending_polygon(&mut self) {
+        if let Tool::Polygon { sides, .. } = self.tool.clone() {
+            self.tool = Tool::Polygon {
+                center: None,
+                radius_point: None,
+                sides,
+            };
+        }
+    }
+
     fn try_close_on_start(&mut self, p: Point2d) -> bool {
         let close = match &self.tool {
             Tool::Polyline { pts } | Tool::Spline { pts } => {
@@ -778,6 +809,7 @@ impl AppState {
         {
             self.tool = Tool::Polygon {
                 center: None,
+                radius_point: None,
                 sides: Some(n),
             };
             self.command_log.push(trimmed.to_string());
@@ -813,12 +845,16 @@ impl AppState {
                     return;
                 }
                 Tool::Blend {
-                    continuity, first, ..
+                    continuity,
+                    first,
+                    second,
+                    ..
                 } => {
                     self.tool = Tool::Blend {
                         continuity: *continuity,
                         tension: v,
                         first: *first,
+                        second: *second,
                     };
                     self.command_log.push(trimmed.to_string());
                     return;
@@ -2306,6 +2342,7 @@ mod tests {
             a.tool,
             Tool::Polygon {
                 center: None,
+                radius_point: None,
                 sides: None
             }
         ));
@@ -2315,6 +2352,7 @@ mod tests {
             a.tool,
             Tool::Polygon {
                 center: None,
+                radius_point: None,
                 sides: Some(6)
             }
         ));
@@ -2325,7 +2363,50 @@ mod tests {
         let (s2x, s2y) = a.view.world_to_screen(10.0, 0.0);
         a.canvas_click(s2x, s2y);
 
+        // Both clicks placed (center + radius), but the side-count popup is
+        // now pending confirmation — nothing is created yet.
+        assert_eq!(a.document.len(), 1);
+        assert!(matches!(
+            a.tool,
+            Tool::Polygon {
+                center: Some(_),
+                radius_point: Some(_),
+                sides: Some(6)
+            }
+        ));
+
+        a.confirm_pending_polygon();
         assert_eq!(a.document.len(), 2);
+        assert!(matches!(
+            a.tool,
+            Tool::Polygon {
+                center: None,
+                radius_point: None,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn polygon_cancel_pending_drops_without_committing() {
+        let mut a = app();
+        a.run_command("POLYGON");
+        let (s1x, s1y) = a.view.world_to_screen(0.0, 0.0);
+        a.canvas_click(s1x, s1y);
+        let (s2x, s2y) = a.view.world_to_screen(10.0, 0.0);
+        a.canvas_click(s2x, s2y);
+        assert_eq!(a.document.len(), 1);
+
+        a.cancel_pending_polygon();
+        assert_eq!(a.document.len(), 1, "cancel must not create anything");
+        assert!(matches!(
+            a.tool,
+            Tool::Polygon {
+                center: None,
+                radius_point: None,
+                sides: Some(6)
+            }
+        ));
     }
 
     #[test]

@@ -444,46 +444,106 @@ pub(super) fn dyn_circle_hud(
         ui_state.dyn_circle_active = false;
     }
 }
-pub(super) fn dyn_polygon_hud(
+/// Always-visible, movable popup for picking the polygon's side count. Shown
+/// only after *both* clicks — center and radius/rotation — are placed: the
+/// shape is spatially final at that point (see `Tool::preview`, which stops
+/// following the cursor once `radius_point` is set), and this popup is the
+/// only thing left to decide before Apply/Enter commits it or Cancel drops
+/// it. Quick-pick buttons cover the common cases; the field next to them
+/// takes any custom count. Not gated by `app.dyn_on` — like
+/// `blend_confirm_hud`, choosing this option is the point of the tool, not a
+/// typing shortcut layered on top of it.
+pub(super) fn polygon_sides_hud(
     ctx: &egui::Context,
     app: &mut AppState,
     ui_state: &mut UiState,
     origin: egui::Pos2,
 ) {
-    let sides = if let Tool::Polygon {
-        center: None,
+    let Tool::Polygon {
+        center: Some(c),
+        radius_point: Some(rp),
         sides,
-    } = &app.tool
-    {
-        Some(*sides)
-    } else {
-        None
+    } = app.tool
+    else {
+        ui_state.dyn_poly_active = false;
+        return;
     };
-    if let (true, Some(sides)) = (app.dyn_on, sides) {
-        let sid = egui::Id::new("dyn_poly_sides");
-        if !ctx.memory(|m| m.has_focus(sid)) {
-            ui_state.dyn_poly_sides = sides.map(|n| n.to_string()).unwrap_or_default();
-        }
 
-        let first_show = !ui_state.dyn_poly_active;
-        let pos = cursor_hud_pos(app, origin, -38.0);
-        cursor_hud(ctx, "dyn_poly_hud", pos, |ui| {
-            hud_label(ui, "Sides");
-            let r = hud_field(
-                ui,
-                sid,
-                &mut ui_state.dyn_poly_sides,
-                40.0,
-                "3+",
-                false,
-                false,
-            );
-            let nothing_focused = ui.ctx().memory(|m| m.focused().is_none());
-            if first_show || nothing_focused {
-                r.request_focus();
-            }
+    let sid = egui::Id::new("dyn_poly_sides");
+    if !ctx.memory(|m| m.has_focus(sid)) {
+        ui_state.dyn_poly_sides = sides.map(|n| n.to_string()).unwrap_or_default();
+    }
+    ui_state.dyn_poly_active = true;
+
+    // Only consulted the very first time this popup is ever shown in the
+    // session — `.movable(true)` + egui's persisted Area state remembers
+    // wherever the user (or this default) last left it after that, same as
+    // `blend_confirm_hud`.
+    const CLEARANCE: f32 = 130.0;
+    let (mx, my) = ((c.x + rp.x) * 0.5, (c.y + rp.y) * 0.5);
+    let (sx, sy) = app.view.world_to_screen(mx, my);
+    let default_pos = pos2(
+        origin.x + sx as f32 + CLEARANCE,
+        origin.y + sy as f32 - CLEARANCE,
+    );
+
+    let mut clicked: Option<usize> = None;
+    let mut apply = false;
+    let mut cancel = false;
+    egui::Area::new(egui::Id::new("polygon_sides_hud"))
+        .default_pos(default_pos)
+        .movable(true)
+        .order(egui::Order::Foreground)
+        .show(ctx, |ui| {
+            corner_glass_frame().show(ui, |ui| {
+                ui.vertical(|ui| {
+                    ui.label(
+                        egui::RichText::new("⠿ Polygon sides")
+                            .size(11.0)
+                            .color(crate::theme::HUD_LABEL),
+                    );
+                    ui.horizontal(|ui| {
+                        for n in [3usize, 4, 5, 6, 8, 10, 12] {
+                            if ui
+                                .selectable_label(sides == Some(n), n.to_string())
+                                .clicked()
+                            {
+                                clicked = Some(n);
+                            }
+                        }
+                    });
+                    ui.horizontal(|ui| {
+                        hud_label(ui, "Custom");
+                        hud_field(
+                            ui,
+                            sid,
+                            &mut ui_state.dyn_poly_sides,
+                            40.0,
+                            "3+",
+                            false,
+                            false,
+                        );
+                    });
+                    ui.horizontal(|ui| {
+                        if ui.button("Apply  Enter").clicked() {
+                            apply = true;
+                        }
+                        if ui.button("Cancel").clicked() {
+                            cancel = true;
+                        }
+                    });
+                });
+            });
         });
-        ui_state.dyn_poly_active = true;
+
+    if let Some(n) = clicked {
+        ui_state.dyn_poly_sides = n.to_string();
+        app.tool = Tool::Polygon {
+            center: Some(c),
+            radius_point: Some(rp),
+            sides: Some(n),
+        };
+    } else {
         let parsed = ui_state
             .dyn_poly_sides
             .trim()
@@ -492,11 +552,21 @@ pub(super) fn dyn_polygon_hud(
             .filter(|n| *n >= 3);
         if parsed != sides {
             app.tool = Tool::Polygon {
-                center: None,
+                center: Some(c),
+                radius_point: Some(rp),
                 sides: parsed,
             };
         }
-    } else {
+    }
+
+    if ctx.input(|i| i.key_pressed(egui::Key::Enter)) {
+        apply = true;
+    }
+    if apply {
+        app.confirm_pending_polygon();
+        ui_state.dyn_poly_active = false;
+    } else if cancel {
+        app.cancel_pending_polygon();
         ui_state.dyn_poly_active = false;
     }
 }
@@ -720,21 +790,19 @@ pub(super) fn dyn_corner_hud(
     ui_state: &mut UiState,
     origin: egui::Pos2,
 ) {
+    // Blend is deliberately excluded here: it has no cursor-following box at
+    // all before both entities are picked; blend_confirm_hud (fixed/movable,
+    // not chasing the cursor) is the only popup it ever shows, and only once
+    // picking is done.
     let info = match &app.tool {
         Tool::Fillet { radius, .. } => Some(("Radius", *radius)),
         Tool::Chamfer { dist, .. } => Some(("Dist", *dist)),
         Tool::CircleTtr { radius, .. } => Some(("Radius", *radius)),
-        Tool::Blend { tension, .. } => Some(("Tension", *tension)),
         _ => None,
     };
     let (Some((label, value)), true) = (info, app.dyn_on) else {
         ui_state.dyn_corner_active = false;
         return;
-    };
-    // Blend additionally offers a G0–G3 continuity selector in the same HUD.
-    let blend_continuity = match &app.tool {
-        Tool::Blend { continuity, .. } => Some(*continuity),
-        _ => None,
     };
 
     let first_show = !ui_state.dyn_corner_active;
@@ -743,27 +811,7 @@ pub(super) fn dyn_corner_hud(
     }
     let id = egui::Id::new("dyn_corner_val");
     let pos = cursor_hud_pos(app, origin, -38.0);
-    let mut new_continuity: Option<Continuity> = None;
     cursor_hud(ctx, "dyn_corner_hud", pos, |ui| {
-        if let Some(current) = blend_continuity {
-            for c in [
-                Continuity::G0,
-                Continuity::G1,
-                Continuity::G2,
-                Continuity::G3,
-            ] {
-                let txt = match c {
-                    Continuity::G0 => "G0",
-                    Continuity::G1 => "G1",
-                    Continuity::G2 => "G2",
-                    Continuity::G3 => "G3",
-                };
-                if ui.selectable_label(current == c, txt).clicked() {
-                    new_continuity = Some(c);
-                }
-            }
-            ui.separator();
-        }
         hud_label(ui, label);
         let r = hud_field(
             ui,
@@ -811,18 +859,146 @@ pub(super) fn dyn_corner_hud(
                 }
             }
         }
-        Tool::Blend {
-            continuity,
-            tension,
-            first,
-        } => {
-            app.tool = Tool::Blend {
-                continuity: new_continuity.unwrap_or(*continuity),
-                tension: typed.unwrap_or(*tension),
-                first: *first,
-            }
-        }
         _ => {}
+    }
+}
+
+/// Always-visible popup shown once both blend entities are picked: lets the
+/// user tune G0–G3 continuity and tension and see the result (drawn separately
+/// as a ghost preview by `render::draw_blend_preview`) before committing.
+/// Unlike the dyn-input-gated HUDs, this one isn't tied to `app.dyn_on` —
+/// confirming/cancelling a blend pick is a one-off decision, not a typing
+/// shortcut, so it should always be available.
+pub(super) fn blend_confirm_hud(
+    ctx: &egui::Context,
+    app: &mut AppState,
+    ui_state: &mut UiState,
+    origin: egui::Pos2,
+) {
+    let Tool::Blend {
+        continuity,
+        tension,
+        first: Some(a),
+        second: Some(b),
+    } = app.tool
+    else {
+        ui_state.blend_confirm_active = false;
+        return;
+    };
+
+    let preview = eiderflat_cad::edit::blend_preview(&app.document, a, b, continuity, tension);
+    // Offset well clear of the curve being created (and of the cursor) so the
+    // popup never sits on top of the new geometry; this is only the *initial*
+    // placement — `.movable(true)` below lets the user drag it anywhere after
+    // that, and egui remembers the dragged position across future blends.
+    const CLEARANCE: f32 = 130.0;
+    let default_pos = match &preview {
+        Some(curve) => {
+            let (t0, t1) = curve.domain();
+            let (x0, y0) = curve.evaluate_f64(t0);
+            let (x1, y1) = curve.evaluate_f64(t1);
+            let (mx, my) = ((x0 + x1) * 0.5, (y0 + y1) * 0.5);
+            let (sx, sy) = app.view.world_to_screen(mx, my);
+            pos2(
+                origin.x + sx as f32 + CLEARANCE,
+                origin.y + sy as f32 - CLEARANCE,
+            )
+        }
+        None => cursor_hud_pos(app, origin, -CLEARANCE),
+    };
+
+    let first_show = !ui_state.blend_confirm_active;
+    if first_show {
+        ui_state.blend_confirm_tension = super::render::trim_decimals(tension, 4);
+    }
+    ui_state.blend_confirm_active = true;
+
+    let mut new_continuity: Option<Continuity> = None;
+    let mut apply = false;
+    let mut cancel = false;
+    let tension_id = egui::Id::new("blend_confirm_tension");
+    egui::Area::new(egui::Id::new("blend_confirm_hud"))
+        .default_pos(default_pos)
+        .movable(true)
+        .order(egui::Order::Foreground)
+        .show(ctx, |ui| {
+            corner_glass_frame().show(ui, |ui| {
+                ui.vertical(|ui| {
+                    ui.label(
+                        egui::RichText::new("⠿ Blend")
+                            .size(11.0)
+                            .color(crate::theme::HUD_LABEL),
+                    );
+                    if preview.is_none() {
+                        ui.colored_label(crate::theme::HUD_LABEL, "No valid blend for this pair");
+                    }
+                    ui.horizontal(|ui| {
+                        for c in [
+                            Continuity::G0,
+                            Continuity::G1,
+                            Continuity::G2,
+                            Continuity::G3,
+                        ] {
+                            let txt = match c {
+                                Continuity::G0 => "G0",
+                                Continuity::G1 => "G1",
+                                Continuity::G2 => "G2",
+                                Continuity::G3 => "G3",
+                            };
+                            if ui.selectable_label(continuity == c, txt).clicked() {
+                                new_continuity = Some(c);
+                            }
+                        }
+                    });
+                    ui.horizontal(|ui| {
+                        hud_label(ui, "Tension");
+                        let r = hud_field(
+                            ui,
+                            tension_id,
+                            &mut ui_state.blend_confirm_tension,
+                            58.0,
+                            "",
+                            first_show,
+                            first_show,
+                        );
+                        let _ = r;
+                    });
+                    ui.horizontal(|ui| {
+                        if ui.button("Apply  Enter").clicked() {
+                            apply = true;
+                        }
+                        if ui.button("Cancel").clicked() {
+                            cancel = true;
+                        }
+                    });
+                });
+            });
+        });
+
+    if let Some(c) = new_continuity
+        && let Tool::Blend { continuity, .. } = &mut app.tool
+    {
+        *continuity = c;
+    }
+    if let Ok(v) = ui_state.blend_confirm_tension.trim().parse::<f64>()
+        && v > 1e-9
+        && let Tool::Blend { tension, .. } = &mut app.tool
+    {
+        *tension = v;
+    }
+
+    if ctx.input(|i| i.key_pressed(egui::Key::Enter)) {
+        apply = true;
+    }
+
+    if apply {
+        if preview.is_some() {
+            app.confirm_pending_blend();
+        }
+        ui_state.blend_confirm_active = false;
+    } else if cancel {
+        app.cancel_pending_blend();
+        ui_state.blend_confirm_active = false;
     }
 }
 
@@ -980,6 +1156,96 @@ mod text_hud_tests {
             texts,
             vec!["Hello"],
             "Enter should place the typed text as a Text entity; tool={:?}",
+            app.tool
+        );
+    }
+}
+
+#[cfg(test)]
+mod polygon_hud_tests {
+    use super::*;
+
+    #[test]
+    #[allow(deprecated)]
+    fn hud_stays_hidden_until_center_is_placed() {
+        let ctx = egui::Context::default();
+        let mut app = AppState::new(800.0, 600.0);
+        app.tool = Tool::Polygon {
+            center: None,
+            radius_point: None,
+            sides: None,
+        };
+        let mut ui_state = UiState::default();
+        let origin = pos2(0.0, 0.0);
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            polygon_sides_hud(ctx, &mut app, &mut ui_state, origin)
+        });
+        assert!(
+            !ui_state.dyn_poly_active,
+            "no popup — and no cursor-following pointer box — before both clicks"
+        );
+
+        // Center alone (radius not yet clicked) must also stay hidden: the
+        // popup only appears once the shape is spatially final.
+        app.tool = Tool::Polygon {
+            center: Some(Point2d::from_f64(0.0, 0.0)),
+            radius_point: None,
+            sides: Some(6),
+        };
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            polygon_sides_hud(ctx, &mut app, &mut ui_state, origin)
+        });
+        assert!(
+            !ui_state.dyn_poly_active,
+            "still no popup with only the center placed, before the radius click"
+        );
+    }
+
+    #[test]
+    #[allow(deprecated)]
+    fn custom_field_parses_into_sides_with_dyn_on_off() {
+        let ctx = egui::Context::default();
+        let mut app = AppState::new(800.0, 600.0);
+        app.dyn_on = false; // the popup must work regardless of Dynamic Input
+        app.tool = Tool::Polygon {
+            center: Some(Point2d::from_f64(0.0, 0.0)),
+            radius_point: Some(Point2d::from_f64(10.0, 0.0)),
+            sides: Some(6),
+        };
+        let mut ui_state = UiState::default();
+        let origin = pos2(0.0, 0.0);
+        let sid = egui::Id::new("dyn_poly_sides");
+
+        // Frame 1: the popup appears (only now that center is placed).
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            polygon_sides_hud(ctx, &mut app, &mut ui_state, origin)
+        });
+        assert!(
+            ui_state.dyn_poly_active,
+            "popup must show once center is set"
+        );
+        // Focus the custom field and clear it, as a real click-then-retype would.
+        ctx.memory_mut(|m| m.request_focus(sid));
+        ui_state.dyn_poly_sides.clear();
+        // Frame 2: type "9" into the now-focused, now-empty field.
+        let raw = egui::RawInput {
+            events: vec![egui::Event::Text("9".into())],
+            ..Default::default()
+        };
+        let _ = ctx.run(raw, |ctx| {
+            polygon_sides_hud(ctx, &mut app, &mut ui_state, origin)
+        });
+
+        assert!(
+            matches!(
+                app.tool,
+                Tool::Polygon {
+                    sides: Some(9),
+                    center: Some(_),
+                    radius_point: Some(_)
+                }
+            ),
+            "typing a custom count must update the tool without Dynamic Input, tool={:?}",
             app.tool
         );
     }

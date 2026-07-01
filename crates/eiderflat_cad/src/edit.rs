@@ -685,15 +685,27 @@ pub fn blend(
     continuity: Continuity,
     tension: f64,
 ) -> Option<EntityId> {
+    let layer = doc.get(a)?.layer;
+    let curve = blend_preview(doc, a, b, continuity, tension)?;
+    Some(doc.add_on_layer(EntityKind::Curve(curve), layer))
+}
+
+/// Computes the blend curve between two entities without modifying the
+/// document — used for both [`blend`]'s commit path and live tool previews.
+pub fn blend_preview(
+    doc: &Document,
+    a: EntityId,
+    b: EntityId,
+    continuity: Continuity,
+    tension: f64,
+) -> Option<Curve> {
     if a == b {
         return None;
     }
-    let layer = doc.get(a)?.layer;
     let ca = doc.get(a)?.as_curve()?.clone();
     let cb = doc.get(b)?.as_curve()?.clone();
     let (a_at_end, b_at_end) = nearest_ends(&ca, &cb);
-    let curve = blend_curves(&ca, a_at_end, &cb, b_at_end, continuity, tension, tension)?;
-    Some(doc.add_on_layer(EntityKind::Curve(curve), layer))
+    blend_curves(&ca, a_at_end, &cb, b_at_end, continuity, tension, tension)
 }
 
 /// Endpoint of `c` at its start (`false`) or end (`true`).
@@ -2241,6 +2253,37 @@ mod tests {
         let mut doc = Document::new();
         let a = draw::line(&mut doc, pt(0, 0), pt(2, 0));
         assert!(blend(&mut doc, a, a, Continuity::G1, 1.0).is_none());
+    }
+
+    #[test]
+    fn blend_preview_matches_committed_blend_without_mutating_doc() {
+        // blend_preview backs the live-preview popup: it must compute exactly
+        // the curve that `blend` would commit, and must not touch the document
+        // (no entities added) so it's safe to call every frame while the user
+        // is still tuning continuity/tension.
+        let mut doc = Document::new();
+        let a = draw::line(&mut doc, pt(0, 0), pt(2, 0));
+        let b = draw::line(&mut doc, pt(4, 2), pt(4, 5));
+        let before_len = doc.len();
+
+        let preview = blend_preview(&doc, a, b, Continuity::G2, 1.0).expect("preview");
+        assert_eq!(
+            doc.len(),
+            before_len,
+            "blend_preview must not mutate the document"
+        );
+
+        let id = blend(&mut doc, a, b, Continuity::G2, 1.0).expect("blend should succeed");
+        let committed = doc.get(id).unwrap().as_curve().unwrap();
+
+        for t in [0.0, 0.25, 0.5, 0.75, 1.0] {
+            let p = preview.evaluate_f64(t);
+            let c = committed.evaluate_f64(t);
+            assert!(
+                (p.0 - c.0).abs() < 1e-9 && (p.1 - c.1).abs() < 1e-9,
+                "preview and committed diverge at t={t}: preview={p:?} committed={c:?}"
+            );
+        }
     }
 
     #[test]

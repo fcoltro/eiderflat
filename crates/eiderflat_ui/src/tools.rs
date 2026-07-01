@@ -76,6 +76,10 @@ pub enum Tool {
     },
     Polygon {
         center: Option<Point2d>,
+        /// Set by the second click (radius/rotation); once set, the shape is
+        /// spatially final and the side-count popup takes over — no more
+        /// cursor-driven preview, just Apply/Cancel on whatever count is picked.
+        radius_point: Option<Point2d>,
         sides: Option<usize>,
     },
     Text {
@@ -113,6 +117,10 @@ pub enum Tool {
         continuity: Continuity,
         tension: f64,
         first: Option<EntityId>,
+        /// Set once both entities are picked: the blend is not committed yet,
+        /// awaiting confirmation from the live-preview popup (Enter/Apply) or
+        /// cancellation (Escape), so the user can tune continuity/tension first.
+        second: Option<EntityId>,
     },
     Stretch {
         c1: Option<Point2d>,
@@ -502,37 +510,32 @@ impl Tool {
                 ToolEvent::Pending
             }
 
-            Tool::Polygon { center, sides } => match center.take() {
-                None => {
+            Tool::Polygon {
+                center,
+                radius_point,
+                sides,
+            } => match (*center, *radius_point) {
+                (None, _) => {
+                    // Side count defaults to 6 (or whatever was last used);
+                    // it's adjustable via the popup shown after both clicks.
                     if sides.is_none() {
-                        ToolEvent::Pending
-                    } else {
-                        *center = Some(p);
-                        ToolEvent::Pending
+                        *sides = Some(6);
                     }
+                    *center = Some(p);
+                    ToolEvent::Pending
                 }
-                Some(c) => {
-                    let cx = c.x;
-                    let cy = c.y;
-                    let rx = p.x;
-                    let ry = p.y;
-                    let dx = rx - cx;
-                    let dy = ry - cy;
-                    let r = (dx * dx + dy * dy).sqrt();
-                    let n = sides.unwrap_or(0);
-                    if r < 1e-9 || n < 3 {
-                        *center = Some(c);
-                        ToolEvent::Pending
-                    } else {
-                        let start_angle = dy.atan2(dx);
-                        let verts = polygon_vertices(cx, cy, r, start_angle, n);
-                        let segments = closed_chain(&verts);
-                        *self = Tool::Polygon {
-                            center: None,
-                            sides: Some(n),
-                        };
-                        ToolEvent::Create(vec![closed_polycurve(segments)])
+                (Some(c), None) => {
+                    // Second click fixes radius/rotation but does NOT commit:
+                    // the side-count popup takes over from here, with Apply
+                    // (or Enter) via `Tool::commit` finalizing the entity.
+                    if c.dist_f64(&p) >= 1e-9 {
+                        *radius_point = Some(p);
                     }
+                    ToolEvent::Pending
+                }
+                (Some(_), Some(_)) => {
+                    // Pending confirmation (popup showing); absorb further clicks.
+                    ToolEvent::Pending
                 }
             },
 
@@ -643,7 +646,14 @@ impl Tool {
             Tool::Move { base, .. } | Tool::Copy { base, .. } => *base = None,
             Tool::Spline { pts } => pts.clear(),
             Tool::Polyline { pts } => pts.clear(),
-            Tool::Polygon { center, .. } => *center = None,
+            Tool::Polygon {
+                center,
+                radius_point,
+                ..
+            } => {
+                *center = None;
+                *radius_point = None;
+            }
             Tool::Rotate { base, .. } => *base = None,
             Tool::Scale {
                 base, reference, ..
@@ -655,7 +665,10 @@ impl Tool {
             Tool::Offset { source, .. } => *source = None,
             Tool::Fillet { first, .. } => *first = None,
             Tool::Chamfer { first, .. } => *first = None,
-            Tool::Blend { first, .. } => *first = None,
+            Tool::Blend { first, second, .. } => {
+                *first = None;
+                *second = None;
+            }
             Tool::Stretch { c1, c2, base, .. } => {
                 *c1 = None;
                 *c2 = None;
@@ -817,14 +830,17 @@ impl Tool {
             }
             Tool::Polygon {
                 center: Some(c),
+                radius_point,
                 sides: Some(n),
             } => {
+                // Before the radius click: follow the cursor. After it: the
+                // shape is spatially final, only the side count popup can
+                // still change it, so ignore the cursor and use the fixed point.
+                let rp = radius_point.unwrap_or(*cursor);
                 let cx = c.x;
                 let cy = c.y;
-                let rx = cursor.x;
-                let ry = cursor.y;
-                let dx = rx - cx;
-                let dy = ry - cy;
+                let dx = rp.x - cx;
+                let dy = rp.y - cy;
                 let r = (dx * dx + dy * dy).sqrt();
                 let start_angle = dy.atan2(dx);
                 let verts = polygon_vertices(cx, cy, r, start_angle, *n);
@@ -904,6 +920,27 @@ impl Tool {
                 let ev = spline_event(pts);
                 *self = Tool::Spline { pts: Vec::new() };
                 ev
+            }
+            Tool::Polygon {
+                center,
+                radius_point,
+                sides,
+            } => {
+                let (Some(c), Some(rp), Some(n)) = (*center, *radius_point, *sides) else {
+                    return ToolEvent::Pending;
+                };
+                let dx = rp.x - c.x;
+                let dy = rp.y - c.y;
+                let r = (dx * dx + dy * dy).sqrt();
+                *center = None;
+                *radius_point = None;
+                if r < 1e-9 || n < 3 {
+                    return ToolEvent::Pending;
+                }
+                let start_angle = dy.atan2(dx);
+                let verts = polygon_vertices(c.x, c.y, r, start_angle, n);
+                let segments = closed_chain(&verts);
+                ToolEvent::Create(vec![closed_polycurve(segments)])
             }
             _ => ToolEvent::Pending,
         }
@@ -1194,12 +1231,27 @@ mod tests {
 
     #[test]
     fn polygon_creates_regular_polygon() {
+        // Center click, then radius click: the radius click no longer
+        // commits directly — it stages the shape (see `Tool::preview`, which
+        // switches from cursor-driven to this fixed point) and leaves it for
+        // the side-count popup's Apply (`Tool::commit`) to finalize.
         let mut t = Tool::Polygon {
             center: None,
+            radius_point: None,
             sides: Some(5),
         };
         assert!(matches!(t.on_point(pt(0, 0)), ToolEvent::Pending));
-        match t.on_point(pt(10, 0)) {
+        assert!(matches!(t.on_point(pt(10, 0)), ToolEvent::Pending));
+        assert!(matches!(
+            t,
+            Tool::Polygon {
+                center: Some(_),
+                radius_point: Some(_),
+                sides: Some(5)
+            }
+        ));
+
+        match t.commit() {
             ToolEvent::Create(es) => {
                 assert_eq!(es.len(), 1, "one entity, not five loose lines");
                 if let EntityKind::Curve(Curve::Poly(poly)) = &es[0] {
@@ -1218,6 +1270,85 @@ mod tests {
             }
             o => panic!("{:?}", o),
         }
+        assert!(
+            matches!(
+                t,
+                Tool::Polygon {
+                    center: None,
+                    radius_point: None,
+                    sides: Some(5)
+                }
+            ),
+            "commit resets center/radius but keeps the side count for next time"
+        );
+    }
+
+    #[test]
+    fn polygon_center_click_works_before_sides_are_chosen() {
+        // No cursor-following "pick sides first" gate anymore: the first
+        // click always places the center, defaulting sides to 6 so the tool
+        // is immediately in a valid state for the side-count popup and the
+        // live radius preview to take over from there.
+        let mut t = Tool::Polygon {
+            center: None,
+            radius_point: None,
+            sides: None,
+        };
+        assert!(matches!(t.on_point(pt(0, 0)), ToolEvent::Pending));
+        assert!(matches!(
+            t,
+            Tool::Polygon {
+                center: Some(_),
+                radius_point: None,
+                sides: Some(6)
+            }
+        ));
+    }
+
+    #[test]
+    fn polygon_center_click_preserves_previously_chosen_sides() {
+        let mut t = Tool::Polygon {
+            center: None,
+            radius_point: None,
+            sides: Some(8),
+        };
+        t.on_point(pt(0, 0));
+        assert!(matches!(
+            t,
+            Tool::Polygon {
+                center: Some(_),
+                radius_point: None,
+                sides: Some(8)
+            }
+        ));
+    }
+
+    #[test]
+    fn polygon_radius_click_stages_without_committing() {
+        let mut t = Tool::Polygon {
+            center: None,
+            radius_point: None,
+            sides: Some(6),
+        };
+        t.on_point(pt(0, 0));
+        assert!(matches!(t.on_point(pt(10, 0)), ToolEvent::Pending));
+        assert!(matches!(
+            t,
+            Tool::Polygon {
+                center: Some(_),
+                radius_point: Some(_),
+                ..
+            }
+        ));
+        // A third click while pending must be absorbed, not re-picked.
+        assert!(matches!(t.on_point(pt(99, 99)), ToolEvent::Pending));
+        assert!(matches!(
+            t,
+            Tool::Polygon {
+                radius_point: Some(p),
+                ..
+            } if (p.x - 10.0).abs() < 1e-9 && p.y.abs() < 1e-9
+        ));
     }
 
     #[test]

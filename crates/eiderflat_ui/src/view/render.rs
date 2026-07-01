@@ -141,14 +141,18 @@ pub(super) fn tool_prompt(tool: &Tool) -> String {
                 "Specify second point of mirror axis".into()
             }
         }
-        Tool::Polygon { center, sides } => {
+        Tool::Polygon {
+            center,
+            radius_point,
+            sides,
+        } => {
             if center.is_none() {
-                match sides {
-                    Some(n) => format!("Sides: {n} — click the center (or type a new count)"),
-                    None => "Type the number of sides (3+), then click the center".into(),
-                }
-            } else {
+                "Click the center point".into()
+            } else if radius_point.is_none() {
                 "Click to set the radius".into()
+            } else {
+                let n = sides.unwrap_or(6);
+                format!("Sides: {n} — pick a new count, then Apply or Enter to confirm")
             }
         }
         Tool::Spline { pts } => {
@@ -202,9 +206,14 @@ pub(super) fn tool_prompt(tool: &Tool) -> String {
             }
         }
         Tool::Blend {
-            continuity, first, ..
+            continuity,
+            first,
+            second,
+            ..
         } => {
-            if first.is_none() {
+            if second.is_some() {
+                "Adjust continuity/tension, then Apply or Enter to confirm".into()
+            } else if first.is_none() {
                 format!("Blend ({continuity:?}) — pick the first entity")
             } else {
                 "Pick the second entity to blend into".into()
@@ -519,6 +528,43 @@ pub(super) fn draw_transform_ghost(
             draw_curve(painter, &t.apply_curve(c), to_screen, ghost);
         }
     }
+}
+/// Ghost-previews the candidate blend curve. While only the first entity is
+/// picked, the hovered entity (if any) stands in as a tentative second pick,
+/// drawn faint; once both are picked, the same curve is drawn at full
+/// strength as the confirm popup (`overlays::blend_confirm_hud`) is shown.
+pub(super) fn draw_blend_preview(
+    painter: &egui::Painter,
+    app: &AppState,
+    to_screen: &impl Fn(f64, f64) -> egui::Pos2,
+    hovered_id: Option<EntityId>,
+) {
+    let Tool::Blend {
+        continuity,
+        tension,
+        first: Some(a),
+        second,
+    } = app.tool
+    else {
+        return;
+    };
+    let (b, faint) = match second {
+        Some(b) => (b, false),
+        None => match hovered_id {
+            Some(h) if h != a => (h, true),
+            _ => return,
+        },
+    };
+    let Some(curve) = eiderflat_cad::edit::blend_preview(&app.document, a, b, continuity, tension)
+    else {
+        return;
+    };
+    let stroke = if faint {
+        Stroke::new(1.5, crate::theme::PREVIEW.gamma_multiply(0.45))
+    } else {
+        Stroke::new(1.5, crate::theme::PREVIEW)
+    };
+    draw_curve(painter, &curve, to_screen, stroke);
 }
 pub(super) fn draw_trim_extend_preview(
     painter: &egui::Painter,
