@@ -322,9 +322,15 @@ mod tests {
         let d = donut((0, 0, 10, 10), (3, 3, 7, 7));
         let c = ngon(7.5, 5.0, 3.0, 64);
         let r = intersection(&d, &c);
-        assert!(r.contains_point(8.5, 5.0), "inside rect, in circle, outside hole");
+        assert!(
+            r.contains_point(8.5, 5.0),
+            "inside rect, in circle, outside hole"
+        );
         assert!(!r.contains_point(5.0, 5.0), "inside the hole is excluded");
-        assert!(!r.contains_point(1.0, 1.0), "outside the circle is excluded");
+        assert!(
+            !r.contains_point(1.0, 1.0),
+            "outside the circle is excluded"
+        );
     }
 
     #[test]
@@ -333,7 +339,10 @@ mod tests {
         let b = square(4, 4, 6, 6);
         let u = union(&d, &b);
         assert!(u.contains_point(5.0, 5.0), "B fills part of A's hole");
-        assert!(!u.contains_point(3.5, 5.0), "still a hole where B doesn't reach");
+        assert!(
+            !u.contains_point(3.5, 5.0),
+            "still a hole where B doesn't reach"
+        );
         assert!(u.contains_point(1.0, 1.0), "A's solid material stays");
     }
 
@@ -352,9 +361,18 @@ mod tests {
         let d = donut((0, 0, 10, 10), (3, 3, 7, 7));
         let c = ngon(8.5, 1.5, 1.0, 64);
         let x = xor(&d, &c);
-        assert!(!x.contains_point(8.5, 1.5), "circle fully inside A's solid material is excluded");
-        assert!(!x.contains_point(5.0, 5.0), "the original hole stays excluded");
-        assert!(x.contains_point(1.0, 1.0), "donut material away from the circle stays");
+        assert!(
+            !x.contains_point(8.5, 1.5),
+            "circle fully inside A's solid material is excluded"
+        );
+        assert!(
+            !x.contains_point(5.0, 5.0),
+            "the original hole stays excluded"
+        );
+        assert!(
+            x.contains_point(1.0, 1.0),
+            "donut material away from the circle stays"
+        );
     }
 
     #[test]
@@ -363,12 +381,21 @@ mod tests {
         let c = ngon(5.0, 5.0, 1.0, 32);
 
         let u = union(&d, &c);
-        assert!(u.contains_point(5.0, 5.0), "circle survives as a disjoint island");
+        assert!(
+            u.contains_point(5.0, 5.0),
+            "circle survives as a disjoint island"
+        );
         assert!(u.contains_point(1.0, 1.0), "donut solid material stays");
-        assert!(!u.contains_point(3.5, 5.0), "the rest of the hole stays empty");
+        assert!(
+            !u.contains_point(3.5, 5.0),
+            "the rest of the hole stays empty"
+        );
 
         let i = intersection(&d, &c);
-        assert!(!i.contains_point(5.0, 5.0), "circle in the hole never overlaps donut material");
+        assert!(
+            !i.contains_point(5.0, 5.0),
+            "circle in the hole never overlaps donut material"
+        );
 
         let diff = difference(&d, &c);
         assert!(diff.contains_point(1.0, 1.0), "donut is unmodified");

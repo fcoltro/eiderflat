@@ -731,7 +731,13 @@ fn write_entity(
         EntityKind::Hatch {
             boundary, holes, ..
         } => {
-            write_polyline(w, &PolyCurve::new(boundary.clone()), layer, color, line_type);
+            write_polyline(
+                w,
+                &PolyCurve::new(boundary.clone()),
+                layer,
+                color,
+                line_type,
+            );
             for hole in holes {
                 write_polyline(w, &PolyCurve::new(hole.clone()), layer, color, line_type);
             }

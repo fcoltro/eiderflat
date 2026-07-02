@@ -1209,8 +1209,7 @@ mod tests {
     fn merge_one_hole_recovers_from_exact_vertex_tie() {
         let outer = vec![(0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0)];
         let hole = vec![(3.0, 8.5), (4.0, 10.0), (3.0, 9.5)];
-        let merged =
-            merge_one_hole(outer, &hole).expect("the epsilon retry finds a bridge edge");
+        let merged = merge_one_hole(outer, &hole).expect("the epsilon retry finds a bridge edge");
         assert_eq!(merged.len(), 4 + 3 + 2, "outer + hole + bridge duplication");
     }
 

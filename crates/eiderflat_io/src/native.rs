@@ -1,6 +1,6 @@
 use eiderflat_document::{
-    Color, Document, Entity, EntityKind, HatchPattern, Layer, LineTypeDef, LineTypeRef,
-    LineWeight, Units,
+    Color, Document, Entity, EntityKind, HatchPattern, Layer, LineTypeDef, LineTypeRef, LineWeight,
+    Units,
 };
 use eiderflat_geometry::{
     CircularArc, CubicBezier, Curve, EllipticalArc, LineSeg, NurbsCurve, Point2d, PolyCurve,

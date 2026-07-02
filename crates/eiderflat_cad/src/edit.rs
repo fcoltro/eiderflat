@@ -2587,7 +2587,10 @@ mod tests {
     fn stretch_arc_endpoint_moves_only_that_endpoint() {
         let mut doc = Document::new();
         let id = draw::arc(&mut doc, pt(0, 0), 5.0, 0.0, std::f64::consts::FRAC_PI_2);
-        let start = arc_point(&CircularArc::new(pt(0, 0), 5.0, 0.0, std::f64::consts::FRAC_PI_2), 0.0);
+        let start = arc_point(
+            &CircularArc::new(pt(0, 0), 5.0, 0.0, std::f64::consts::FRAC_PI_2),
+            0.0,
+        );
         stretch(
             &mut doc,
             &[id],

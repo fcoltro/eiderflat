@@ -464,9 +464,15 @@ mod tests {
         let circle = ngon(7.5, 5.0, 3.0, 64);
         let r = clip(&[outer, hole], &[circle], BoolOp::Intersection);
         assert!(!r.is_empty(), "crescent must be produced");
-        assert!(loops_contain(&r, 8.5, 5.0), "inside rect, in circle, outside hole");
+        assert!(
+            loops_contain(&r, 8.5, 5.0),
+            "inside rect, in circle, outside hole"
+        );
         assert!(!loops_contain(&r, 5.0, 5.0), "inside the hole is excluded");
-        assert!(!loops_contain(&r, 1.0, 1.0), "outside the circle is excluded");
+        assert!(
+            !loops_contain(&r, 1.0, 1.0),
+            "outside the circle is excluded"
+        );
     }
 
     #[test]
@@ -476,7 +482,10 @@ mod tests {
         let outer_b = poly(&[(4.0, 4.0), (4.0, 6.0), (6.0, 6.0), (6.0, 4.0)]);
         let r = clip(&[outer_a, hole_a], &[outer_b], BoolOp::Union);
         assert!(loops_contain(&r, 5.0, 5.0), "B fills part of A's hole");
-        assert!(!loops_contain(&r, 3.5, 5.0), "still a hole where B doesn't reach");
+        assert!(
+            !loops_contain(&r, 3.5, 5.0),
+            "still a hole where B doesn't reach"
+        );
         assert!(loops_contain(&r, 1.0, 1.0), "A's solid material stays");
     }
 
@@ -517,16 +526,25 @@ mod tests {
             std::slice::from_ref(&circle),
             BoolOp::Union,
         );
-        assert!(loops_contain(&u, 5.0, 5.0), "circle survives as a disjoint island");
+        assert!(
+            loops_contain(&u, 5.0, 5.0),
+            "circle survives as a disjoint island"
+        );
         assert!(loops_contain(&u, 1.0, 1.0), "donut solid material stays");
-        assert!(!loops_contain(&u, 3.5, 5.0), "the rest of the hole stays empty");
+        assert!(
+            !loops_contain(&u, 3.5, 5.0),
+            "the rest of the hole stays empty"
+        );
 
         let i = clip(
             &[outer.clone(), hole.clone()],
             std::slice::from_ref(&circle),
             BoolOp::Intersection,
         );
-        assert!(i.is_empty(), "circle in the hole never overlaps donut material");
+        assert!(
+            i.is_empty(),
+            "circle in the hole never overlaps donut material"
+        );
 
         let d = clip(&[outer, hole], &[circle], BoolOp::Difference);
         assert!(loops_contain(&d, 1.0, 1.0), "donut is unmodified");
