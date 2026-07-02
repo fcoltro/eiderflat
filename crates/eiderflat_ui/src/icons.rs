@@ -161,22 +161,32 @@ pub fn paint_icon(
     }
 }
 
-fn rasterize_svg(svg: &str, w: u32, h: u32) -> Option<resvg::tiny_skia::Pixmap> {
-    let tree = resvg::usvg::Tree::from_str(svg, &resvg::usvg::Options::default()).ok()?;
-    let mut pixmap = resvg::tiny_skia::Pixmap::new(w, h)?;
-    let size = tree.size();
-    let scale = (w as f32 / size.width()).min(h as f32 / size.height());
-    let tx = (w as f32 - size.width() * scale) * 0.5;
-    let ty = (h as f32 - size.height() * scale) * 0.5;
+fn decode_png(bytes: &[u8]) -> Option<resvg::tiny_skia::Pixmap> {
+    resvg::tiny_skia::Pixmap::decode_png(bytes).ok()
+}
+
+fn scaled_pixmap_from_png(bytes: &[u8], w: u32, h: u32) -> Option<resvg::tiny_skia::Pixmap> {
+    let src = decode_png(bytes)?;
+    if src.width() == w && src.height() == h {
+        return Some(src);
+    }
+    let mut out = resvg::tiny_skia::Pixmap::new(w, h)?;
+    let scale = (w as f32 / src.width() as f32).min(h as f32 / src.height() as f32);
+    let tx = (w as f32 - src.width() as f32 * scale) * 0.5;
+    let ty = (h as f32 - src.height() as f32 * scale) * 0.5;
     let transform = resvg::tiny_skia::Transform::from_scale(scale, scale).post_translate(tx, ty);
-    resvg::render(&tree, transform, &mut pixmap.as_mut());
-    Some(pixmap)
+    let paint = resvg::tiny_skia::PixmapPaint {
+        quality: resvg::tiny_skia::FilterQuality::Bilinear,
+        ..Default::default()
+    };
+    out.draw_pixmap(0, 0, src.as_ref(), &paint, transform, None);
+    Some(out)
 }
 
 pub fn app_icon() -> egui::IconData {
     const SIZE: u32 = 256;
-    let svg = include_str!("../assets/logotype/symbol.svg");
-    match rasterize_svg(svg, SIZE, SIZE) {
+    let png = include_bytes!("../assets/logotype/eiderFLAT_symbol.png");
+    match scaled_pixmap_from_png(png, SIZE, SIZE) {
         Some(pixmap) => {
             let mut rgba = pixmap.data().to_vec();
             for px in rgba.chunks_exact_mut(4) {
@@ -202,8 +212,8 @@ pub fn app_icon() -> egui::IconData {
 }
 
 pub fn app_icon_png(size: u32) -> Option<Vec<u8>> {
-    let svg = include_str!("../assets/logotype/symbol.svg");
-    rasterize_svg(svg, size, size)?.encode_png().ok()
+    let png = include_bytes!("../assets/logotype/eiderFLAT_symbol.png");
+    scaled_pixmap_from_png(png, size, size)?.encode_png().ok()
 }
 
 pub fn app_icon_ico() -> Option<Vec<u8>> {
@@ -240,8 +250,8 @@ pub fn logo_texture(ctx: &egui::Context) -> Option<egui::TextureHandle> {
     if let Some(t) = ctx.data(|d| d.get_temp::<egui::TextureHandle>(id)) {
         return Some(t);
     }
-    let svg = include_str!("../assets/logotype/logotype.svg");
-    let pixmap = rasterize_svg(svg, 768, 419)?;
+    let png = include_bytes!("../assets/logotype/eiderFLAT_logo.png");
+    let pixmap = decode_png(png)?;
     let image = egui::ColorImage::from_rgba_premultiplied(
         [pixmap.width() as usize, pixmap.height() as usize],
         pixmap.data(),

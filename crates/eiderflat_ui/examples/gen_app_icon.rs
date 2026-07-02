@@ -10,11 +10,8 @@ fn main() {
     let png = eiderflat_ui::icons::app_icon_png(512).expect("rasterize .png");
     std::fs::write(assets.join("eiderflat.png"), &png).expect("write .png");
 
-    let svg = include_str!("../assets/logotype/symbol.svg");
-    std::fs::write(assets.join("eiderflat.svg"), svg).expect("write .svg");
-
     println!(
-        "wrote eiderflat.ico ({} bytes), eiderflat.png ({} bytes), eiderflat.svg to {}",
+        "wrote eiderflat.ico ({} bytes), eiderflat.png ({} bytes) to {}",
         ico.len(),
         png.len(),
         assets.display()

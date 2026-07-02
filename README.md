@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="crates/eiderflat_ui/assets/logotype/logotype.svg" alt="eiderFLAT" width="460">
+  <img src="crates/eiderflat_ui/assets/logotype/eiderFLAT_logo.png" alt="eiderFLAT" width="460">
 </p>
 
 <h1 align="center">eiderFLAT</h1>

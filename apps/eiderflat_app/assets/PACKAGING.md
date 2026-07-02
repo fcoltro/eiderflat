@@ -1,8 +1,9 @@
 # Application icons
 
 All icons derive from the app symbol
-`crates/eiderflat_ui/assets/logotype/symbol.svg`. Regenerate the artifacts in
-this folder after changing it:
+`crates/eiderflat_ui/assets/logotype/eiderFLAT_symbol.png` (a fixed-resolution
+raster mark — there is no vector source). Regenerate the artifacts in this
+folder after changing it:
 
 ```sh
 cargo run -p eiderflat_ui --example gen_app_icon
@@ -14,7 +15,6 @@ This writes:
 |------------------|---------------------------------------------------------------|
 | `eiderflat.ico`  | Windows `.exe` (embedded automatically by `build.rs`)         |
 | `eiderflat.png`  | 512×512 source for the macOS `.icns` and Linux PNG icon       |
-| `eiderflat.svg`  | Scalable Linux icon                                           |
 
 The **window/taskbar** icon is set at runtime in `main.rs` via
 `eiderflat_ui::icons::app_icon()`, on every platform. The notes below are only
@@ -34,8 +34,8 @@ file plus a themed icon. After `cargo build --release`:
 
 ```sh
 install -Dm755 target/release/eiderflat        ~/.local/bin/eiderflat
-install -Dm644 apps/eiderflat_app/assets/eiderflat.svg \
-    ~/.local/share/icons/hicolor/scalable/apps/eiderflat.svg
+install -Dm644 apps/eiderflat_app/assets/eiderflat.png \
+    ~/.local/share/icons/hicolor/512x512/apps/eiderflat.png
 install -Dm644 apps/eiderflat_app/assets/eiderflat.desktop \
     ~/.local/share/applications/eiderflat.desktop
 update-desktop-database ~/.local/share/applications 2>/dev/null || true
